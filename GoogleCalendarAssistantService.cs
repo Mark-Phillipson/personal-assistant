@@ -66,7 +66,7 @@ public sealed class GoogleCalendarAssistantService
     {
         var service = await GetServiceAsync();
         var request = service.Events.List("primary");
-        request.TimeMin = DateTime.UtcNow;
+        request.TimeMinDateTimeOffset = DateTimeOffset.UtcNow;
         request.ShowDeleted = false;
         request.SingleEvents = true;
         request.MaxResults = maxResults;
@@ -82,8 +82,8 @@ public sealed class GoogleCalendarAssistantService
         {
             Summary = summary,
             Description = description,
-            Start = new EventDateTime { DateTime = start, TimeZone = "UTC" },
-            End = new EventDateTime { DateTime = end, TimeZone = "UTC" }
+            Start = new EventDateTime { DateTimeDateTimeOffset = new DateTimeOffset(start, TimeSpan.Zero), TimeZone = "UTC" },
+            End = new EventDateTime { DateTimeDateTimeOffset = new DateTimeOffset(end, TimeSpan.Zero), TimeZone = "UTC" }
         };
         var request = service.Events.Insert(newEvent, "primary");
         return await request.ExecuteAsync();

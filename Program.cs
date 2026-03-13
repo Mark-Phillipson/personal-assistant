@@ -187,7 +187,7 @@ static async Task HandleMessageAsync(
                 }
                 else
                 {
-                    var eventList = string.Join("\n\n", events.Select(ev => $"{ev.Summary}\nStart: {ev.Start?.DateTime}\nEnd: {ev.End?.DateTime}"));
+                    var eventList = string.Join("\n\n", events.Select(ev => $"{ev.Summary}\nStart: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"));
                     await telegram.SendMessageInChunksAsync(chatId, eventList, cancellationToken);
                 }
                 return;

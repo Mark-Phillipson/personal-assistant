@@ -12,7 +12,7 @@
     <PackageReference Include="DotNetEnv" Version="3.1.1" />
     <PackageReference Include="GitHub.Copilot.SDK" Version="0.1.32" />
     <PackageReference Include="Google.Apis.Auth" Version="1.73.0" />
-    <PackageReference Include="Google.Apis.Calendar.v3" Version="1.73.0.4029" />
+    <PackageReference Include="Google.Apis.Calendar.v3" Version="1.73.0.4063" />
     <PackageReference Include="Google.Apis.Gmail.v1" Version="1.73.0.4029" />
   </ItemGroup>
 
