@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
 
@@ -33,7 +34,7 @@ internal static class TelegramMessageHandler
                 case "/help":
                     await telegram.SendMessageInChunksAsync(
                         chatId,
-                        "Commands:\n/start - welcome message\n/help - show commands\n/reset - reset your Copilot session\n/gmail-status - check Gmail setup\n/calendar-status - check Google Calendar setup\n/calendar-events - list upcoming Google Calendar events\n/calendar-create - create a new Google Calendar event\n/natural <command> - run a NaturalCommands command locally\n/nc <command> - short alias for /natural",
+                        "Commands:\n/start - welcome message\n/help - show commands\n/reset - reset your Copilot session\n/gmail-status - check Gmail setup\n/calendar-status - check Google Calendar setup\n/calendar-events - list upcoming Google Calendar events\n/calendar-create - create a new Google Calendar event\n/weather - open BBC Weather for Maidstone, Kent\n/natural <command> - run a NaturalCommands command locally\n/nc <command> - short alias for /natural",
                         cancellationToken);
                     return;
 
@@ -73,6 +74,26 @@ internal static class TelegramMessageHandler
                     }
 
                     await telegram.SendMessageInChunksAsync(chatId, "To create an event, please use the assistant chat with a command like: 'Create a calendar event titled Meeting tomorrow at 10am for 1 hour.'", cancellationToken);
+                    return;
+
+                case "/weather":
+                    await telegram.SendMessageInChunksAsync(chatId, "Opening BBC Weather for Maidstone, Kent...", cancellationToken);
+
+                    var weatherUrl = "https://www.bbc.co.uk/weather/2643179";
+                    try
+                    {
+                        _ = Process.Start(new ProcessStartInfo
+                        {
+                            FileName = weatherUrl,
+                            UseShellExecute = true
+                        });
+                    }
+                    catch
+                    {
+                        // Fall back to NaturalCommands if direct browser launch is unavailable.
+                        await naturalCommandsService.ExecuteAsync($"open {weatherUrl}", cancellationToken);
+                    }
+
                     return;
 
                 case "/reset":
