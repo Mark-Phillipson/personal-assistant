@@ -1,12 +1,14 @@
-﻿# Personal Assistant (Copilot SDK + Telegram + Gmail, .NET 10)
+﻿# Personal Assistant (Copilot SDK + Telegram/Terminal + Gmail, .NET 10)
 
-This project is a Telegram-based personal assistant built on the GitHub Copilot SDK, with optional Gmail read access.
+This project is a personal assistant built on the GitHub Copilot SDK with two runtime transports:
+
+- Telegram mode (long polling)
+- Terminal mode (direct interactive chat in your shell)
 
 ## What it does
 
-- Receives Telegram messages via long polling.
-- Maintains one Copilot session per Telegram chat.
-- Sends Copilot responses back to Telegram.
+- In Telegram mode: receives Telegram messages via long polling, maintains one Copilot session per Telegram chat, and sends responses back to Telegram.
+- In terminal mode: runs as an interactive shell assistant with one local Copilot session.
 - Supports `/start`, `/help`, `/reset`, and `/gmail-status`.
 - Supports `/natural` and `/nc` to run local NaturalCommands CLI actions.
 - Can list and send local files from your user folders as Telegram attachments.
@@ -22,12 +24,13 @@ This project is a Telegram-based personal assistant built on the GitHub Copilot 
 - .NET 10 SDK
 - GitHub Copilot CLI installed and available as `copilot`
 - Copilot CLI authenticated (or configured auth/BYOK)
-- Telegram bot token from BotFather
+- Telegram bot token from BotFather (required only for Telegram mode)
 - For Gmail integration: Google Cloud OAuth client credentials for Gmail API
 
 ## Environment variables
 
-- `TELEGRAM_BOT_TOKEN` (required)
+- `ASSISTANT_TRANSPORT` (optional, default `telegram`; allowed: `telegram`, `terminal`)
+- `TELEGRAM_BOT_TOKEN` (required in `telegram` mode)
 - `TELEGRAM_POLL_TIMEOUT_SECONDS` (optional, default `25`, range `1-50`)
 - `TELEGRAM_ERROR_BACKOFF_SECONDS` (optional, default `3`, range `1-30`)
 - `GMAIL_CLIENT_SECRET_PATH` (optional, required only for Gmail; path to OAuth client secret JSON)
@@ -74,6 +77,8 @@ The app uses `calendar` scope only.
 
 ## Run
 
+### Telegram mode (default)
+
 ```bash
 dotnet restore
 dotnet build
@@ -81,6 +86,31 @@ dotnet run
 ```
 
 On startup, the app begins polling Telegram updates and routes each chat to its own Copilot session.
+
+### Terminal mode (no Telegram required)
+
+Use either an environment variable:
+
+```bash
+ASSISTANT_TRANSPORT=terminal
+dotnet run
+```
+
+Or use a startup flag:
+
+```bash
+dotnet run -- --terminal
+```
+
+Terminal commands:
+
+- `/help`
+- `/reset`
+- `/gmail-status`
+- `/calendar-status`
+- `/natural <command>`
+- `/nc <command>`
+- `/exit`
 
 ## NaturalCommands setup
 
