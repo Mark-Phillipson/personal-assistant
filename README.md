@@ -8,6 +8,7 @@ This project is a Telegram-based personal assistant built on the GitHub Copilot 
 - Maintains one Copilot session per Telegram chat.
 - Sends Copilot responses back to Telegram.
 - Supports `/start`, `/help`, `/reset`, and `/gmail-status`.
+- Can list and send local files from your user folders as Telegram attachments.
 - Exposes Gmail tools to Copilot:
   - `gmail_setup_status`
   - `list_unread_gmail`
@@ -85,3 +86,18 @@ On startup, the app begins polling Telegram updates and routes each chat to its 
 - `/calendar-create`
 - `List my next 5 calendar events`
 - `Create a calendar event titled Meeting tomorrow at 10am for 1 hour`
+- `List files in my Downloads folder`
+- `Find PDFs in Documents and send budget-2026.pdf`
+- `Show recent videos in Videos and send trip.mp4`
+
+## Local attachment behavior
+
+The assistant can attach existing local files from these folders (when they exist on the machine running the bot):
+
+- `Documents`
+- `Pictures`
+- `Videos`
+- `Desktop`
+- `Downloads`
+
+For safety, it only allows files inside those folders (including subfolders when requested), blocks path traversal outside the allowed roots, and applies a local max file size cap (48 MB).
