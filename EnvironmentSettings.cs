@@ -27,4 +27,32 @@ internal static class EnvironmentSettings
 
         return parsed;
     }
+
+    public static string ReadString(string name, string fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(raw) ? fallback : raw.Trim();
+    }
+
+    public static string? ReadOptionalString(string name)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
+    }
+
+    public static bool ReadBool(string name, bool fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
+        if (!bool.TryParse(raw.Trim(), out var parsed))
+        {
+            throw new InvalidOperationException($"Environment variable '{name}' must be true or false.");
+        }
+
+        return parsed;
+    }
 }

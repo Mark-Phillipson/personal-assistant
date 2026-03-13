@@ -5,6 +5,9 @@ using Microsoft.Extensions.AI;
 
 Env.Load();
 
+var environmentPersonality = PersonalityProfile.FromEnvironment();
+var defaultPersonality = PersonalityProfile.LoadFromEnvironmentOrJson(environmentPersonality);
+
 var assistantTransport = ResolveAssistantTransport(args);
 
 var gmailService = GmailAssistantService.FromEnvironment();
@@ -27,6 +30,7 @@ switch (assistantTransport)
         await RunTerminalAsync(
             copilotClient,
             assistantTools,
+            defaultPersonality,
             gmailService,
             calendarService,
             naturalCommandsService,
@@ -37,6 +41,8 @@ switch (assistantTransport)
         await RunTelegramAsync(
             copilotClient,
             assistantTools,
+            defaultPersonality,
+            environmentPersonality,
             gmailService,
             calendarService,
             naturalCommandsService,
@@ -68,6 +74,8 @@ static string ResolveAssistantTransport(string[] args)
 static async Task RunTelegramAsync(
     CopilotClient copilotClient,
     ICollection<AIFunction> assistantTools,
+    PersonalityProfile defaultPersonality,
+    PersonalityProfile environmentPersonality,
     GmailAssistantService gmailService,
     GoogleCalendarAssistantService calendarService,
     NaturalCommandsAssistantService naturalCommandsService,
@@ -79,6 +87,7 @@ static async Task RunTelegramAsync(
 
     using var telegram = new TelegramApiClient(telegramToken);
     var sessions = new ConcurrentDictionary<long, CopilotSession>();
+    var personalityProfiles = new ConcurrentDictionary<long, PersonalityProfile>();
 
     Console.WriteLine("Telegram Copilot assistant started. Press Ctrl+C to stop.");
     Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
@@ -122,7 +131,10 @@ static async Task RunTelegramAsync(
                     telegram,
                     copilotClient,
                     sessions,
+                    personalityProfiles,
                     assistantTools,
+                    defaultPersonality,
+                    environmentPersonality,
                     gmailService,
                     calendarService,
                     naturalCommandsService,
@@ -142,20 +154,18 @@ static async Task RunTelegramAsync(
 static async Task RunTerminalAsync(
     CopilotClient copilotClient,
     ICollection<AIFunction> assistantTools,
+    PersonalityProfile defaultPersonality,
     GmailAssistantService gmailService,
     GoogleCalendarAssistantService calendarService,
     NaturalCommandsAssistantService naturalCommandsService,
     CancellationToken cancellationToken)
 {
     Console.WriteLine("Terminal Copilot assistant started. Type /help for commands, /exit to quit.");
+    Console.WriteLine($"Personality: {defaultPersonality.Name} | Tone: {defaultPersonality.Tone} | Emoji: {(defaultPersonality.UseEmoji ? defaultPersonality.EmojiDensity : "Off")}");
     Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
 
-    var session = await copilotClient.CreateSessionAsync(new SessionConfig
-    {
-        OnPermissionRequest = PermissionHandler.ApproveAll,
-        Tools = assistantTools
-    });
+    var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
 
     try
     {
@@ -201,11 +211,7 @@ static async Task RunTerminalAsync(
             if (string.Equals(incomingText, "/reset", StringComparison.OrdinalIgnoreCase))
             {
                 await session.DisposeAsync();
-                session = await copilotClient.CreateSessionAsync(new SessionConfig
-                {
-                    OnPermissionRequest = PermissionHandler.ApproveAll,
-                    Tools = assistantTools
-                });
+                session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
 
                 Console.WriteLine("Session reset.");
                 continue;
@@ -239,6 +245,22 @@ static async Task RunTerminalAsync(
     {
         await session.DisposeAsync();
     }
+}
+
+static Task<CopilotSession> CreateConfiguredSessionAsync(
+    CopilotClient copilotClient,
+    ICollection<AIFunction> assistantTools,
+    PersonalityProfile profile)
+{
+    return copilotClient.CreateSessionAsync(new SessionConfig
+    {
+        OnPermissionRequest = PermissionHandler.ApproveAll,
+        Tools = assistantTools,
+        SystemMessage = new SystemMessageConfig
+        {
+            Content = SystemPromptBuilder.Build(profile)
+        }
+    });
 }
 
 static string ExtractCommandPayload(string text)

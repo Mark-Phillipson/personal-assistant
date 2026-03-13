@@ -10,6 +10,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - In Telegram mode: receives Telegram messages via long polling, maintains one Copilot session per Telegram chat, and sends responses back to Telegram.
 - In terminal mode: runs as an interactive shell assistant with one local Copilot session.
 - Supports `/start`, `/help`, `/reset`, and `/gmail-status`.
+- Supports `/personality` to tune tone and emoji behavior per Telegram chat.
 - Supports `/natural` and `/nc` to run local NaturalCommands CLI actions.
 - Can list and send local files from your user folders as Telegram attachments.
 - Exposes Gmail tools to Copilot:
@@ -42,8 +43,30 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `NATURAL_COMMANDS_EXECUTABLE` (optional, default `natural`; file path or command available in PATH)
 - `NATURAL_COMMANDS_WORKING_DIRECTORY` (optional, working directory for NaturalCommands process)
 - `NATURAL_COMMANDS_TIMEOUT_SECONDS` (optional, default `15`, range `1-120`)
+- `ASSISTANT_NAME` (optional, default `Bob`)
+- `ASSISTANT_TONE` (optional, default `Friendly`; allowed: `Friendly`, `Professional`, `Witty`, `Calm`, `Irreverent`)
+- `ASSISTANT_USE_EMOJI` (optional, default `true`; `true` or `false`)
+- `ASSISTANT_EMOJI_DENSITY` (optional, default `Moderate`; allowed: `Subtle`, `Moderate`, `Expressive`)
+- `ASSISTANT_SIGNATURE_GREETING` (optional)
+- `ASSISTANT_SIGNATURE_FAREWELL` (optional)
+- `ASSISTANT_PERSONALITY_CONFIG_PATH` (optional, default `personality.json`)
 
 Use `.env.example` as a template.
+
+If `personality.json` exists (or `ASSISTANT_PERSONALITY_CONFIG_PATH` points to a file), its values override environment defaults for startup personality.
+
+Example `personality.json`:
+
+```json
+{
+   "name": "Bob",
+   "tone": "Friendly",
+   "useEmoji": true,
+   "emojiDensity": "Moderate",
+   "signatureGreeting": "Hi there!",
+   "signatureFarewell": "Talk soon"
+}
+```
 
 ## Gmail setup (for `MPhillipson0@gmail.com`)
 
@@ -110,6 +133,9 @@ Terminal commands:
 - `/calendar-status`
 - `/natural <command>`
 - `/nc <command>`
+- `/personality emoji on|off|subtle|moderate|expressive`
+- `/personality tone friendly|professional|witty|calm|irreverent`
+- `/personality reset`
 - `/exit`
 
 ## NaturalCommands setup
@@ -131,6 +157,8 @@ Terminal commands:
 - `/calendar-create`
 - `/natural show desktop`
 - `/nc show desktop`
+- `/personality emoji expressive`
+- `/personality tone calm`
 - `List my next 5 calendar events`
 - `Create a calendar event titled Meeting tomorrow at 10am for 1 hour`
 - `List files in my Downloads folder`
