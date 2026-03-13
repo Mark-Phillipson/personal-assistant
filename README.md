@@ -8,11 +8,14 @@ This project is a Telegram-based personal assistant built on the GitHub Copilot 
 - Maintains one Copilot session per Telegram chat.
 - Sends Copilot responses back to Telegram.
 - Supports `/start`, `/help`, `/reset`, and `/gmail-status`.
+- Supports `/natural` and `/nc` to run local NaturalCommands CLI actions.
 - Can list and send local files from your user folders as Telegram attachments.
 - Exposes Gmail tools to Copilot:
   - `gmail_setup_status`
   - `list_unread_gmail`
   - `read_gmail_message`
+- Exposes a NaturalCommands tool to Copilot:
+   - `run_natural_command`
 
 ## Prerequisites
 
@@ -33,6 +36,9 @@ This project is a Telegram-based personal assistant built on the GitHub Copilot 
 - `CALENDAR_CLIENT_SECRET_PATH` (optional, required only for Google Calendar; path to OAuth client secret JSON)
 - `CALENDAR_TOKEN_STORE_PATH` (optional, default `.calendar-token-store`)
 - `CALENDAR_EXPECTED_ACCOUNT_EMAIL` (optional, advisory/account hint)
+- `NATURAL_COMMANDS_EXECUTABLE` (optional, default `natural`; file path or command available in PATH)
+- `NATURAL_COMMANDS_WORKING_DIRECTORY` (optional, working directory for NaturalCommands process)
+- `NATURAL_COMMANDS_TIMEOUT_SECONDS` (optional, default `15`, range `1-120`)
 
 Use `.env.example` as a template.
 
@@ -76,6 +82,15 @@ dotnet run
 
 On startup, the app begins polling Telegram updates and routes each chat to its own Copilot session.
 
+## NaturalCommands setup
+
+1. Ensure the NaturalCommands CLI is installed and runnable from the command line.
+2. Set `NATURAL_COMMANDS_EXECUTABLE` if the command is not `natural` or not on your PATH.
+3. Recommended on this machine: `NATURAL_COMMANDS_EXECUTABLE=C:\Users\MPhil\source\repos\NaturalCommands\bin\Debug\net10.0-windows\NaturalCommands.exe`
+4. Optionally set `NATURAL_COMMANDS_WORKING_DIRECTORY` if commands depend on a specific folder.
+5. Keep or adjust `NATURAL_COMMANDS_TIMEOUT_SECONDS` (default 15 seconds).
+6. Restart the assistant.
+
 ## Telegram usage examples
 
 - `/gmail-status`
@@ -84,6 +99,8 @@ On startup, the app begins polling Telegram updates and routes each chat to its 
 - `/calendar-status`
 - `/calendar-events`
 - `/calendar-create`
+- `/natural show desktop`
+- `/nc show desktop`
 - `List my next 5 calendar events`
 - `Create a calendar event titled Meeting tomorrow at 10am for 1 hour`
 - `List files in my Downloads folder`

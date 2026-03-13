@@ -13,6 +13,7 @@ internal static class TelegramMessageHandler
         ICollection<AIFunction> assistantTools,
         GmailAssistantService gmailService,
         GoogleCalendarAssistantService calendarService,
+        NaturalCommandsAssistantService naturalCommandsService,
         CancellationToken cancellationToken)
     {
         var chatId = message.Chat.Id;
@@ -32,7 +33,7 @@ internal static class TelegramMessageHandler
                 case "/help":
                     await telegram.SendMessageInChunksAsync(
                         chatId,
-                        "Commands:\n/start - welcome message\n/help - show commands\n/reset - reset your Copilot session\n/gmail-status - check Gmail setup\n/calendar-status - check Google Calendar setup\n/calendar-events - list upcoming Google Calendar events\n/calendar-create - create a new Google Calendar event",
+                        "Commands:\n/start - welcome message\n/help - show commands\n/reset - reset your Copilot session\n/gmail-status - check Gmail setup\n/calendar-status - check Google Calendar setup\n/calendar-events - list upcoming Google Calendar events\n/calendar-create - create a new Google Calendar event\n/natural <command> - run a NaturalCommands command locally\n/nc <command> - short alias for /natural",
                         cancellationToken);
                     return;
 
@@ -81,6 +82,13 @@ internal static class TelegramMessageHandler
                     }
 
                     await telegram.SendMessageInChunksAsync(chatId, "Session reset. Start a new conversation anytime.", cancellationToken);
+                    return;
+
+                case "/natural":
+                case "/nc":
+                    var commandPayload = ExtractCommandPayload(text);
+                    var naturalCommandResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
+                    await telegram.SendMessageInChunksAsync(chatId, naturalCommandResult.Message, cancellationToken);
                     return;
 
                 default:
@@ -139,5 +147,11 @@ internal static class TelegramMessageHandler
 
         await createdSession.DisposeAsync();
         return sessions[chatId];
+    }
+
+    private static string ExtractCommandPayload(string text)
+    {
+        var parts = text.Split(' ', 2, StringSplitOptions.TrimEntries);
+        return parts.Length < 2 ? string.Empty : parts[1];
     }
 }

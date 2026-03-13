@@ -10,7 +10,8 @@ var receiveBackoffSeconds = EnvironmentSettings.ReadInt("TELEGRAM_ERROR_BACKOFF_
 
 var gmailService = GmailAssistantService.FromEnvironment();
 var calendarService = GoogleCalendarAssistantService.FromEnvironment();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService);
+var naturalCommandsService = NaturalCommandsAssistantService.FromEnvironment();
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService);
 
 using var telegram = new TelegramApiClient(telegramToken);
 await using var copilotClient = new CopilotClient();
@@ -25,6 +26,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
 
 Console.WriteLine("Telegram Copilot assistant started. Press Ctrl+C to stop.");
 Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
+Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
 
 long? nextOffset = null;
 
@@ -67,6 +69,7 @@ try
                 assistantTools,
                 gmailService,
                 calendarService,
+                naturalCommandsService,
                 appCancellation.Token);
         }
     }

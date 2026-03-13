@@ -3,7 +3,10 @@ using Microsoft.Extensions.AI;
 
 internal static class AssistantToolsFactory
 {
-    public static List<AIFunction> Build(GmailAssistantService gmailService, GoogleCalendarAssistantService calendarService)
+    public static List<AIFunction> Build(
+        GmailAssistantService gmailService,
+        GoogleCalendarAssistantService calendarService,
+        NaturalCommandsAssistantService naturalCommandsService)
     {
         return
         [
@@ -42,7 +45,12 @@ internal static class AssistantToolsFactory
                     [Description("Event end time (ISO 8601, UTC)")] DateTime end) =>
                     await calendarService.CreateEventAsync(summary, description, start, end),
                 "create_calendar_event",
-                "Create a new event in Google Calendar with summary, description, start, and end times.")
+                "Create a new event in Google Calendar with summary, description, start, and end times."),
+            AIFunctionFactory.Create(
+                async ([Description("NaturalCommands text, for example: show desktop")] string commandText) =>
+                    await naturalCommandsService.ExecuteForAssistantAsync(commandText),
+                "run_natural_command",
+                "Run a local NaturalCommands command on the machine hosting this bot.")
         ];
     }
 }
