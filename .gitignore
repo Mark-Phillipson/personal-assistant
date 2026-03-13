@@ -1,0 +1,23 @@
+bin\
+obj\
+.gmail-token-store\
+.calendar-token-store\
+secrets\
+.env
+bin/
+obj/
+bin/**
+obj/**
+# Ignore common build/package artifacts
+*.exe
+*.dll
+*.tgz
+*.zip
+*.tar
+*.gz
+*.7z
+*.msi
+*.nupkg
+*.log
+.gmail-token-store/Google.Apis.Auth.OAuth2.Responses.TokenResponse-MPhillipson0@gmail.com
+.calendar-token-store/Google.Apis.Auth.OAuth2.Responses.TokenResponse-MPhillipson0@gmail.com
