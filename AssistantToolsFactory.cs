@@ -18,11 +18,12 @@ internal static class AssistantToolsFactory
                 "Check whether Gmail integration is configured and return setup instructions when it is not."),
             AIFunctionFactory.Create(
                 async (
-                    [Description("Maximum number of unread inbox emails to return (1-20)")] int maxResults = 5,
-                    [Description("Optional Gmail query filter (for example: from:amazon newer_than:7d)")] string? query = null) =>
-                    await gmailService.ListUnreadMessagesAsync(maxResults, query),
+                    [Description("Maximum number of inbox emails to return (1-20)")] int maxResults = 5,
+                    [Description("Optional Gmail query filter (for example: from:amazon newer_than:7d)")] string? query = null,
+                    [Description("When true (default), only return unread emails. Set to false to search all emails regardless of read status.")] bool unreadOnly = true) =>
+                    await gmailService.ListUnreadMessagesAsync(maxResults, query, unreadOnly),
                 "list_unread_gmail",
-                "List unread inbox messages from Gmail with subject, sender, date, and snippet."),
+                "List inbox messages from Gmail with subject, sender, date, and snippet. By default returns only unread messages; set unreadOnly=false to search all messages including already-read ones."),
             AIFunctionFactory.Create(
                 async ([Description("Gmail message id returned by list_unread_gmail")] string messageId) =>
                     await gmailService.ReadMessageAsync(messageId),

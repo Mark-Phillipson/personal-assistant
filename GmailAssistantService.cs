@@ -70,7 +70,7 @@ internal sealed class GmailAssistantService
         };
     }
 
-    public async Task<object> ListUnreadMessagesAsync(int maxResults, string? query)
+    public async Task<object> ListUnreadMessagesAsync(int maxResults, string? query, bool unreadOnly = true)
     {
         if (!IsConfigured)
         {
@@ -84,8 +84,9 @@ internal sealed class GmailAssistantService
         var service = await GetServiceAsync();
         var limit = Math.Clamp(maxResults, 1, 20);
 
+        var baseFilter = unreadOnly ? "in:inbox is:unread" : "in:inbox";
         var listRequest = service.Users.Messages.List("me");
-        listRequest.Q = string.IsNullOrWhiteSpace(query) ? "in:inbox is:unread" : $"in:inbox is:unread {query}";
+        listRequest.Q = string.IsNullOrWhiteSpace(query) ? baseFilter : $"{baseFilter} {query}";
         listRequest.MaxResults = limit;
 
         var listResponse = await listRequest.ExecuteAsync();
