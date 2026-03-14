@@ -12,6 +12,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - Supports `/start`, `/help`, `/reset`, and `/gmail-status`.
 - Supports `/personality` to tune tone and emoji behavior per Telegram chat.
 - Supports `/natural` and `/nc` to run local NaturalCommands CLI actions.
+- Supports clipboard actions through a dedicated tool and `/clipboard-status` diagnostics.
 - Can list and send local files from your user folders as Telegram attachments.
 - Exposes Gmail tools to Copilot:
   - `gmail_setup_status`
@@ -19,6 +20,9 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
   - `read_gmail_message`
 - Exposes a NaturalCommands tool to Copilot:
    - `run_natural_command`
+- Exposes clipboard tools to Copilot:
+   - `clipboard_setup_status`
+   - `set_clipboard_text`
 
 ## Prerequisites
 
@@ -131,6 +135,7 @@ Terminal commands:
 - `/reset`
 - `/gmail-status`
 - `/calendar-status`
+- `/clipboard-status`
 - `/natural <command>`
 - `/nc <command>`
 - `/personality emoji on|off|subtle|moderate|expressive`
@@ -157,6 +162,8 @@ Terminal commands:
 - `/calendar-create`
 - `/natural show desktop`
 - `/nc show desktop`
+- `/clipboard-status`
+- `Copy this exact text to my clipboard: Hello from Bob`
 - `/personality emoji expressive`
 - `/personality tone calm`
 - `List my next 5 calendar events`

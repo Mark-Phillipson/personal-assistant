@@ -13,7 +13,8 @@ var assistantTransport = ResolveAssistantTransport(args);
 var gmailService = GmailAssistantService.FromEnvironment();
 var calendarService = GoogleCalendarAssistantService.FromEnvironment();
 var naturalCommandsService = NaturalCommandsAssistantService.FromEnvironment();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService);
+var clipboardService = ClipboardAssistantService.FromEnvironment();
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService);
 
 await using var copilotClient = new CopilotClient();
 
@@ -34,6 +35,7 @@ switch (assistantTransport)
             gmailService,
             calendarService,
             naturalCommandsService,
+            clipboardService,
             appCancellation.Token);
         break;
 
@@ -46,6 +48,7 @@ switch (assistantTransport)
             gmailService,
             calendarService,
             naturalCommandsService,
+            clipboardService,
             appCancellation.Token);
         break;
 }
@@ -79,6 +82,7 @@ static async Task RunTelegramAsync(
     GmailAssistantService gmailService,
     GoogleCalendarAssistantService calendarService,
     NaturalCommandsAssistantService naturalCommandsService,
+    ClipboardAssistantService clipboardService,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -92,6 +96,7 @@ static async Task RunTelegramAsync(
     Console.WriteLine("Telegram Copilot assistant started. Press Ctrl+C to stop.");
     Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
+    Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
 
     long? nextOffset = null;
 
@@ -138,6 +143,7 @@ static async Task RunTelegramAsync(
                     gmailService,
                     calendarService,
                     naturalCommandsService,
+                    clipboardService,
                     cancellationToken);
             }
         }
@@ -158,12 +164,14 @@ static async Task RunTerminalAsync(
     GmailAssistantService gmailService,
     GoogleCalendarAssistantService calendarService,
     NaturalCommandsAssistantService naturalCommandsService,
+    ClipboardAssistantService clipboardService,
     CancellationToken cancellationToken)
 {
     Console.WriteLine("Terminal Copilot assistant started. Type /help for commands, /exit to quit.");
     Console.WriteLine($"Personality: {defaultPersonality.Name} | Tone: {defaultPersonality.Tone} | Emoji: {(defaultPersonality.UseEmoji ? defaultPersonality.EmojiDensity : "Off")}");
     Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
+    Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
 
     var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
 
@@ -192,7 +200,7 @@ static async Task RunTerminalAsync(
 
             if (string.Equals(incomingText, "/help", StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine("Commands: /help, /reset, /gmail-status, /calendar-status, /natural <command>, /nc <command>, /exit");
+                Console.WriteLine("Commands: /help, /reset, /gmail-status, /calendar-status, /clipboard-status, /natural <command>, /nc <command>, /exit");
                 continue;
             }
 
@@ -205,6 +213,12 @@ static async Task RunTerminalAsync(
             if (string.Equals(incomingText, "/calendar-status", StringComparison.OrdinalIgnoreCase))
             {
                 Console.WriteLine(calendarService.GetSetupStatusText());
+                continue;
+            }
+
+            if (string.Equals(incomingText, "/clipboard-status", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine(clipboardService.GetSetupStatusText());
                 continue;
             }
 

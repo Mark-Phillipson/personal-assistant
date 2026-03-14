@@ -18,6 +18,7 @@ internal static class TelegramMessageHandler
         GmailAssistantService gmailService,
         GoogleCalendarAssistantService calendarService,
         NaturalCommandsAssistantService naturalCommandsService,
+        ClipboardAssistantService clipboardService,
         CancellationToken cancellationToken)
     {
         var chatId = message.Chat.Id;
@@ -58,6 +59,13 @@ internal static class TelegramMessageHandler
                     await telegram.SendMessageInChunksAsync(
                         chatId,
                         EmojiPalette.Wrap(calendarService.GetSetupStatusText(), EmojiPalette.Calendar, profile.UseEmoji),
+                        cancellationToken);
+                    return;
+
+                case "/clipboard-status":
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        EmojiPalette.Wrap(clipboardService.GetSetupStatusText(), EmojiPalette.Confirm, profile.UseEmoji),
                         cancellationToken);
                     return;
 
@@ -251,6 +259,7 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/reset", "reset your Copilot session", EmojiPalette.Confirm, profile.UseEmoji),
             FormatCommandLine("/gmail-status", "check Gmail setup", EmojiPalette.Email, profile.UseEmoji),
             FormatCommandLine("/calendar-status", "check Google Calendar setup", EmojiPalette.Calendar, profile.UseEmoji),
+            FormatCommandLine("/clipboard-status", "check clipboard setup", EmojiPalette.Confirm, profile.UseEmoji),
             FormatCommandLine("/calendar-events", "list upcoming Google Calendar events", EmojiPalette.Calendar, profile.UseEmoji),
             FormatCommandLine("/calendar-create", "create a new Google Calendar event", EmojiPalette.Calendar, profile.UseEmoji),
             FormatCommandLine("/weather", "open BBC Weather for Maidstone, Kent", EmojiPalette.Search, profile.UseEmoji),

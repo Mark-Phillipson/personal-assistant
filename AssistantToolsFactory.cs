@@ -6,7 +6,8 @@ internal static class AssistantToolsFactory
     public static List<AIFunction> Build(
         GmailAssistantService gmailService,
         GoogleCalendarAssistantService calendarService,
-        NaturalCommandsAssistantService naturalCommandsService)
+        NaturalCommandsAssistantService naturalCommandsService,
+        ClipboardAssistantService clipboardService)
     {
         return
         [
@@ -50,7 +51,16 @@ internal static class AssistantToolsFactory
                 async ([Description("NaturalCommands text, for example: show desktop")] string commandText) =>
                     await naturalCommandsService.ExecuteForAssistantAsync(commandText),
                 "run_natural_command",
-                "Run a local NaturalCommands command on the machine hosting this bot.")
+                "Run a local NaturalCommands command on the machine hosting this bot."),
+            AIFunctionFactory.Create(
+                () => clipboardService.GetSetupStatusText(),
+                "clipboard_setup_status",
+                "Check whether clipboard integration is available on the machine hosting this bot."),
+            AIFunctionFactory.Create(
+                async ([Description("Exact text to copy to the system clipboard")] string text) =>
+                    await clipboardService.SetClipboardTextForAssistantAsync(text),
+                "set_clipboard_text",
+                "Copy text to the system clipboard of the machine hosting this bot. Use this when the user asks to copy, place, or put text on the clipboard.")
         ];
     }
 }

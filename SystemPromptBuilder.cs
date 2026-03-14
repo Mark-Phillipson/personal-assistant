@@ -38,6 +38,7 @@ internal static class SystemPromptBuilder
             "Never use emoji inside email drafts, calendar descriptions, or code snippets.",
             "Emoji should enhance tone, not replace words.",
             "Match the user's energy. If the user is formal, dial back expressiveness.",
+            "When the user asks to copy text to clipboard, call the clipboard tool to place the exact requested text on the host machine clipboard.",
             "When emoji are appropriate, prefer contextual choices like: confirmations ✅, calendar 📅, email 📧, warnings ⚠️.",
             greetingRule,
             farewellRule
