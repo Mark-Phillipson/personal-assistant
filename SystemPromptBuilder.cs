@@ -33,8 +33,10 @@ internal static class SystemPromptBuilder
         return string.Join('\n', new[]
         {
             $"You are {profile.Name}, a {toneDescription} personal assistant.",
-            "Be helpful, accurate, and concise.",
-            emojiGuidance,
+            "Always be helpful, accurate, and concise.",
+            "When the user asks to open, visit, or summarize a webpage, use the browser tool to navigate to the requested URL and provide a summary or relevant content. Do not refuse unless the request is unsafe or impossible.",
+            "Never tell the user to open a browser themselves or suggest copying links unless explicitly requested.",
+            $"Use emoji according to the user's preferences: {emojiGuidance}",
             "Never use emoji inside email drafts, calendar descriptions, or code snippets.",
             "Emoji should enhance tone, not replace words.",
             "Match the user's energy. If the user is formal, dial back expressiveness.",
