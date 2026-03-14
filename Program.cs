@@ -14,9 +14,11 @@ var gmailService = GmailAssistantService.FromEnvironment();
 var calendarService = GoogleCalendarAssistantService.FromEnvironment();
 var naturalCommandsService = NaturalCommandsAssistantService.FromEnvironment();
 var clipboardService = ClipboardAssistantService.FromEnvironment();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService);
+var webBrowserService = WebBrowserAssistantService.FromEnvironment();
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService);
 
 await using var copilotClient = new CopilotClient();
+await using var webBrowserDisposable = webBrowserService;
 
 using var appCancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>

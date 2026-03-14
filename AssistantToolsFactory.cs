@@ -7,7 +7,8 @@ internal static class AssistantToolsFactory
         GmailAssistantService gmailService,
         GoogleCalendarAssistantService calendarService,
         NaturalCommandsAssistantService naturalCommandsService,
-        ClipboardAssistantService clipboardService)
+        ClipboardAssistantService clipboardService,
+        WebBrowserAssistantService webBrowserService)
     {
         return
         [
@@ -61,7 +62,21 @@ internal static class AssistantToolsFactory
                 async ([Description("Exact text to copy to the system clipboard")] string text) =>
                     await clipboardService.SetClipboardTextForAssistantAsync(text),
                 "set_clipboard_text",
-                "Copy text to the system clipboard of the machine hosting this bot. Use this when the user asks to copy, place, or put text on the clipboard.")
+                "Copy text to the system clipboard of the machine hosting this bot. Use this when the user asks to copy, place, or put text on the clipboard."),
+            AIFunctionFactory.Create(
+                () => webBrowserService.GetSetupStatusText(),
+                "web_browser_status",
+                "Check whether the web browser (Playwright) integration is available."),
+            AIFunctionFactory.Create(
+                async ([Description("Full URL to navigate to (e.g. https://upwork.com/search/jobs/?q=Blazor)")] string url) =>
+                    await webBrowserService.NavigateAndReadAsync(url),
+                "navigate_and_read_page",
+                "Navigate to a URL using a real browser and return the readable text content of the page. Use this to visit any website and read its content."),
+            AIFunctionFactory.Create(
+                async ([Description("Search query (e.g. Blazor developer jobs Upwork)")] string query) =>
+                    await webBrowserService.SearchWebAsync(query),
+                "search_web",
+                "Search the web using Bing and return the results. Use this to look up information, find jobs, news, or anything else on the internet.")
         ];
     }
 }
