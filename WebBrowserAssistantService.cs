@@ -1,4 +1,5 @@
 using Microsoft.Playwright;
+using System.Diagnostics;
 
 internal sealed class WebBrowserAssistantService : IAsyncDisposable
 {
@@ -28,6 +29,113 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
     {
         return $"Web browser integration is available (headless: {_headless}, timeout: {_timeoutMs / 1000}s). " +
                "Ensure Playwright browsers are installed by running: playwright install chromium";
+    }
+
+    /// <summary>Open a URL in the machine's default browser.</summary>
+    public Task<string> OpenInDefaultBrowserAsync(string url, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return Task.FromResult("No URL provided.");
+        }
+
+        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            url = "https://" + url;
+        }
+
+        try
+        {
+            OpenUrlInDefaultBrowser(url);
+            return Task.FromResult($"Opened URL in your default browser: {url}");
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult($"Failed to open URL in the default browser: {ex.Message}");
+        }
+    }
+
+    /// <summary>Find the top YouTube result for a query and play it in the default browser.</summary>
+    public async Task<string> PlayTopYouTubeResultAsync(string query, bool podcastMode = false, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return "No YouTube search query provided.";
+        }
+
+        var searchQuery = podcastMode
+            ? $"{query} podcast"
+            : query;
+
+        var searchUrl = $"https://www.youtube.com/results?search_query={Uri.EscapeDataString(searchQuery)}";
+
+        try
+        {
+            var browser = await GetBrowserAsync(cancellationToken);
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            });
+
+            var page = await context.NewPageAsync();
+            page.SetDefaultTimeout(_timeoutMs);
+
+            try
+            {
+                await page.GotoAsync(searchUrl, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = _timeoutMs
+                });
+
+                await page.WaitForSelectorAsync("ytd-video-renderer a#video-title", new PageWaitForSelectorOptions
+                {
+                    Timeout = _timeoutMs
+                });
+
+                var topResultHref = await page.EvaluateAsync<string>("""
+                    (() => {
+                        const anchor = document.querySelector('ytd-video-renderer a#video-title');
+                        return anchor?.getAttribute('href') || '';
+                    })()
+                    """);
+
+                if (string.IsNullOrWhiteSpace(topResultHref))
+                {
+                    OpenUrlInDefaultBrowser(searchUrl);
+                    return "I opened YouTube search results, but could not confidently detect the top video to auto-play.";
+                }
+
+                var topResultUrl = NormalizeYouTubeUrl(topResultHref);
+                var playbackUrl = EnsureAutoplay(topResultUrl);
+
+                OpenUrlInDefaultBrowser(playbackUrl);
+
+                var modeText = podcastMode ? "podcast" : "video";
+                return $"Playing top YouTube {modeText} result for '{query}'.\nURL: {playbackUrl}";
+            }
+            finally
+            {
+                await page.CloseAsync();
+            }
+        }
+        catch (PlaywrightException ex)
+        {
+            try
+            {
+                OpenUrlInDefaultBrowser(searchUrl);
+                return $"Browser automation could not pick the top result ({ex.Message}). Opened YouTube search results instead: {searchUrl}";
+            }
+            catch (Exception fallbackEx)
+            {
+                return $"Browser automation failed: {ex.Message}. Fallback open also failed: {fallbackEx.Message}";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to play YouTube result: {ex.Message}";
+        }
     }
 
     /// <summary>Navigate to a URL and return the readable text content of the page.</summary>
@@ -145,6 +253,43 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
             """);
 
         return text ?? string.Empty;
+    }
+
+    private static void OpenUrlInDefaultBrowser(string url)
+    {
+        _ = Process.Start(new ProcessStartInfo
+        {
+            FileName = url,
+            UseShellExecute = true
+        });
+    }
+
+    private static string NormalizeYouTubeUrl(string href)
+    {
+        if (href.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            href.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return href;
+        }
+
+        if (href.StartsWith('/'))
+        {
+            return "https://www.youtube.com" + href;
+        }
+
+        if (href.StartsWith("watch?", StringComparison.OrdinalIgnoreCase))
+        {
+            return "https://www.youtube.com/" + href;
+        }
+
+        return "https://www.youtube.com/" + href.TrimStart('/');
+    }
+
+    private static string EnsureAutoplay(string url)
+    {
+        return url.Contains('?', StringComparison.Ordinal)
+            ? $"{url}&autoplay=1"
+            : $"{url}?autoplay=1";
     }
 
     private static string FormatPageResult(string url, string title, string rawText)

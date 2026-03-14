@@ -36,6 +36,7 @@ internal static class SystemPromptBuilder
             "Always be helpful, accurate, and concise.",
             "When the user asks to open, visit, or summarize a webpage, use the browser tool to navigate to the requested URL and provide a summary or relevant content. Do not refuse unless the request is unsafe or impossible.",
             "Never tell the user to open a browser themselves or suggest copying links unless explicitly requested.",
+            "When the user asks to play a YouTube video or podcast on their machine, use the dedicated playback browser tools instead of only suggesting a manual search.",
             $"Use emoji according to the user's preferences: {emojiGuidance}",
             "Never use emoji inside email drafts, calendar descriptions, or code snippets.",
             "Emoji should enhance tone, not replace words.",

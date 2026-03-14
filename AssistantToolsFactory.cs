@@ -68,10 +68,25 @@ internal static class AssistantToolsFactory
                 "web_browser_status",
                 "Check whether the web browser (Playwright) integration is available."),
             AIFunctionFactory.Create(
+                async ([Description("Full URL to open in the default browser on the host machine") ] string url) =>
+                    await webBrowserService.OpenInDefaultBrowserAsync(url),
+                "open_in_default_browser",
+                "Open a URL in the host machine default browser. Use this when the user asks to open a site or app page visually."),
+            AIFunctionFactory.Create(
                 async ([Description("Full URL to navigate to (e.g. https://upwork.com/search/jobs/?q=Blazor)")] string url) =>
                     await webBrowserService.NavigateAndReadAsync(url),
                 "navigate_and_read_page",
                 "Navigate to a URL using a real browser and return the readable text content of the page. Use this to visit any website and read its content."),
+            AIFunctionFactory.Create(
+                async ([Description("YouTube search query (for example: Ukraine the latest)")] string query) =>
+                    await webBrowserService.PlayTopYouTubeResultAsync(query, podcastMode: false),
+                "play_youtube_top_result",
+                "Find the top YouTube result for a query and play it in the host machine default browser with autoplay."),
+            AIFunctionFactory.Create(
+                async ([Description("Podcast topic or show name (for example: Ukraine war daily briefing)")] string query) =>
+                    await webBrowserService.PlayTopYouTubeResultAsync(query, podcastMode: true),
+                "play_latest_youtube_podcast",
+                "Find and play the top current YouTube podcast-style result for a topic in the host machine default browser with autoplay."),
             AIFunctionFactory.Create(
                 async ([Description("Search query (e.g. Blazor developer jobs Upwork)")] string query) =>
                     await webBrowserService.SearchWebAsync(query),

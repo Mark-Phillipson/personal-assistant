@@ -23,6 +23,10 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - Exposes clipboard tools to Copilot:
    - `clipboard_setup_status`
    - `set_clipboard_text`
+- Exposes browser playback tools to Copilot:
+   - `open_in_default_browser`
+   - `play_youtube_top_result`
+   - `play_latest_youtube_podcast`
 
 ## Prerequisites
 
@@ -171,6 +175,8 @@ Terminal commands:
 - `List files in my Downloads folder`
 - `Find PDFs in Documents and send budget-2026.pdf`
 - `Show recent videos in Videos and send trip.mp4`
+- `Play the latest Ukraine podcast on YouTube`
+- `Play the latest Linus Tech Tips video on YouTube`
 
 ## Local attachment behavior
 
