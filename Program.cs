@@ -132,21 +132,32 @@ static async Task RunTelegramAsync(
                     continue;
                 }
 
-                await TelegramMessageHandler.HandleAsync(
-                    update.Message,
-                    incomingText.Trim(),
-                    telegram,
-                    copilotClient,
-                    sessions,
-                    personalityProfiles,
-                    assistantTools,
-                    defaultPersonality,
-                    environmentPersonality,
-                    gmailService,
-                    calendarService,
-                    naturalCommandsService,
-                    clipboardService,
-                    cancellationToken);
+                try
+                {
+                    await TelegramMessageHandler.HandleAsync(
+                        update.Message,
+                        incomingText.Trim(),
+                        telegram,
+                        copilotClient,
+                        sessions,
+                        personalityProfiles,
+                        assistantTools,
+                        defaultPersonality,
+                        environmentPersonality,
+                        gmailService,
+                        calendarService,
+                        naturalCommandsService,
+                        clipboardService,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[telegram.handle.error] update={update.UpdateId} chat={update.Message.Chat.Id} {ex}");
+                }
             }
         }
     }

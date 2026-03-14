@@ -195,11 +195,19 @@ internal static class TelegramMessageHandler
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[copilot.session.error] chat={chatId} {ex.Message}");
-            await telegram.SendMessageInChunksAsync(
-                chatId,
-                EmojiPalette.Wrap("I hit an error while generating a reply. Please try again.", EmojiPalette.Warning, profile.UseEmoji),
-                cancellationToken);
+            Console.Error.WriteLine($"[copilot.session.error] chat={chatId} {ex}");
+
+            try
+            {
+                await telegram.SendMessageInChunksAsync(
+                    chatId,
+                    EmojiPalette.Wrap("I hit an error while generating a reply. Please try again.", EmojiPalette.Warning, profile.UseEmoji),
+                    cancellationToken);
+            }
+            catch (Exception sendEx)
+            {
+                Console.Error.WriteLine($"[telegram.send.error] chat={chatId} {sendEx}");
+            }
         }
     }
 

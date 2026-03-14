@@ -1,8 +1,10 @@
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Text.Json;
 
 internal sealed class TelegramApiClient : IDisposable
 {
+    private const int MaxTransportAttempts = 3;
     private readonly HttpClient _httpClient;
 
     public TelegramApiClient(string botToken)
@@ -29,7 +31,7 @@ internal sealed class TelegramApiClient : IDisposable
             parameters.Add(new("offset", offset.Value.ToString()));
         }
 
-        using var response = await _httpClient.PostAsync("getUpdates", new FormUrlEncodedContent(parameters), cancellationToken);
+        using var response = await PostAsyncWithRetry("getUpdates", parameters, cancellationToken);
         var payload = await response.Content.ReadFromJsonAsync<TelegramApiResponse<List<TelegramUpdate>>>(cancellationToken: cancellationToken);
 
         if (!response.IsSuccessStatusCode || payload is null || !payload.Ok || payload.Result is null)
@@ -58,7 +60,7 @@ internal sealed class TelegramApiClient : IDisposable
             new("disable_web_page_preview", "true")
         };
 
-        using var response = await _httpClient.PostAsync("sendMessage", new FormUrlEncodedContent(payload), cancellationToken);
+        using var response = await PostAsyncWithRetry("sendMessage", payload, cancellationToken);
         var parsed = await response.Content.ReadFromJsonAsync<TelegramApiResponse<JsonElement>>(cancellationToken: cancellationToken);
 
         if (!response.IsSuccessStatusCode || parsed is null || !parsed.Ok)
@@ -66,6 +68,36 @@ internal sealed class TelegramApiClient : IDisposable
             var description = parsed?.Description ?? $"HTTP {(int)response.StatusCode}";
             throw new InvalidOperationException($"Telegram sendMessage failed: {description}");
         }
+    }
+
+    private async Task<HttpResponseMessage> PostAsyncWithRetry(
+        string endpoint,
+        IReadOnlyCollection<KeyValuePair<string, string>> formValues,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await _httpClient.PostAsync(endpoint, new FormUrlEncodedContent(formValues), cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (HttpRequestException ex) when (attempt < MaxTransportAttempts && IsTransientTransportFailure(ex))
+            {
+                var delay = TimeSpan.FromMilliseconds(500 * attempt);
+                Console.Error.WriteLine($"[telegram.transport.retry] endpoint={endpoint} attempt={attempt}/{MaxTransportAttempts} delayMs={(int)delay.TotalMilliseconds} error={ex.Message}");
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+    }
+
+    private static bool IsTransientTransportFailure(HttpRequestException exception)
+    {
+        return exception.InnerException is IOException
+            or SocketException;
     }
 
     private static IEnumerable<string> ChunkText(string text, int maxLength)
