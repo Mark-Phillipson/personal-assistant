@@ -4,7 +4,9 @@ using Google.Apis.Calendar.v3.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -65,14 +67,112 @@ public sealed class GoogleCalendarAssistantService
     public async Task<IList<Event>> ListUpcomingEventsAsync(int maxResults = 5)
     {
         var service = await GetServiceAsync();
-        var request = service.Events.List("primary");
-        request.TimeMinDateTimeOffset = DateTimeOffset.UtcNow;
-        request.ShowDeleted = false;
-        request.SingleEvents = true;
-        request.MaxResults = maxResults;
-        request.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
-        var events = await request.ExecuteAsync();
-        return events.Items ?? new List<Event>();
+
+        var selectedCalendars = await ListSelectedCalendarsAsync(service);
+        var collected = new List<Event>();
+
+        foreach (var calendar in selectedCalendars)
+        {
+            var request = service.Events.List(calendar.Id);
+            request.TimeMinDateTimeOffset = DateTimeOffset.UtcNow;
+            request.ShowDeleted = false;
+            request.SingleEvents = true;
+            request.MaxResults = Math.Clamp(maxResults, 1, 20);
+            request.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
+
+            var events = await request.ExecuteAsync();
+            if (events.Items is null)
+            {
+                continue;
+            }
+
+            foreach (var calendarEvent in events.Items)
+            {
+                if (!calendar.IsPrimary)
+                {
+                    var summary = string.IsNullOrWhiteSpace(calendarEvent.Summary) ? "(No title)" : calendarEvent.Summary;
+                    calendarEvent.Summary = $"[{calendar.Name}] {summary}";
+                }
+
+                collected.Add(calendarEvent);
+            }
+        }
+
+        return collected
+            .GroupBy(GetEventKey)
+            .Select(group => group.First())
+            .OrderBy(GetEventStart)
+            .Take(Math.Clamp(maxResults, 1, 20))
+            .ToList();
+    }
+
+    private async Task<IList<(string Id, string Name, bool IsPrimary)>> ListSelectedCalendarsAsync(CalendarService service)
+    {
+        var calendars = new List<(string Id, string Name, bool IsPrimary)>();
+        string? pageToken = null;
+
+        do
+        {
+            var request = service.CalendarList.List();
+            request.PageToken = pageToken;
+            var response = await request.ExecuteAsync();
+
+            if (response.Items is not null)
+            {
+                foreach (var entry in response.Items)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.Id))
+                    {
+                        continue;
+                    }
+
+                    var isPrimary = entry.Primary == true;
+                    var isSelected = entry.Selected == true;
+                    if (!isPrimary && !isSelected)
+                    {
+                        continue;
+                    }
+
+                    var name = string.IsNullOrWhiteSpace(entry.Summary) ? entry.Id : entry.Summary;
+                    calendars.Add((entry.Id, name, isPrimary));
+                }
+            }
+
+            pageToken = response.NextPageToken;
+        }
+        while (!string.IsNullOrWhiteSpace(pageToken));
+
+        if (calendars.Count == 0)
+        {
+            calendars.Add(("primary", "Primary", true));
+        }
+
+        return calendars;
+    }
+
+    private static DateTimeOffset GetEventStart(Event calendarEvent)
+    {
+        if (calendarEvent.Start?.DateTimeDateTimeOffset is DateTimeOffset dateTime)
+        {
+            return dateTime;
+        }
+
+        if (DateTime.TryParse(calendarEvent.Start?.Date, out var allDayDate))
+        {
+            return new DateTimeOffset(allDayDate, TimeSpan.Zero);
+        }
+
+        return DateTimeOffset.MaxValue;
+    }
+
+    private static string GetEventKey(Event calendarEvent)
+    {
+        var id = calendarEvent.Id ?? string.Empty;
+        var iCalUid = calendarEvent.ICalUID ?? string.Empty;
+        var startDateTime = calendarEvent.Start?.DateTimeDateTimeOffset?.UtcDateTime.ToString("O") ?? string.Empty;
+        var startDate = calendarEvent.Start?.Date ?? string.Empty;
+        var summary = calendarEvent.Summary ?? string.Empty;
+        return $"{id}|{iCalUid}|{startDateTime}|{startDate}|{summary}";
     }
 
     public async Task<Event> CreateEventAsync(string summary, string description, DateTime start, DateTime end)
