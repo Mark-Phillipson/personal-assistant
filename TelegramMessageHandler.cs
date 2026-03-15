@@ -184,7 +184,7 @@ internal static class TelegramMessageHandler
 
         try
         {
-            var assistantReply = await session.SendAndWaitAsync(new MessageOptions { Prompt = text });
+            var assistantReply = await session.SendAndWaitAsync(new MessageOptions { Prompt = text }, null, cancellationToken);
             var content = assistantReply?.Data.Content?.Trim();
             if (string.IsNullOrWhiteSpace(content))
             {
@@ -196,6 +196,12 @@ internal static class TelegramMessageHandler
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[copilot.session.error] chat={chatId} {ex}");
+
+            // Remove the broken session so the next request creates a fresh one.
+            if (sessions.TryRemove(chatId, out var failedSession))
+            {
+                await failedSession.DisposeAsync();
+            }
 
             try
             {
