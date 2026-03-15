@@ -1,4 +1,5 @@
 using System.Text;
+using System.Diagnostics;
 
 internal sealed class TalonUserDirectoryService
 {
@@ -211,6 +212,36 @@ internal sealed class TalonUserDirectoryService
         catch (Exception ex)
         {
             return Task.FromResult($"Failed to search Talon files: {ex.Message}");
+        }
+    }
+
+    public Task<string> OpenInExplorerAsync(string? relativePath = null)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return Task.FromResult("Opening File Explorer is only supported on Windows hosts.");
+        }
+
+        if (!DirectoryExists)
+        {
+            return Task.FromResult(GetSetupStatusText());
+        }
+
+        try
+        {
+            var targetDirectory = ResolveDirectoryPath(relativePath);
+            _ = Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                ArgumentList = { targetDirectory },
+                UseShellExecute = true
+            });
+
+            return Task.FromResult($"Opened File Explorer at Talon path: '{ToRelativePath(targetDirectory)}' ({targetDirectory})");
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult($"Failed to open File Explorer for Talon directory: {ex.Message}");
         }
     }
 

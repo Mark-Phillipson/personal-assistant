@@ -18,8 +18,9 @@ var webBrowserService = WebBrowserAssistantService.FromEnvironment();
 var voiceAdminService = VoiceAdminService.FromEnvironment();
 var voiceAdminSearchService = VoiceAdminSearchService.FromEnvironment();
 var talonUserDirectoryService = TalonUserDirectoryService.FromEnvironment();
+var knownFolderExplorerService = KnownFolderExplorerService.FromEnvironment();
 var telegramAttachmentService = TelegramAttachmentService.FromEnvironment();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService);
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService, knownFolderExplorerService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
@@ -45,6 +46,7 @@ switch (assistantTransport)
             voiceAdminService,
             voiceAdminSearchService,
             talonUserDirectoryService,
+            knownFolderExplorerService,
             appCancellation.Token);
         break;
 
@@ -61,6 +63,7 @@ switch (assistantTransport)
             voiceAdminService,
             voiceAdminSearchService,
             talonUserDirectoryService,
+            knownFolderExplorerService,
             telegramAttachmentService,
             appCancellation.Token);
         break;
@@ -99,6 +102,7 @@ static async Task RunTelegramAsync(
     VoiceAdminService voiceAdminService,
     VoiceAdminSearchService voiceAdminSearchService,
     TalonUserDirectoryService talonUserDirectoryService,
+    KnownFolderExplorerService knownFolderExplorerService,
     TelegramAttachmentService telegramAttachmentService,
     CancellationToken cancellationToken)
 {
@@ -117,6 +121,7 @@ static async Task RunTelegramAsync(
     Console.WriteLine($"VoiceAdmin: {(voiceAdminService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"VoiceAdminSearch: {(voiceAdminSearchService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"TalonUserDir: {(talonUserDirectoryService.DirectoryExists ? "configured" : "not found")}. Root: {talonUserDirectoryService.RootPath}");
+    Console.WriteLine($"KnownFolderExplorer: {knownFolderExplorerService.GetSetupStatusText()}");
     Console.WriteLine($"TelegramAttachments: Root={telegramAttachmentService.RootPath} MaxBytes={telegramAttachmentService.MaxAttachmentBytes}.");
 
     long? nextOffset = null;
@@ -209,6 +214,7 @@ static async Task RunTerminalAsync(
     VoiceAdminService voiceAdminService,
     VoiceAdminSearchService voiceAdminSearchService,
     TalonUserDirectoryService talonUserDirectoryService,
+    KnownFolderExplorerService knownFolderExplorerService,
     CancellationToken cancellationToken)
 {
     Console.WriteLine("Terminal Copilot assistant started. Type /help for commands, /exit to quit.");
@@ -219,6 +225,7 @@ static async Task RunTerminalAsync(
     Console.WriteLine($"VoiceAdmin: {(voiceAdminService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"VoiceAdminSearch: {(voiceAdminSearchService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"TalonUserDir: {(talonUserDirectoryService.DirectoryExists ? "configured" : "not found")}. Root: {talonUserDirectoryService.RootPath}");
+    Console.WriteLine($"KnownFolderExplorer: {knownFolderExplorerService.GetSetupStatusText()}");
 
     var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
 

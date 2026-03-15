@@ -55,6 +55,8 @@ internal static class SystemPromptBuilder
             "Never perform SQL write operations for Voice Admin data. Only use read-only search and read+clipboard copy tools.",
             "For Talon local files, the default root is C:/Users/MPhil/AppData/Roaming/talon/user unless talon_user_directory_status reports a different configured root.",
             "When the user asks to browse Talon files or folders, call list_talon_user_files.",
+            "When the user asks to open the Talon user folder (or a subfolder) in File Explorer, call open_talon_user_directory_in_explorer instead of NaturalCommands.",
+            "When the user asks to open Documents, Desktop, Downloads, Pictures, Videos, or the repo folder in File Explorer, call open_known_folder_in_explorer with the correct folder alias.",
             "When the user asks to read a Talon file, call read_talon_user_file with a path relative to the Talon user root.",
             "When the user asks to find text in Talon files, call search_talon_user_files_text.",
             "Never write, modify, or delete Talon files. Talon file tools are strictly read-only.",

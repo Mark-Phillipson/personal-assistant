@@ -42,6 +42,10 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
    - `list_talon_user_files` — list files under Talon user directory root (recursive by default)
    - `read_talon_user_file` — read file content from Talon user directory by relative path
    - `search_talon_user_files_text` — search text across Talon user directory files
+   - `open_talon_user_directory_in_explorer` — open Windows File Explorer at the Talon user directory root or an optional relative subfolder
+- Exposes allowlisted known-folder Explorer tools to Copilot:
+   - `known_folder_explorer_status` — show configured folder roots for explorer actions
+   - `open_known_folder_in_explorer` — open File Explorer at documents, desktop, downloads, pictures, videos, or repo (plus optional relative subfolder)
 
 ## Prerequisites
 
@@ -73,6 +77,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `VOICE_LAUNCHER_DB_PATH` (optional legacy fallback for `VOICE_ADMIN_DB_PATH`)
 - `VOICE_LAUNCHER_MAX_RESULTS` (optional legacy fallback for `VOICE_ADMIN_MAX_RESULTS`)
 - `TALON_USER_DIRECTORY` (optional, default `%USERPROFILE%\AppData\Roaming\talon\user`; root path for read-only Talon file tools)
+- `ASSISTANT_REPO_DIRECTORY` (optional, default current working directory when app starts; root path for the `repo` alias in `open_known_folder_in_explorer`)
 - `ASSISTANT_NAME` (optional, default `Bob`)
 - `ASSISTANT_TONE` (optional, default `Friendly`; allowed: `Friendly`, `Professional`, `Witty`, `Calm`, `Irreverent`)
 - `ASSISTANT_USE_EMOJI` (optional, default `true`; `true` or `false`)
@@ -206,6 +211,10 @@ Terminal commands:
 - `Search Values for customerId`
 - `List Transactions containing invoice`
 - `Copy the Value column from Values row 42 to my clipboard`
+- `Open my Talon user folder in File Explorer`
+- `Open my Documents folder in File Explorer`
+- `Open Downloads\Invoices in File Explorer`
+- `Open the repo folder in File Explorer`
 
 ## Local attachment behavior
 

@@ -11,7 +11,8 @@ internal static class AssistantToolsFactory
         WebBrowserAssistantService webBrowserService,
         VoiceAdminService voiceAdminService,
         VoiceAdminSearchService voiceAdminSearchService,
-        TalonUserDirectoryService talonUserDirectoryService)
+        TalonUserDirectoryService talonUserDirectoryService,
+        KnownFolderExplorerService knownFolderExplorerService)
     {
         return
         [
@@ -186,7 +187,23 @@ internal static class AssistantToolsFactory
                     [Description("Maximum number of matches to return (1-1000)")] int maxResults = 100) =>
                     await talonUserDirectoryService.SearchTextAsync(query, relativePath, searchPattern, recursive, maxResults),
                 "search_talon_user_files_text",
-                "Search for text in Talon user directory files in read-only mode.")
+                "Search for text in Talon user directory files in read-only mode."),
+            AIFunctionFactory.Create(
+                async ([Description("Optional relative subdirectory inside Talon user root. Leave empty to open the Talon root.")] string? relativePath = null) =>
+                    await talonUserDirectoryService.OpenInExplorerAsync(relativePath),
+                "open_talon_user_directory_in_explorer",
+                "Open Windows File Explorer at the Talon user directory (or an optional relative subdirectory) on the host machine."),
+            AIFunctionFactory.Create(
+                () => knownFolderExplorerService.GetSetupStatusText(),
+                "known_folder_explorer_status",
+                "Show the configured allowlisted folders for Explorer open actions, including Documents, Desktop, Downloads, Pictures, Videos, and repo."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Folder alias to open. Allowed values: documents, desktop, downloads, pictures, videos, repo")] string folderAlias,
+                    [Description("Optional relative subdirectory inside the selected folder root")] string? relativePath = null) =>
+                    await knownFolderExplorerService.OpenInExplorerAsync(folderAlias, relativePath),
+                "open_known_folder_in_explorer",
+                "Open Windows File Explorer at an allowlisted folder root (documents, desktop, downloads, pictures, videos, repo) or an optional relative subdirectory inside that root.")
         ];
     }
 }
