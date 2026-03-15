@@ -9,6 +9,7 @@ internal static class TelegramMessageHandler
         TelegramMessage message,
         string text,
         TelegramApiClient telegram,
+        TelegramAttachmentService attachmentService,
         CopilotClient copilotClient,
         ConcurrentDictionary<long, CopilotSession> sessions,
         ConcurrentDictionary<long, PersonalityProfile> personalityProfiles,
@@ -35,7 +36,7 @@ internal static class TelegramMessageHandler
                         string.Join("\n\n", new[]
                         {
                             EmojiPalette.Wrap($"Hi! I'm {profile.Name}, your Copilot SDK personal assistant.", EmojiPalette.Wave, profile.UseEmoji),
-                            EmojiPalette.Wrap("I can chat and help with Gmail and Google Calendar.", EmojiPalette.Happy, profile.UseEmoji),
+                            EmojiPalette.Wrap("I can chat, inspect photos and documents you send, and help with Gmail and Google Calendar.", EmojiPalette.Happy, profile.UseEmoji),
                             "Use /help for commands."
                         }),
                         cancellationToken);
@@ -180,11 +181,33 @@ internal static class TelegramMessageHandler
             }
         }
 
-        var session = await GetOrCreateSessionAsync(chatId, copilotClient, sessions, assistantTools, profile);
+        TelegramStoredAttachment? storedAttachment = null;
 
         try
         {
-            var assistantReply = await session.SendAndWaitAsync(new MessageOptions { Prompt = text }, null, cancellationToken);
+            storedAttachment = await attachmentService.TryStoreMessageAttachmentAsync(message, telegram, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[telegram.attachment.error] chat={chatId} {ex}");
+            await telegram.SendMessageInChunksAsync(
+                chatId,
+                EmojiPalette.Wrap($"I couldn't download the Telegram attachment: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji),
+                cancellationToken);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(text) && storedAttachment is null)
+        {
+            return;
+        }
+
+        var session = await GetOrCreateSessionAsync(chatId, copilotClient, sessions, assistantTools, profile);
+        var messageOptions = BuildMessageOptions(text, storedAttachment);
+
+        try
+        {
+            var assistantReply = await session.SendAndWaitAsync(messageOptions, null, cancellationToken);
             var content = assistantReply?.Data.Content?.Trim();
             if (string.IsNullOrWhiteSpace(content))
             {
@@ -214,6 +237,10 @@ internal static class TelegramMessageHandler
             {
                 Console.Error.WriteLine($"[telegram.send.error] chat={chatId} {sendEx}");
             }
+        }
+        finally
+        {
+            attachmentService.DeleteStoredAttachment(storedAttachment);
         }
     }
 
@@ -264,6 +291,47 @@ internal static class TelegramMessageHandler
             : defaultPersonality;
     }
 
+    private static MessageOptions BuildMessageOptions(string text, TelegramStoredAttachment? storedAttachment)
+    {
+        var prompt = BuildPrompt(text, storedAttachment);
+        var options = new MessageOptions
+        {
+            Prompt = prompt
+        };
+
+        if (storedAttachment is null)
+        {
+            return options;
+        }
+
+        options.Attachments = new List<UserMessageDataAttachmentsItem>
+        {
+            new UserMessageDataAttachmentsItemFile
+            {
+                Type = "file",
+                Path = storedAttachment.LocalPath,
+                DisplayName = storedAttachment.DisplayName
+            }
+        };
+
+        return options;
+    }
+
+    private static string BuildPrompt(string text, TelegramStoredAttachment? storedAttachment)
+    {
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        if (storedAttachment is null)
+        {
+            return "Please help the user.";
+        }
+
+        return $"The user sent a Telegram {storedAttachment.Kind} attachment named '{storedAttachment.DisplayName}' with no caption. Inspect the attachment, describe the relevant contents briefly, and ask a concise follow-up if their intent is unclear.";
+    }
+
     private static string BuildHelpText(PersonalityProfile profile)
     {
         var commandRows = new[]
@@ -291,6 +359,8 @@ internal static class TelegramMessageHandler
             string.Empty,
             commandHeader,
             string.Join("\n", commandRows),
+            string.Empty,
+            "You can also send a Telegram photo or document directly. It will be forwarded to Copilot as an attachment.",
             string.Empty,
             "Personality quick controls:",
             "/personality emoji on|off|subtle|moderate|expressive",

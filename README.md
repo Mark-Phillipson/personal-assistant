@@ -7,7 +7,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 
 ## What it does
 
-- In Telegram mode: receives Telegram messages via long polling, maintains one Copilot session per Telegram chat, and sends responses back to Telegram.
+- In Telegram mode: receives Telegram messages via long polling, maintains one Copilot session per Telegram chat, forwards Telegram photos/documents to Copilot as attachments, and sends responses back to Telegram.
 - In terminal mode: runs as an interactive shell assistant with one local Copilot session.
 - Supports `/start`, `/help`, `/reset`, and `/gmail-status`.
 - Supports `/personality` to tune tone and emoji behavior per Telegram chat.
@@ -57,6 +57,8 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `TELEGRAM_BOT_TOKEN` (required in `telegram` mode)
 - `TELEGRAM_POLL_TIMEOUT_SECONDS` (optional, default `25`, range `1-50`)
 - `TELEGRAM_ERROR_BACKOFF_SECONDS` (optional, default `3`, range `1-30`)
+- `TELEGRAM_ATTACHMENT_STORAGE_PATH` (optional, default `%TEMP%\personal-assistant\telegram-attachments`)
+- `TELEGRAM_ATTACHMENT_MAX_BYTES` (optional, default `20971520`, range `1024-52428800`)
 - `GMAIL_CLIENT_SECRET_PATH` (optional, required only for Gmail; path to OAuth client secret JSON)
 - `GMAIL_TOKEN_STORE_PATH` (optional, default `.gmail-token-store`)
 - `GMAIL_EXPECTED_ACCOUNT_EMAIL` (optional, advisory/account hint)
@@ -136,7 +138,7 @@ dotnet build
 dotnet run
 ```
 
-On startup, the app begins polling Telegram updates and routes each chat to its own Copilot session.
+On startup, the app begins polling Telegram updates and routes each chat to its own Copilot session. Telegram text, captions, photos, and documents are accepted. Photos and documents are downloaded to a local temp/cache folder and sent to Copilot as message attachments.
 
 ### Terminal mode (no Telegram required)
 
@@ -188,6 +190,8 @@ Terminal commands:
 - `/nc show desktop`
 - `/clipboard-status`
 - `Copy this exact text to my clipboard: Hello from Bob`
+- `What is in this screenshot?` with a screenshot attached
+- `Summarize this PDF` with a PDF attached
 - `/personality emoji expressive`
 - `/personality tone calm`
 - `List my next 5 calendar events`
@@ -212,5 +216,12 @@ The assistant can attach existing local files from these folders (when they exis
 - `Videos`
 - `Desktop`
 - `Downloads`
+
+## Telegram incoming attachments
+
+- Incoming Telegram `photo` and `document` messages are downloaded locally, attached to the Copilot request, and deleted after the request finishes.
+- If the message has a caption, that caption is used as the prompt alongside the attachment.
+- If the message has no caption, the assistant asks Copilot to inspect the attachment and describe it.
+- Files larger than `TELEGRAM_ATTACHMENT_MAX_BYTES` are rejected before they are sent to Copilot.
 
 For safety, it only allows files inside those folders (including subfolders when requested), blocks path traversal outside the allowed roots, and applies a local max file size cap (48 MB).

@@ -18,6 +18,7 @@ var webBrowserService = WebBrowserAssistantService.FromEnvironment();
 var voiceAdminService = VoiceAdminService.FromEnvironment();
 var voiceAdminSearchService = VoiceAdminSearchService.FromEnvironment();
 var talonUserDirectoryService = TalonUserDirectoryService.FromEnvironment();
+var telegramAttachmentService = TelegramAttachmentService.FromEnvironment();
 var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService);
 
 await using var copilotClient = new CopilotClient();
@@ -60,6 +61,7 @@ switch (assistantTransport)
             voiceAdminService,
             voiceAdminSearchService,
             talonUserDirectoryService,
+            telegramAttachmentService,
             appCancellation.Token);
         break;
 }
@@ -97,6 +99,7 @@ static async Task RunTelegramAsync(
     VoiceAdminService voiceAdminService,
     VoiceAdminSearchService voiceAdminSearchService,
     TalonUserDirectoryService talonUserDirectoryService,
+    TelegramAttachmentService telegramAttachmentService,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -114,6 +117,7 @@ static async Task RunTelegramAsync(
     Console.WriteLine($"VoiceAdmin: {(voiceAdminService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"VoiceAdminSearch: {(voiceAdminSearchService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"TalonUserDir: {(talonUserDirectoryService.DirectoryExists ? "configured" : "not found")}. Root: {talonUserDirectoryService.RootPath}");
+    Console.WriteLine($"TelegramAttachments: Root={telegramAttachmentService.RootPath} MaxBytes={telegramAttachmentService.MaxAttachmentBytes}.");
 
     long? nextOffset = null;
 
@@ -142,7 +146,15 @@ static async Task RunTelegramAsync(
             {
                 nextOffset = update.UpdateId + 1;
 
-                if (update.Message?.Text is not string incomingText || string.IsNullOrWhiteSpace(incomingText))
+                if (update.Message is not { } incomingMessage)
+                {
+                    continue;
+                }
+
+                var incomingText = incomingMessage.Text?.Trim() ?? incomingMessage.Caption?.Trim() ?? string.Empty;
+                var hasAttachment = incomingMessage.Document is not null || (incomingMessage.Photo?.Count ?? 0) > 0;
+
+                if (string.IsNullOrWhiteSpace(incomingText) && !hasAttachment)
                 {
                     continue;
                 }
@@ -150,9 +162,10 @@ static async Task RunTelegramAsync(
                 try
                 {
                     await TelegramMessageHandler.HandleAsync(
-                        update.Message,
-                        incomingText.Trim(),
+                        incomingMessage,
+                        incomingText,
                         telegram,
+                        telegramAttachmentService,
                         copilotClient,
                         sessions,
                         personalityProfiles,
@@ -171,7 +184,7 @@ static async Task RunTelegramAsync(
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine($"[telegram.handle.error] update={update.UpdateId} chat={update.Message.Chat.Id} {ex}");
+                    Console.Error.WriteLine($"[telegram.handle.error] update={update.UpdateId} chat={incomingMessage.Chat.Id} {ex}");
                 }
             }
         }

@@ -34,6 +34,7 @@ internal static class SystemPromptBuilder
         {
             $"You are {profile.Name}, a {toneDescription} personal assistant.",
             "Always be helpful, accurate, and concise.",
+            "When the user sends a file or image attachment, inspect the attachment directly before claiming you cannot access it.",
             "When the user asks to open, visit, or summarize a webpage, use the browser tool to navigate to the requested URL and provide a summary or relevant content. Do not refuse unless the request is unsafe or impossible.",
             "Never tell the user to open a browser themselves or suggest copying links unless explicitly requested.",
             "When the user asks to play a YouTube video or podcast on their machine, use the dedicated playback browser tools instead of only suggesting a manual search.",

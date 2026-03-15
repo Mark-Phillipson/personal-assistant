@@ -5,10 +5,12 @@ using System.Text.Json;
 internal sealed class TelegramApiClient : IDisposable
 {
     private const int MaxTransportAttempts = 3;
+    private readonly string _botToken;
     private readonly HttpClient _httpClient;
 
     public TelegramApiClient(string botToken)
     {
+        _botToken = botToken;
         _httpClient = new HttpClient
         {
             BaseAddress = new Uri($"https://api.telegram.org/bot{botToken}/")
@@ -41,6 +43,43 @@ internal sealed class TelegramApiClient : IDisposable
         }
 
         return payload.Result;
+    }
+
+    public async Task<TelegramRemoteFile> GetFileAsync(string fileId, CancellationToken cancellationToken)
+    {
+        var payload = new List<KeyValuePair<string, string>>
+        {
+            new("file_id", fileId)
+        };
+
+        using var response = await PostAsyncWithRetry("getFile", payload, cancellationToken);
+        var parsed = await response.Content.ReadFromJsonAsync<TelegramApiResponse<TelegramRemoteFile>>(cancellationToken: cancellationToken);
+
+        if (!response.IsSuccessStatusCode || parsed is null || !parsed.Ok || parsed.Result is null)
+        {
+            var description = parsed?.Description ?? $"HTTP {(int)response.StatusCode}";
+            throw new InvalidOperationException($"Telegram getFile failed: {description}");
+        }
+
+        return parsed.Result;
+    }
+
+    public async Task DownloadFileAsync(string filePath, string destinationPath, CancellationToken cancellationToken)
+    {
+        var downloadUri = new Uri($"https://api.telegram.org/file/bot{_botToken}/{filePath}");
+
+        using var response = await GetAsyncWithRetry(downloadUri, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var targetDirectory = Path.GetDirectoryName(destinationPath);
+        if (!string.IsNullOrWhiteSpace(targetDirectory))
+        {
+            Directory.CreateDirectory(targetDirectory);
+        }
+
+        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var outputStream = File.Create(destinationPath);
+        await responseStream.CopyToAsync(outputStream, cancellationToken);
     }
 
     public async Task SendMessageInChunksAsync(long chatId, string text, CancellationToken cancellationToken)
@@ -89,6 +128,27 @@ internal sealed class TelegramApiClient : IDisposable
             {
                 var delay = TimeSpan.FromMilliseconds(500 * attempt);
                 Console.Error.WriteLine($"[telegram.transport.retry] endpoint={endpoint} attempt={attempt}/{MaxTransportAttempts} delayMs={(int)delay.TotalMilliseconds} error={ex.Message}");
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+    }
+
+    private async Task<HttpResponseMessage> GetAsyncWithRetry(Uri requestUri, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await _httpClient.GetAsync(requestUri, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (HttpRequestException ex) when (attempt < MaxTransportAttempts && IsTransientTransportFailure(ex))
+            {
+                var delay = TimeSpan.FromMilliseconds(500 * attempt);
+                Console.Error.WriteLine($"[telegram.transport.retry] endpoint={requestUri} attempt={attempt}/{MaxTransportAttempts} delayMs={(int)delay.TotalMilliseconds} error={ex.Message}");
                 await Task.Delay(delay, cancellationToken);
             }
         }
