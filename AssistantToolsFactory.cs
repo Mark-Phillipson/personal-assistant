@@ -8,7 +8,8 @@ internal static class AssistantToolsFactory
         GoogleCalendarAssistantService calendarService,
         NaturalCommandsAssistantService naturalCommandsService,
         ClipboardAssistantService clipboardService,
-        WebBrowserAssistantService webBrowserService)
+        WebBrowserAssistantService webBrowserService,
+        VoiceLauncherService voiceLauncherService)
     {
         return
         [
@@ -91,7 +92,19 @@ internal static class AssistantToolsFactory
                 async ([Description("Search query (e.g. Blazor developer jobs Upwork)")] string query) =>
                     await webBrowserService.SearchWebAsync(query),
                 "search_web",
-                "Search the web using Bing and return the results. Use this to look up information, find jobs, news, or anything else on the internet.")
+                "Search the web using Bing and return the results. Use this to look up information, find jobs, news, or anything else on the internet."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Keyword to search for across launcher Name, CommandLine, and CategoryName")] string keyword,
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
+                    await voiceLauncherService.SearchLaunchersAsync(keyword, maxResults),
+                "search_voice_launchers",
+                "Search VoiceLauncher records by keyword. Returns matching launcher entries with their ID, name, command line, arguments, and category. Use this before launching so you have the correct launcher ID."),
+            AIFunctionFactory.Create(
+                async ([Description("Numeric ID of the launcher to start, obtained from a prior search_voice_launchers call")] int launcherId) =>
+                    await voiceLauncherService.LaunchByIdAsync(launcherId),
+                "launch_voice_launcher",
+                "Launch a VoiceLauncher entry by its numeric ID on the host machine. Always call search_voice_launchers first to confirm the ID unless the user explicitly provides one.")
         ];
     }
 }

@@ -42,6 +42,9 @@ internal static class SystemPromptBuilder
             "Emoji should enhance tone, not replace words.",
             "Match the user's energy. If the user is formal, dial back expressiveness.",
             "When the user asks to copy text to clipboard, call the clipboard tool to place the exact requested text on the host machine clipboard.",
+            "When the user asks to search, list, or find launcher records or entries, call the search_voice_launchers tool with the relevant keyword.",
+            "When the user asks to launch, open, or start a launcher entry by name or description, first call search_voice_launchers to identify the correct ID, then call launch_voice_launcher with that ID. Never guess an ID.",
+            "When the user provides an explicit launcher ID and asks to launch it, call launch_voice_launcher directly without searching first.",
             "When emoji are appropriate, prefer contextual choices like: confirmations ✅, calendar 📅, email 📧, warnings ⚠️.",
             greetingRule,
             farewellRule

@@ -15,7 +15,8 @@ var calendarService = GoogleCalendarAssistantService.FromEnvironment();
 var naturalCommandsService = NaturalCommandsAssistantService.FromEnvironment();
 var clipboardService = ClipboardAssistantService.FromEnvironment();
 var webBrowserService = WebBrowserAssistantService.FromEnvironment();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService);
+var voiceLauncherService = VoiceLauncherService.FromEnvironment();
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceLauncherService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
@@ -38,6 +39,7 @@ switch (assistantTransport)
             calendarService,
             naturalCommandsService,
             clipboardService,
+            voiceLauncherService,
             appCancellation.Token);
         break;
 
@@ -51,6 +53,7 @@ switch (assistantTransport)
             calendarService,
             naturalCommandsService,
             clipboardService,
+            voiceLauncherService,
             appCancellation.Token);
         break;
 }
@@ -85,6 +88,7 @@ static async Task RunTelegramAsync(
     GoogleCalendarAssistantService calendarService,
     NaturalCommandsAssistantService naturalCommandsService,
     ClipboardAssistantService clipboardService,
+    VoiceLauncherService voiceLauncherService,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -99,6 +103,7 @@ static async Task RunTelegramAsync(
     Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
+    Console.WriteLine($"VoiceLauncher: {(voiceLauncherService.IsConfigured ? "configured" : "not configured")}.");
 
     long? nextOffset = null;
 
@@ -178,6 +183,7 @@ static async Task RunTerminalAsync(
     GoogleCalendarAssistantService calendarService,
     NaturalCommandsAssistantService naturalCommandsService,
     ClipboardAssistantService clipboardService,
+    VoiceLauncherService voiceLauncherService,
     CancellationToken cancellationToken)
 {
     Console.WriteLine("Terminal Copilot assistant started. Type /help for commands, /exit to quit.");
@@ -185,6 +191,7 @@ static async Task RunTerminalAsync(
     Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
+    Console.WriteLine($"VoiceLauncher: {(voiceLauncherService.IsConfigured ? "configured" : "not configured")}.");
 
     var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
 

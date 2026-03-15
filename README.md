@@ -27,6 +27,9 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
    - `open_in_default_browser`
    - `play_youtube_top_result`
    - `play_latest_youtube_podcast`
+- Exposes VoiceLauncher tools to Copilot (requires `VOICE_LAUNCHER_DB_PATH`):
+   - `search_voice_launchers` — keyword search across Name, CommandLine, and CategoryName
+   - `launch_voice_launcher` — start a launcher entry by its numeric ID
 
 ## Prerequisites
 
@@ -51,6 +54,8 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `NATURAL_COMMANDS_EXECUTABLE` (optional, default `natural`; file path or command available in PATH)
 - `NATURAL_COMMANDS_WORKING_DIRECTORY` (optional, working directory for NaturalCommands process)
 - `NATURAL_COMMANDS_TIMEOUT_SECONDS` (optional, default `15`, range `1-120`)
+- `VOICE_LAUNCHER_DB_PATH` (optional; full path to the VoiceLauncher SQLite database file)
+- `VOICE_LAUNCHER_MAX_RESULTS` (optional, default `20`, range `1-100`; maximum launcher search results)
 - `ASSISTANT_NAME` (optional, default `Bob`)
 - `ASSISTANT_TONE` (optional, default `Friendly`; allowed: `Friendly`, `Professional`, `Witty`, `Calm`, `Irreverent`)
 - `ASSISTANT_USE_EMOJI` (optional, default `true`; `true` or `false`)

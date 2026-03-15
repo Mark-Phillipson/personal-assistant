@@ -37,5 +37,5 @@ This file provides project-specific guidelines for using GitHub Copilot in this 
 - If Copilot suggestions are irrelevant, rephrase your prompt or provide more context (e.g., mention .NET 10, Telegram, Gmail, etc.).
 - For Copilot issues, see the [GitHub Copilot documentation](https://docs.github.com/en/copilot).
 
----
-*This file is located at `.github/copilot-instructions.md` and should be updated as project needs evolve.*
+## Running the App
+- Always Check to See If apphost is locked, if it is run: dotnet build -p:UseAppHost=false -p:OutDir=bin\\Debug\\net10.0-verify\\
