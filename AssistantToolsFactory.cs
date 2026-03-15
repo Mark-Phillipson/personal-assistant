@@ -10,7 +10,8 @@ internal static class AssistantToolsFactory
         ClipboardAssistantService clipboardService,
         WebBrowserAssistantService webBrowserService,
         VoiceAdminService voiceAdminService,
-        VoiceAdminSearchService voiceAdminSearchService)
+        VoiceAdminSearchService voiceAdminSearchService,
+        TalonUserDirectoryService talonUserDirectoryService)
     {
         return
         [
@@ -155,7 +156,37 @@ internal static class AssistantToolsFactory
                     return $"{clipboardResult} Source: {cellRead.Table}.{cellRead.Column} RowId {cellRead.RowId}.";
                 },
                 "copy_voice_admin_value_to_clipboard",
-                "Read a single value from a Voice Admin table row and copy it to clipboard. This is read-only against the database and only writes to local clipboard when requested by the user.")
+                "Read a single value from a Voice Admin table row and copy it to clipboard. This is read-only against the database and only writes to local clipboard when requested by the user."),
+            AIFunctionFactory.Create(
+                () => talonUserDirectoryService.GetSetupStatusText(),
+                "talon_user_directory_status",
+                "Check whether Talon user-directory read-only file access is configured and available."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Optional relative subdirectory inside Talon user root. Leave empty for full root.")] string? relativePath = null,
+                    [Description("File search pattern (default *)")] string searchPattern = "*",
+                    [Description("When true (default), include subdirectories recursively.")] bool recursive = true,
+                    [Description("Maximum number of files to return (1-1000)")] int maxResults = 200) =>
+                    await talonUserDirectoryService.ListFilesAsync(relativePath, searchPattern, recursive, maxResults),
+                "list_talon_user_files",
+                "List files from the Talon user directory in read-only mode. Returns relative file paths and never writes files."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Relative file path inside Talon user directory root")] string relativeFilePath,
+                    [Description("Maximum number of characters to return (200-50000)")] int maxChars = 12000) =>
+                    await talonUserDirectoryService.ReadFileAsync(relativeFilePath, maxChars),
+                "read_talon_user_file",
+                "Read the content of a file from the Talon user directory in read-only mode."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Text to search for (case-insensitive)")] string query,
+                    [Description("Optional relative subdirectory inside Talon user root")] string? relativePath = null,
+                    [Description("File search pattern (default *)")] string searchPattern = "*",
+                    [Description("When true (default), include subdirectories recursively")] bool recursive = true,
+                    [Description("Maximum number of matches to return (1-1000)")] int maxResults = 100) =>
+                    await talonUserDirectoryService.SearchTextAsync(query, relativePath, searchPattern, recursive, maxResults),
+                "search_talon_user_files_text",
+                "Search for text in Talon user directory files in read-only mode.")
         ];
     }
 }

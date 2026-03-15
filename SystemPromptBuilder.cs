@@ -52,6 +52,11 @@ internal static class SystemPromptBuilder
             "When the user asks to search Transactions records, call search_transactions_records.",
             "When the user asks to copy a value from one of those tables, first search for the row, then call copy_voice_admin_value_to_clipboard with table name, RowId, and column name.",
             "Never perform SQL write operations for Voice Admin data. Only use read-only search and read+clipboard copy tools.",
+            "For Talon local files, the default root is C:/Users/MPhil/AppData/Roaming/talon/user unless talon_user_directory_status reports a different configured root.",
+            "When the user asks to browse Talon files or folders, call list_talon_user_files.",
+            "When the user asks to read a Talon file, call read_talon_user_file with a path relative to the Talon user root.",
+            "When the user asks to find text in Talon files, call search_talon_user_files_text.",
+            "Never write, modify, or delete Talon files. Talon file tools are strictly read-only.",
             "When emoji are appropriate, prefer contextual choices like: confirmations ✅, calendar 📅, email 📧, warnings ⚠️.",
             greetingRule,
             farewellRule

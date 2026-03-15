@@ -37,6 +37,11 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
    - `search_values_records` — keyword search in Values table
    - `search_transactions_records` — keyword search in Transactions table
    - `copy_voice_admin_value_to_clipboard` — read one value by table/row/column and copy it to clipboard
+- Exposes read-only Talon user-directory file tools to Copilot:
+   - `talon_user_directory_status` — verify Talon user directory availability and configured root
+   - `list_talon_user_files` — list files under Talon user directory root (recursive by default)
+   - `read_talon_user_file` — read file content from Talon user directory by relative path
+   - `search_talon_user_files_text` — search text across Talon user directory files
 
 ## Prerequisites
 
@@ -65,6 +70,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `VOICE_ADMIN_MAX_RESULTS` (optional, default `20`, range `1-100`; maximum Voice Admin launcher and table-search results; legacy fallback reads `VOICE_LAUNCHER_MAX_RESULTS`)
 - `VOICE_LAUNCHER_DB_PATH` (optional legacy fallback for `VOICE_ADMIN_DB_PATH`)
 - `VOICE_LAUNCHER_MAX_RESULTS` (optional legacy fallback for `VOICE_ADMIN_MAX_RESULTS`)
+- `TALON_USER_DIRECTORY` (optional, default `%USERPROFILE%\AppData\Roaming\talon\user`; root path for read-only Talon file tools)
 - `ASSISTANT_NAME` (optional, default `Bob`)
 - `ASSISTANT_TONE` (optional, default `Friendly`; allowed: `Friendly`, `Professional`, `Witty`, `Calm`, `Irreverent`)
 - `ASSISTANT_USE_EMOJI` (optional, default `true`; `true` or `false`)

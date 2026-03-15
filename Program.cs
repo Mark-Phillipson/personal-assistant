@@ -17,7 +17,8 @@ var clipboardService = ClipboardAssistantService.FromEnvironment();
 var webBrowserService = WebBrowserAssistantService.FromEnvironment();
 var voiceAdminService = VoiceAdminService.FromEnvironment();
 var voiceAdminSearchService = VoiceAdminSearchService.FromEnvironment();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceAdminService, voiceAdminSearchService);
+var talonUserDirectoryService = TalonUserDirectoryService.FromEnvironment();
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
@@ -42,6 +43,7 @@ switch (assistantTransport)
             clipboardService,
             voiceAdminService,
             voiceAdminSearchService,
+            talonUserDirectoryService,
             appCancellation.Token);
         break;
 
@@ -57,6 +59,7 @@ switch (assistantTransport)
             clipboardService,
             voiceAdminService,
             voiceAdminSearchService,
+            talonUserDirectoryService,
             appCancellation.Token);
         break;
 }
@@ -93,6 +96,7 @@ static async Task RunTelegramAsync(
     ClipboardAssistantService clipboardService,
     VoiceAdminService voiceAdminService,
     VoiceAdminSearchService voiceAdminSearchService,
+    TalonUserDirectoryService talonUserDirectoryService,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -109,6 +113,7 @@ static async Task RunTelegramAsync(
     Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
     Console.WriteLine($"VoiceAdmin: {(voiceAdminService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"VoiceAdminSearch: {(voiceAdminSearchService.IsConfigured ? "configured" : "not configured")}.");
+    Console.WriteLine($"TalonUserDir: {(talonUserDirectoryService.DirectoryExists ? "configured" : "not found")}. Root: {talonUserDirectoryService.RootPath}");
 
     long? nextOffset = null;
 
@@ -190,6 +195,7 @@ static async Task RunTerminalAsync(
     ClipboardAssistantService clipboardService,
     VoiceAdminService voiceAdminService,
     VoiceAdminSearchService voiceAdminSearchService,
+    TalonUserDirectoryService talonUserDirectoryService,
     CancellationToken cancellationToken)
 {
     Console.WriteLine("Terminal Copilot assistant started. Type /help for commands, /exit to quit.");
@@ -199,6 +205,7 @@ static async Task RunTerminalAsync(
     Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
     Console.WriteLine($"VoiceAdmin: {(voiceAdminService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"VoiceAdminSearch: {(voiceAdminSearchService.IsConfigured ? "configured" : "not configured")}.");
+    Console.WriteLine($"TalonUserDir: {(talonUserDirectoryService.DirectoryExists ? "configured" : "not found")}. Root: {talonUserDirectoryService.RootPath}");
 
     var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
 
