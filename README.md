@@ -27,9 +27,15 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
    - `open_in_default_browser`
    - `play_youtube_top_result`
    - `play_latest_youtube_podcast`
-- Exposes VoiceLauncher tools to Copilot (requires `VOICE_LAUNCHER_DB_PATH`):
-   - `search_voice_launchers` — keyword search across Name, CommandLine, and CategoryName
-   - `launch_voice_launcher` — start a launcher entry by its numeric ID
+- Exposes Voice Admin launcher tools to Copilot (requires `VOICE_ADMIN_DB_PATH`, legacy fallback `VOICE_LAUNCHER_DB_PATH`):
+   - `search_voice_admin_launchers` — keyword search across Name, CommandLine, and CategoryName
+   - `launch_voice_admin_launcher` — start a launcher entry by its numeric ID
+- Exposes read-only Voice Admin table search tools to Copilot (requires `VOICE_ADMIN_DB_PATH` or falls back to `VOICE_LAUNCHER_DB_PATH`):
+   - `search_talon_commands` — keyword search in Talon Commands table
+   - `search_custom_in_tele_sense` — keyword search in Custom in Tele Sense table
+   - `search_values_records` — keyword search in Values table
+   - `search_transactions_records` — keyword search in Transactions table
+   - `copy_voice_admin_value_to_clipboard` — read one value by table/row/column and copy it to clipboard
 
 ## Prerequisites
 
@@ -54,8 +60,10 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `NATURAL_COMMANDS_EXECUTABLE` (optional, default `natural`; file path or command available in PATH)
 - `NATURAL_COMMANDS_WORKING_DIRECTORY` (optional, working directory for NaturalCommands process)
 - `NATURAL_COMMANDS_TIMEOUT_SECONDS` (optional, default `15`, range `1-120`)
-- `VOICE_LAUNCHER_DB_PATH` (optional; full path to the VoiceLauncher SQLite database file)
-- `VOICE_LAUNCHER_MAX_RESULTS` (optional, default `20`, range `1-100`; maximum launcher search results)
+- `VOICE_ADMIN_DB_PATH` (optional; full path to Voice Admin SQLite database; if unset, `VOICE_LAUNCHER_DB_PATH` is used as legacy fallback)
+- `VOICE_ADMIN_MAX_RESULTS` (optional, default `20`, range `1-100`; maximum Voice Admin launcher and table-search results; legacy fallback reads `VOICE_LAUNCHER_MAX_RESULTS`)
+- `VOICE_LAUNCHER_DB_PATH` (optional legacy fallback for `VOICE_ADMIN_DB_PATH`)
+- `VOICE_LAUNCHER_MAX_RESULTS` (optional legacy fallback for `VOICE_ADMIN_MAX_RESULTS`)
 - `ASSISTANT_NAME` (optional, default `Bob`)
 - `ASSISTANT_TONE` (optional, default `Friendly`; allowed: `Friendly`, `Professional`, `Witty`, `Calm`, `Irreverent`)
 - `ASSISTANT_USE_EMOJI` (optional, default `true`; `true` or `false`)
@@ -182,6 +190,11 @@ Terminal commands:
 - `Show recent videos in Videos and send trip.mp4`
 - `Play the latest Ukraine podcast on YouTube`
 - `Play the latest Linus Tech Tips video on YouTube`
+- `List Talon Commands with Upwork`
+- `Find Custom in Tele Sense entries containing Blazor`
+- `Search Values for customerId`
+- `List Transactions containing invoice`
+- `Copy the Value column from Values row 42 to my clipboard`
 
 ## Local attachment behavior
 

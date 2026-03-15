@@ -9,7 +9,8 @@ internal static class AssistantToolsFactory
         NaturalCommandsAssistantService naturalCommandsService,
         ClipboardAssistantService clipboardService,
         WebBrowserAssistantService webBrowserService,
-        VoiceLauncherService voiceLauncherService)
+        VoiceAdminService voiceAdminService,
+        VoiceAdminSearchService voiceAdminSearchService)
     {
         return
         [
@@ -95,16 +96,61 @@ internal static class AssistantToolsFactory
                 "Search the web using Bing and return the results. Use this to look up information, find jobs, news, or anything else on the internet."),
             AIFunctionFactory.Create(
                 async (
-                    [Description("Keyword to search for across launcher Name, CommandLine, and CategoryName")] string keyword,
+                    [Description("Keyword to search for across Voice Admin launcher Name, CommandLine, and CategoryName")] string keyword,
                     [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
-                    await voiceLauncherService.SearchLaunchersAsync(keyword, maxResults),
-                "search_voice_launchers",
-                "Search VoiceLauncher records by keyword. Returns matching launcher entries with their ID, name, command line, arguments, and category. Use this before launching so you have the correct launcher ID."),
+                    await voiceAdminService.SearchLauncherEntriesAsync(keyword, maxResults),
+                "search_voice_admin_launchers",
+                "Search Voice Admin launcher records by keyword. Returns matching launcher entries with their ID, name, command line, arguments, and category. Use this before launching so you have the correct launcher ID."),
             AIFunctionFactory.Create(
-                async ([Description("Numeric ID of the launcher to start, obtained from a prior search_voice_launchers call")] int launcherId) =>
-                    await voiceLauncherService.LaunchByIdAsync(launcherId),
-                "launch_voice_launcher",
-                "Launch a VoiceLauncher entry by its numeric ID on the host machine. Always call search_voice_launchers first to confirm the ID unless the user explicitly provides one.")
+                async ([Description("Numeric ID of the launcher to start, obtained from a prior search_voice_admin_launchers call")] int launcherId) =>
+                    await voiceAdminService.LaunchLauncherByIdAsync(launcherId),
+                "launch_voice_admin_launcher",
+                "Launch a Voice Admin launcher entry by its numeric ID on the host machine. Always call search_voice_admin_launchers first to confirm the ID unless the user explicitly provides one."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Keyword to search in Talon Commands table")] string keyword,
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
+                    await voiceAdminSearchService.SearchTalonCommandsAsync(keyword, maxResults),
+                "search_talon_commands",
+                "Read-only search in the Talon Commands table. Use this when the user asks to list or find Talon command records."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Keyword to search in Custom in Tele Sense table")] string keyword,
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
+                    await voiceAdminSearchService.SearchCustomInTeleSenseAsync(keyword, maxResults),
+                "search_custom_in_tele_sense",
+                "Read-only search in the Custom in Tele Sense table. Use this when the user asks to list or find custom tele-sense records."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Keyword to search in Values table")] string keyword,
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
+                    await voiceAdminSearchService.SearchValuesAsync(keyword, maxResults),
+                "search_values_records",
+                "Read-only search in the Values table. Use this when the user asks to list or find values records."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Keyword to search in Transactions table")] string keyword,
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
+                    await voiceAdminSearchService.SearchTransactionsAsync(keyword, maxResults),
+                "search_transactions_records",
+                "Read-only search in the Transactions table. Use this when the user asks to list or find transaction records."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Target table name (for example: Talon Commands, Custom in Tele Sense, Values, or Transactions)")] string tableName,
+                    [Description("RowId returned by one of the search_* tools")] long rowId,
+                    [Description("Exact column name to copy from the selected row")] string columnName) =>
+                {
+                    var cellRead = await voiceAdminSearchService.ReadCellValueAsync(tableName, rowId, columnName);
+                    if (!cellRead.Success || string.IsNullOrWhiteSpace(cellRead.Value))
+                    {
+                        return cellRead.Message;
+                    }
+
+                    var clipboardResult = await clipboardService.SetClipboardTextForAssistantAsync(cellRead.Value);
+                    return $"{clipboardResult} Source: {cellRead.Table}.{cellRead.Column} RowId {cellRead.RowId}.";
+                },
+                "copy_voice_admin_value_to_clipboard",
+                "Read a single value from a Voice Admin table row and copy it to clipboard. This is read-only against the database and only writes to local clipboard when requested by the user.")
         ];
     }
 }

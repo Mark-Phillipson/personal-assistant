@@ -15,8 +15,9 @@ var calendarService = GoogleCalendarAssistantService.FromEnvironment();
 var naturalCommandsService = NaturalCommandsAssistantService.FromEnvironment();
 var clipboardService = ClipboardAssistantService.FromEnvironment();
 var webBrowserService = WebBrowserAssistantService.FromEnvironment();
-var voiceLauncherService = VoiceLauncherService.FromEnvironment();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceLauncherService);
+var voiceAdminService = VoiceAdminService.FromEnvironment();
+var voiceAdminSearchService = VoiceAdminSearchService.FromEnvironment();
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceAdminService, voiceAdminSearchService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
@@ -39,7 +40,8 @@ switch (assistantTransport)
             calendarService,
             naturalCommandsService,
             clipboardService,
-            voiceLauncherService,
+            voiceAdminService,
+            voiceAdminSearchService,
             appCancellation.Token);
         break;
 
@@ -53,7 +55,8 @@ switch (assistantTransport)
             calendarService,
             naturalCommandsService,
             clipboardService,
-            voiceLauncherService,
+            voiceAdminService,
+            voiceAdminSearchService,
             appCancellation.Token);
         break;
 }
@@ -88,7 +91,8 @@ static async Task RunTelegramAsync(
     GoogleCalendarAssistantService calendarService,
     NaturalCommandsAssistantService naturalCommandsService,
     ClipboardAssistantService clipboardService,
-    VoiceLauncherService voiceLauncherService,
+    VoiceAdminService voiceAdminService,
+    VoiceAdminSearchService voiceAdminSearchService,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -103,7 +107,8 @@ static async Task RunTelegramAsync(
     Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
-    Console.WriteLine($"VoiceLauncher: {(voiceLauncherService.IsConfigured ? "configured" : "not configured")}.");
+    Console.WriteLine($"VoiceAdmin: {(voiceAdminService.IsConfigured ? "configured" : "not configured")}.");
+    Console.WriteLine($"VoiceAdminSearch: {(voiceAdminSearchService.IsConfigured ? "configured" : "not configured")}.");
 
     long? nextOffset = null;
 
@@ -183,7 +188,8 @@ static async Task RunTerminalAsync(
     GoogleCalendarAssistantService calendarService,
     NaturalCommandsAssistantService naturalCommandsService,
     ClipboardAssistantService clipboardService,
-    VoiceLauncherService voiceLauncherService,
+    VoiceAdminService voiceAdminService,
+    VoiceAdminSearchService voiceAdminSearchService,
     CancellationToken cancellationToken)
 {
     Console.WriteLine("Terminal Copilot assistant started. Type /help for commands, /exit to quit.");
@@ -191,7 +197,8 @@ static async Task RunTerminalAsync(
     Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
-    Console.WriteLine($"VoiceLauncher: {(voiceLauncherService.IsConfigured ? "configured" : "not configured")}.");
+    Console.WriteLine($"VoiceAdmin: {(voiceAdminService.IsConfigured ? "configured" : "not configured")}.");
+    Console.WriteLine($"VoiceAdminSearch: {(voiceAdminSearchService.IsConfigured ? "configured" : "not configured")}.");
 
     var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
 

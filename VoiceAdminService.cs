@@ -2,12 +2,12 @@ using System.Diagnostics;
 using System.Text;
 using Microsoft.Data.Sqlite;
 
-internal sealed class VoiceLauncherService
+internal sealed class VoiceAdminService
 {
     private readonly string? _dbPath;
     private readonly int _maxResults;
 
-    private VoiceLauncherService(string? dbPath, int maxResults)
+    private VoiceAdminService(string? dbPath, int maxResults)
     {
         _dbPath = dbPath;
         _maxResults = maxResults;
@@ -15,26 +15,32 @@ internal sealed class VoiceLauncherService
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_dbPath) && File.Exists(_dbPath);
 
-    public static VoiceLauncherService FromEnvironment()
+    public static VoiceAdminService FromEnvironment()
     {
-        var dbPath = EnvironmentSettings.ReadOptionalString("VOICE_LAUNCHER_DB_PATH");
-        var maxResults = EnvironmentSettings.ReadInt("VOICE_LAUNCHER_MAX_RESULTS", fallback: 20, min: 1, max: 100);
-        return new VoiceLauncherService(dbPath, maxResults);
+        var dbPath = EnvironmentSettings.ReadOptionalString("VOICE_ADMIN_DB_PATH")
+            ?? EnvironmentSettings.ReadOptionalString("VOICE_LAUNCHER_DB_PATH");
+        var maxResults = EnvironmentSettings.ReadInt(
+            "VOICE_ADMIN_MAX_RESULTS",
+            fallback: EnvironmentSettings.ReadInt("VOICE_LAUNCHER_MAX_RESULTS", fallback: 20, min: 1, max: 100),
+            min: 1,
+            max: 100);
+
+        return new VoiceAdminService(dbPath, maxResults);
     }
 
     public string GetSetupStatusText()
     {
         if (string.IsNullOrWhiteSpace(_dbPath))
-            return "VOICE_LAUNCHER_DB_PATH is not set. Set it to the full path of the VoiceLauncher SQLite database.";
+            return "VOICE_ADMIN_DB_PATH is not set (legacy fallback: VOICE_LAUNCHER_DB_PATH). Set one to the full path of the Voice Admin SQLite database.";
 
         if (!File.Exists(_dbPath))
-            return $"VoiceLauncher database not found at: {_dbPath}";
+            return $"Voice Admin database not found at: {_dbPath}";
 
-        return $"VoiceLauncher database is configured and accessible at: {_dbPath}";
+        return $"Voice Admin database is configured and accessible at: {_dbPath}";
     }
 
-    /// <summary>Search launchers by keyword across Name, CommandLine, and CategoryName.</summary>
-    public async Task<string> SearchLaunchersAsync(string keyword, int? maxResults = null)
+    /// <summary>Search launcher entries by keyword across Name, CommandLine, and CategoryName.</summary>
+    public async Task<string> SearchLauncherEntriesAsync(string keyword, int? maxResults = null)
     {
         if (!IsConfigured)
             return GetSetupStatusText();
@@ -70,7 +76,7 @@ internal sealed class VoiceLauncherService
             cmd.Parameters.AddWithValue("@limit", limit);
 
             var results = new StringBuilder();
-            int count = 0;
+            var count = 0;
 
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -83,25 +89,25 @@ internal sealed class VoiceLauncherService
                 var categoryName = reader.IsDBNull(4) ? "Uncategorised" : reader.GetString(4);
 
                 var argDisplay = string.IsNullOrWhiteSpace(arguments) ? "" : $" {arguments}";
-                results.AppendLine($"[ID:{id}] {name} (Category: {categoryName}) \u2192 {commandLine}{argDisplay}");
+                results.AppendLine($"[ID:{id}] {name} (Category: {categoryName}) -> {commandLine}{argDisplay}");
             }
 
             if (count == 0)
-                return $"No launcher records found matching '{keyword}'.";
+                return $"No Voice Admin launcher records found matching '{keyword}'.";
 
-            return $"Found {count} launcher(s) matching '{keyword}':\n{results}";
+            return $"Found {count} Voice Admin launcher record(s) matching '{keyword}':\n{results}";
         }
         catch (Exception ex)
         {
-            return $"Error searching launchers: {ex.Message}";
+            return $"Error searching Voice Admin launcher records: {ex.Message}";
         }
     }
 
     /// <summary>
-    /// Launch a launcher entry by its numeric ID (obtained from a prior search).
-    /// The command line is read from the database – the caller never supplies an executable path.
+    /// Launch a Voice Admin launcher entry by its numeric ID (obtained from a prior search).
+    /// The command line is read from the database - the caller never supplies an executable path.
     /// </summary>
-    public async Task<string> LaunchByIdAsync(int launcherId)
+    public async Task<string> LaunchLauncherByIdAsync(int launcherId)
     {
         if (!IsConfigured)
             return GetSetupStatusText();
@@ -126,7 +132,7 @@ internal sealed class VoiceLauncherService
 
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
-                return $"No launcher found with ID {launcherId}. Use search_voice_launchers to find valid IDs.";
+                return $"No launcher found with ID {launcherId}. Use search_voice_admin_launchers to find valid IDs.";
 
             var name = reader.IsDBNull(1) ? $"ID {launcherId}" : reader.GetString(1);
             var commandLine = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim();

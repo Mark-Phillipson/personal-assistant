@@ -1,6 +1,6 @@
 ## Plan: Voice Admin Read-Only Launcher Search
 
-Add a dedicated launcher-search AI tool in the personal assistant that queries your VoiceLauncher SQLite database in read-only mode, matching Name, CommandLine, and CategoryName for prompts like “list launcher records with Upwork.”
+Add a dedicated launcher-search AI tool in the personal assistant that queries your Voice Admin SQLite database in read-only mode, matching Name, CommandLine, and CategoryName for prompts like “list launcher records with Upwork.”
 This keeps scope tight: query only, no writes, no slash commands.
 
 **Steps**
