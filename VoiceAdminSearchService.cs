@@ -8,6 +8,7 @@ internal sealed class VoiceAdminSearchService
         "Name",
         "Title",
         "Command",
+        "Script",
         "CommandLine",
         "Category",
         "CategoryName",
@@ -61,6 +62,51 @@ internal sealed class VoiceAdminSearchService
     public Task<string> SearchTransactionsAsync(string keyword, int? maxResults = null)
         => SearchTableAsync("Transactions", keyword, maxResults);
 
+    public async Task<string> GetTalonCommandDetailsByRowIdAsync(long rowId)
+    {
+        if (!IsConfigured)
+            return GetSetupStatusText();
+
+        if (rowId <= 0)
+            return "Row ID must be a positive integer.";
+
+        try
+        {
+            await using var conn = CreateReadOnlyConnection();
+            await conn.OpenAsync();
+
+            var availableObjects = await GetUserObjectNamesAsync(conn);
+            var resolvedTable = ResolveObjectName(availableObjects, "Talon Commands");
+            if (resolvedTable is null)
+                return BuildObjectNotFoundMessage("Talon Commands", availableObjects);
+
+            var columns = await GetTableColumnsAsync(conn, resolvedTable);
+            if (columns.Count == 0)
+                return $"Table '{resolvedTable}' has no readable columns.";
+
+            var sql = $"""
+                SELECT rowid, *
+                FROM {QuoteIdentifier(resolvedTable)}
+                WHERE rowid = @rowId
+                LIMIT 1
+                """;
+
+            await using var cmd = new SqliteCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@rowId", rowId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                return $"No Talon command found with RowId {rowId} in '{resolvedTable}'.";
+
+            var details = BuildDetailedRowText(reader, columns);
+            return $"Talon command details for RowId {rowId} in '{resolvedTable}':\n{details}";
+        }
+        catch (Exception ex)
+        {
+            return $"Error reading Talon command details for RowId {rowId}: {ex.Message}";
+        }
+    }
+
     public async Task<string> SearchTableAsync(string requestedTable, string keyword, int? maxResults = null)
     {
         if (!IsConfigured)
@@ -76,9 +122,10 @@ internal sealed class VoiceAdminSearchService
             await using var conn = CreateReadOnlyConnection();
             await conn.OpenAsync();
 
-            var resolvedTable = await ResolveTableNameAsync(conn, requestedTable);
+            var availableObjects = await GetUserObjectNamesAsync(conn);
+            var resolvedTable = ResolveObjectName(availableObjects, requestedTable);
             if (resolvedTable is null)
-                return $"Table '{requestedTable}' was not found in the configured Voice Admin database.";
+                return BuildObjectNotFoundMessage(requestedTable, availableObjects);
 
             var columns = await GetTableColumnsAsync(conn, resolvedTable);
             if (columns.Count == 0)
@@ -137,9 +184,10 @@ internal sealed class VoiceAdminSearchService
             await using var conn = CreateReadOnlyConnection();
             await conn.OpenAsync();
 
-            var resolvedTable = await ResolveTableNameAsync(conn, requestedTable);
+            var availableObjects = await GetUserObjectNamesAsync(conn);
+            var resolvedTable = ResolveObjectName(availableObjects, requestedTable);
             if (resolvedTable is null)
-                return VoiceAdminCellReadResult.Failure($"Table '{requestedTable}' was not found in the configured Voice Admin database.");
+                return VoiceAdminCellReadResult.Failure(BuildObjectNotFoundMessage(requestedTable, availableObjects));
 
             var columns = await GetTableColumnsAsync(conn, resolvedTable);
             var resolvedColumn = columns.FirstOrDefault(column =>
@@ -192,43 +240,76 @@ internal sealed class VoiceAdminSearchService
         return new SqliteConnection(connectionString);
     }
 
-    private static async Task<string?> ResolveTableNameAsync(SqliteConnection conn, string requestedTable)
+    private static string? ResolveObjectName(IReadOnlyList<string> objectNames, string requestedTable)
     {
-        var tables = await GetUserTableNamesAsync(conn);
-        if (tables.Count == 0)
+        if (objectNames.Count == 0)
             return null;
 
         var requestedNorm = Normalise(requestedTable);
         if (string.IsNullOrWhiteSpace(requestedNorm))
             return null;
 
-        var exact = tables.FirstOrDefault(table => string.Equals(Normalise(table), requestedNorm, StringComparison.Ordinal));
+        var aliasMatch = ResolveAlias(objectNames, requestedNorm);
+        if (aliasMatch is not null)
+            return aliasMatch;
+
+        var exact = objectNames.FirstOrDefault(name => string.Equals(Normalise(name), requestedNorm, StringComparison.Ordinal));
         if (exact is not null)
             return exact;
 
-        var fuzzy = tables.FirstOrDefault(table =>
-            Normalise(table).Contains(requestedNorm, StringComparison.Ordinal)
-            || requestedNorm.Contains(Normalise(table), StringComparison.Ordinal));
+        var fuzzy = objectNames.FirstOrDefault(name =>
+            Normalise(name).Contains(requestedNorm, StringComparison.Ordinal)
+            || requestedNorm.Contains(Normalise(name), StringComparison.Ordinal));
 
         return fuzzy;
     }
 
-    private static async Task<List<string>> GetUserTableNamesAsync(SqliteConnection conn)
+    private static string? ResolveAlias(IReadOnlyList<string> objectNames, string requestedNorm)
     {
-        const string sql = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
+        var aliases = requestedNorm switch
+        {
+            "taloncommands" => new[] { "talonvoicecommands", "taloncommands" },
+            "customintelesense" => new[] { "customintellisense", "customintelesense" },
+            "values" => new[] { "valuestoinsert", "values" },
+            _ => Array.Empty<string>()
+        };
+
+        if (aliases.Length == 0)
+            return null;
+
+        foreach (var alias in aliases)
+        {
+            var aliasNorm = Normalise(alias);
+            var match = objectNames.FirstOrDefault(name => string.Equals(Normalise(name), aliasNorm, StringComparison.Ordinal));
+            if (match is not null)
+                return match;
+        }
+
+        return null;
+    }
+
+    private static async Task<List<string>> GetUserObjectNamesAsync(SqliteConnection conn)
+    {
+        const string sql = """
+            SELECT name
+            FROM sqlite_master
+            WHERE type IN ('table', 'view')
+              AND name NOT LIKE 'sqlite_%'
+            ORDER BY name
+            """;
         await using var cmd = new SqliteCommand(sql, conn);
-        var tableNames = new List<string>();
+        var names = new List<string>();
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
             if (!reader.IsDBNull(0))
             {
-                tableNames.Add(reader.GetString(0));
+                names.Add(reader.GetString(0));
             }
         }
 
-        return tableNames;
+        return names;
     }
 
     private static async Task<List<string>> GetTableColumnsAsync(SqliteConnection conn, string tableName)
@@ -305,17 +386,90 @@ internal sealed class VoiceAdminSearchService
         if (string.IsNullOrWhiteSpace(value))
             return string.Empty;
 
-        var cleaned = value.Replace("\r", " ").Replace("\n", " ").Trim();
-        if (cleaned.Length > 120)
+        var isScriptLike = columnName.Contains("script", StringComparison.OrdinalIgnoreCase)
+            || columnName.Contains("code", StringComparison.OrdinalIgnoreCase)
+            || columnName.Contains("command", StringComparison.OrdinalIgnoreCase);
+
+        var cleaned = value
+            .Replace("\r", "")
+            .Replace("\n", " \\\\n ")
+            .Trim();
+
+        var maxLength = isScriptLike ? 320 : 120;
+        if (cleaned.Length > maxLength)
         {
-            cleaned = cleaned[..117] + "...";
+            cleaned = cleaned[..(maxLength - 3)] + "...";
         }
 
         return $"{columnName}: {cleaned}";
     }
 
+    private static string BuildDetailedRowText(SqliteDataReader reader, IReadOnlyList<string> columns)
+    {
+        var interestingColumns = new[]
+        {
+            "Command",
+            "Script",
+            "Application",
+            "Mode",
+            "OperatingSystem",
+            "FilePath",
+            "Repository",
+            "Tags",
+            "CodeLanguage",
+            "Language",
+            "Hostname",
+            "Title",
+            "CreatedAt"
+        };
+
+        var lines = new List<string>();
+
+        foreach (var preferred in interestingColumns)
+        {
+            var column = columns.FirstOrDefault(c => string.Equals(c, preferred, StringComparison.OrdinalIgnoreCase));
+            if (column is null)
+                continue;
+
+            var value = ReadColumnAsString(reader, columns, column);
+            if (string.IsNullOrWhiteSpace(value))
+                continue;
+
+            lines.Add($"{column}:\n{value.TrimEnd()}");
+        }
+
+        if (lines.Count > 0)
+            return string.Join("\n\n", lines);
+
+        var fallback = new List<string>();
+        foreach (var column in columns)
+        {
+            var value = ReadColumnAsString(reader, columns, column);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                fallback.Add($"{column}:\n{value.TrimEnd()}");
+            }
+        }
+
+        return fallback.Count > 0
+            ? string.Join("\n\n", fallback)
+            : "(all fields empty)";
+    }
+
     private static string QuoteIdentifier(string identifier)
         => $"\"{identifier.Replace("\"", "\"\"")}\"";
+
+    private string BuildObjectNotFoundMessage(string requestedTable, IReadOnlyList<string> availableObjects)
+    {
+        if (availableObjects.Count == 0)
+        {
+            return $"Table or view '{requestedTable}' was not found because the configured database has no readable tables/views. Path: {_dbPath}";
+        }
+
+        var sampleObjects = string.Join(", ", availableObjects.Take(10).Select(name => $"'{name}'"));
+        var remainder = availableObjects.Count > 10 ? $" (+{availableObjects.Count - 10} more)" : string.Empty;
+        return $"Table or view '{requestedTable}' was not found. Available objects: {sampleObjects}{remainder}. Path: {_dbPath}";
+    }
 
     private static string Normalise(string value)
     {

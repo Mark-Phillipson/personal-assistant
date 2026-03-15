@@ -32,6 +32,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
    - `launch_voice_admin_launcher` — start a launcher entry by its numeric ID
 - Exposes read-only Voice Admin table search tools to Copilot (requires `VOICE_ADMIN_DB_PATH` or falls back to `VOICE_LAUNCHER_DB_PATH`):
    - `search_talon_commands` — keyword search in Talon Commands table
+   - `get_talon_command_details` — fetch full Talon command details (including script) by RowId
    - `search_custom_in_tele_sense` — keyword search in Custom in Tele Sense table
    - `search_values_records` — keyword search in Values table
    - `search_transactions_records` — keyword search in Transactions table

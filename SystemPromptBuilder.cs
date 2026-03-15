@@ -46,6 +46,7 @@ internal static class SystemPromptBuilder
             "When the user asks to launch, open, or start a Voice Admin launcher entry by name or description, first call search_voice_admin_launchers to identify the correct ID, then call launch_voice_admin_launcher with that ID. Never guess an ID.",
             "When the user provides an explicit launcher ID and asks to launch it, call launch_voice_admin_launcher directly without searching first.",
             "When the user asks to search Talon Commands, call search_talon_commands.",
+            "When the user asks for the full Talon script/action logic or details for a specific Talon RowId, call get_talon_command_details.",
             "When the user asks to search Custom in Tele Sense records, call search_custom_in_tele_sense.",
             "When the user asks to search Values records, call search_values_records.",
             "When the user asks to search Transactions records, call search_transactions_records.",

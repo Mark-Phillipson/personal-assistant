@@ -114,6 +114,11 @@ internal static class AssistantToolsFactory
                 "search_talon_commands",
                 "Read-only search in the Talon Commands table. Use this when the user asks to list or find Talon command records."),
             AIFunctionFactory.Create(
+                async ([Description("RowId returned by search_talon_commands")] long rowId) =>
+                    await voiceAdminSearchService.GetTalonCommandDetailsByRowIdAsync(rowId),
+                "get_talon_command_details",
+                "Read full Talon command details by RowId, including script/action logic and related metadata such as application and file path."),
+            AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search in Custom in Tele Sense table")] string keyword,
                     [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
