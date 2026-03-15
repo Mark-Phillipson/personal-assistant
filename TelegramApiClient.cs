@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 
 internal sealed class TelegramApiClient : IDisposable
@@ -127,7 +128,7 @@ internal sealed class TelegramApiClient : IDisposable
             catch (HttpRequestException ex) when (attempt < MaxTransportAttempts && IsTransientTransportFailure(ex))
             {
                 var delay = TimeSpan.FromMilliseconds(500 * attempt);
-                Console.Error.WriteLine($"[telegram.transport.retry] endpoint={endpoint} attempt={attempt}/{MaxTransportAttempts} delayMs={(int)delay.TotalMilliseconds} error={ex.Message}");
+                Console.Error.WriteLine($"[telegram.transport.retry] endpoint={endpoint} attempt={attempt}/{MaxTransportAttempts} delayMs={(int)delay.TotalMilliseconds} error={FormatExceptionChain(ex)}");
                 await Task.Delay(delay, cancellationToken);
             }
         }
@@ -148,7 +149,7 @@ internal sealed class TelegramApiClient : IDisposable
             catch (HttpRequestException ex) when (attempt < MaxTransportAttempts && IsTransientTransportFailure(ex))
             {
                 var delay = TimeSpan.FromMilliseconds(500 * attempt);
-                Console.Error.WriteLine($"[telegram.transport.retry] endpoint={requestUri} attempt={attempt}/{MaxTransportAttempts} delayMs={(int)delay.TotalMilliseconds} error={ex.Message}");
+                Console.Error.WriteLine($"[telegram.transport.retry] endpoint={requestUri} attempt={attempt}/{MaxTransportAttempts} delayMs={(int)delay.TotalMilliseconds} error={FormatExceptionChain(ex)}");
                 await Task.Delay(delay, cancellationToken);
             }
         }
@@ -158,6 +159,34 @@ internal sealed class TelegramApiClient : IDisposable
     {
         return exception.InnerException is IOException
             or SocketException;
+    }
+
+    private static string FormatExceptionChain(Exception exception)
+    {
+        var builder = new StringBuilder();
+        var current = exception;
+        var index = 0;
+
+        while (current is not null)
+        {
+            if (index > 0)
+            {
+                builder.Append(" -> ");
+            }
+
+            builder.Append(current.GetType().Name);
+
+            if (!string.IsNullOrWhiteSpace(current.Message))
+            {
+                builder.Append(": ");
+                builder.Append(current.Message);
+            }
+
+            current = current.InnerException;
+            index++;
+        }
+
+        return builder.ToString();
     }
 
     private static IEnumerable<string> ChunkText(string text, int maxLength)
