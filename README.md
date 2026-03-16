@@ -78,6 +78,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `VOICE_LAUNCHER_MAX_RESULTS` (optional legacy fallback for `VOICE_ADMIN_MAX_RESULTS`)
 - `TALON_USER_DIRECTORY` (optional, default `%USERPROFILE%\AppData\Roaming\talon\user`; root path for read-only Talon file tools)
 - `ASSISTANT_REPO_DIRECTORY` (optional, default current working directory when app starts; root path for the `repo` alias in `open_known_folder_in_explorer`)
+- `UPWORK_CHROME_CDP_URL` (optional, default `http://127.0.0.1:9222`; when Chrome is started with remote debugging, Upwork tools can attach to your existing logged-in Chrome profile/session)
 - `ASSISTANT_NAME` (optional, default `Bob`)
 - `ASSISTANT_TONE` (optional, default `Friendly`; allowed: `Friendly`, `Professional`, `Witty`, `Calm`, `Irreverent`)
 - `ASSISTANT_USE_EMOJI` (optional, default `true`; `true` or `false`)
@@ -222,8 +223,20 @@ This is an assistive workflow for an already authenticated user session. It is n
 
 Prerequisites:
 
-- Set `PLAYWRIGHT_HEADLESS=false` and restart the assistant so the browser window is visible.
+- Preferred: run Chrome with remote debugging so Upwork tools can reuse your existing logged-in session/tab.
+- Fallback: Upwork tools auto-open a visible automation browser window for the session.
+- `PLAYWRIGHT_HEADLESS` can remain true for other browser tools.
 - Use the new Upwork tools through normal assistant prompts.
+
+Optional one-time setup for existing Chrome session reuse (Windows example):
+
+```powershell
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222
+```
+
+If using a non-default endpoint, set `UPWORK_CHROME_CDP_URL` accordingly.
+
+If Upwork opens in the fallback automation browser, rerun `Open Upwork messages portal` after starting Chrome in remote-debug mode and check console logs for `[upwork.browser]` CDP attach status.
 
 Recommended sequence:
 

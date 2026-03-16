@@ -41,6 +41,7 @@ internal static class SystemPromptBuilder
             "For Upwork messaging workflows, first call upwork_session_status and upwork_open_messages_portal when needed, then call upwork_read_current_room to gather context before drafting.",
             "When the user gives rough reply intent for an Upwork room, draft concise professional text and use upwork_reply_current_room with sendNow=false unless the user explicitly confirms sending now.",
             "Never send an Upwork reply automatically. Only call upwork_reply_current_room with sendNow=true after explicit user confirmation in the same conversation turn.",
+            "When the user sends a screenshot or image showing an Upwork message conversation and asks for a draft reply, read the image directly for message context and draft a concise professional reply. Do not call any browser tools for screenshot-based drafting. Present the draft clearly and ask the user to confirm before sending.",
             $"Use emoji according to the user's preferences: {emojiGuidance}",
             "Never use emoji inside email drafts, calendar descriptions, or code snippets.",
             "Emoji should enhance tone, not replace words.",

@@ -5,27 +5,47 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
 {
     private const int MaxContentLength = 6000;
     private const string UpworkMessagesUrl = "https://www.upwork.com/ab/messages/";
+    private const string DefaultChromeCdpUrl = "http://127.0.0.1:9222";
+    private static readonly string UpworkLogFile = "logs/upwork-browser.log";
+    private static readonly TimeSpan UpworkCdpRetryCooldown = TimeSpan.FromSeconds(10);
 
     private readonly bool _headless;
     private readonly int _timeoutMs;
+    private readonly string? _upworkChromeCdpUrl;
 
     private IPlaywright? _playwright;
     private IBrowser? _browser;
+    private IBrowser? _upworkBrowser;
     private IBrowserContext? _upworkSessionContext;
     private IPage? _upworkSessionPage;
+    private bool _upworkUsingCdp;
+    private DateTimeOffset? _upworkLastCdpAttemptUtc;
+    private string? _upworkCdpLastError;
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
-    private WebBrowserAssistantService(bool headless, int timeoutMs)
+    private WebBrowserAssistantService(bool headless, int timeoutMs, string? upworkChromeCdpUrl)
     {
         _headless = headless;
         _timeoutMs = timeoutMs;
+        _upworkChromeCdpUrl = upworkChromeCdpUrl;
+    }
+
+    private static string GetChromeExecutablePath()
+    {
+        // Default Windows path; can be extended for Mac/Linux
+        var winPath = @"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+        if (System.IO.File.Exists(winPath)) return winPath;
+        var winPathX86 = @"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe";
+        if (System.IO.File.Exists(winPathX86)) return winPathX86;
+        throw new InvalidOperationException("Could not find Google Chrome executable. Please install Chrome or set UPWORK_CHROME_CDP_URL to a running instance.");
     }
 
     public static WebBrowserAssistantService FromEnvironment()
     {
         var headless = EnvironmentSettings.ReadBool("PLAYWRIGHT_HEADLESS", fallback: true);
         var timeoutSeconds = EnvironmentSettings.ReadInt("PLAYWRIGHT_TIMEOUT_SECONDS", fallback: 30, min: 5, max: 120);
-        return new WebBrowserAssistantService(headless, timeoutSeconds * 1000);
+        var upworkChromeCdpUrl = EnvironmentSettings.ReadOptionalString("UPWORK_CHROME_CDP_URL");
+        return new WebBrowserAssistantService(headless, timeoutSeconds * 1000, upworkChromeCdpUrl);
     }
 
     public string GetSetupStatusText()
@@ -36,26 +56,21 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
 
     public Task<string> GetUpworkSessionStatusAsync(CancellationToken cancellationToken = default)
     {
-        if (_headless)
-        {
-            return Task.FromResult("Upwork browser-assisted flow needs a visible browser. Set PLAYWRIGHT_HEADLESS=false and restart the assistant.");
-        }
-
         if (_upworkSessionPage is null || _upworkSessionPage.IsClosed)
         {
-            return Task.FromResult("No active Upwork browser session page. Call upwork_open_messages_portal first, then sign in if prompted.");
+            var cdpHint = BuildCdpHint();
+            return Task.FromResult("No active Upwork browser session page. Call upwork_open_messages_portal first, or take a screenshot of your Upwork message thread and send it here to draft a reply directly. " + cdpHint);
         }
 
-        return Task.FromResult($"Upwork session page is open. Current URL: {_upworkSessionPage.Url}");
+        var sessionType = _upworkUsingCdp ? "shared Chrome session (CDP)" : "automation browser session";
+        var errorSuffix = string.IsNullOrWhiteSpace(_upworkCdpLastError)
+            ? string.Empty
+            : $" Last CDP error: {_upworkCdpLastError}";
+        return Task.FromResult($"Upwork session page is open in {sessionType}. Current URL: {_upworkSessionPage.Url}.{errorSuffix}");
     }
 
     public async Task<string> OpenUpworkMessagesPortalAsync(CancellationToken cancellationToken = default)
     {
-        if (_headless)
-        {
-            return "Upwork browser-assisted flow needs a visible browser. Set PLAYWRIGHT_HEADLESS=false and restart the assistant.";
-        }
-
         try
         {
             var page = await EnsureUpworkSessionPageAsync(cancellationToken);
@@ -65,7 +80,13 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
                 Timeout = _timeoutMs
             });
 
-            return $"Opened Upwork messages portal in the automation browser: {UpworkMessagesUrl}. If you see a login screen, sign in there and then ask me to read or draft from the current room.";
+            if (_upworkUsingCdp)
+            {
+                return $"Opened Upwork messages portal in your shared Chrome session: {UpworkMessagesUrl}.";
+            }
+
+            var cdpHint = BuildCdpHint();
+            return $"Opened Upwork messages portal in the automation browser (not your logged-in Chrome session). {cdpHint}\n\nAlternatively, take a screenshot of any Upwork message thread in your browser and send it here — I'll read it and draft a reply for you directly.";
         }
         catch (Exception ex)
         {
@@ -75,11 +96,6 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
 
     public async Task<string> ReadUpworkCurrentRoomContextAsync(int latestMessageCount = 8, CancellationToken cancellationToken = default)
     {
-        if (_headless)
-        {
-            return "Upwork browser-assisted flow needs a visible browser. Set PLAYWRIGHT_HEADLESS=false and restart the assistant.";
-        }
-
         var maxMessages = Math.Clamp(latestMessageCount, 1, 30);
 
         try
@@ -184,11 +200,6 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
 
     public async Task<string> ReplyInUpworkCurrentRoomAsync(string replyText, bool sendNow = false, CancellationToken cancellationToken = default)
     {
-        if (_headless)
-        {
-            return "Upwork browser-assisted flow needs a visible browser. Set PLAYWRIGHT_HEADLESS=false and restart the assistant.";
-        }
-
         if (string.IsNullOrWhiteSpace(replyText))
         {
             return "No reply text provided.";
@@ -488,20 +499,196 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
 
     private async Task<IPage> EnsureUpworkSessionPageAsync(CancellationToken cancellationToken)
     {
+        var browser = await GetUpworkBrowserAsync(cancellationToken);
+
         if (_upworkSessionPage is not null && !_upworkSessionPage.IsClosed)
         {
             return _upworkSessionPage;
         }
 
-        var browser = await GetBrowserAsync(cancellationToken);
-        _upworkSessionContext ??= await browser.NewContextAsync(new BrowserNewContextOptions
+        if (_upworkUsingCdp)
         {
-            UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-        });
+            _upworkSessionContext ??= browser.Contexts.FirstOrDefault();
+            if (_upworkSessionContext is null)
+            {
+                _upworkSessionContext = await browser.NewContextAsync(new BrowserNewContextOptions
+                {
+                    UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                });
+            }
 
-        _upworkSessionPage = await _upworkSessionContext.NewPageAsync();
+            var pages = _upworkSessionContext.Pages;
+            _upworkSessionPage = pages.FirstOrDefault(static p =>
+                    p.Url.Contains("upwork.com/ab/messages", StringComparison.OrdinalIgnoreCase) ||
+                    p.Url.Contains("/rooms/", StringComparison.OrdinalIgnoreCase))
+                ?? pages.LastOrDefault(static p =>
+                    !string.IsNullOrWhiteSpace(p.Url) &&
+                    !p.Url.StartsWith("about:blank", StringComparison.OrdinalIgnoreCase) &&
+                    !p.Url.StartsWith("chrome://", StringComparison.OrdinalIgnoreCase))
+                ?? await _upworkSessionContext.NewPageAsync();
+        }
+        else
+        {
+            _upworkSessionContext ??= await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            });
+
+            _upworkSessionPage = await _upworkSessionContext.NewPageAsync();
+        }
+
         _upworkSessionPage.SetDefaultTimeout(_timeoutMs);
         return _upworkSessionPage;
+    }
+
+    private async Task<IBrowser> GetUpworkBrowserAsync(CancellationToken cancellationToken)
+    {
+        await _initLock.WaitAsync(cancellationToken);
+        try
+        {
+            _playwright ??= await Playwright.CreateAsync();
+
+            if (!_upworkUsingCdp && ShouldAttemptCdpConnect())
+            {
+                var cdpUrl = string.IsNullOrWhiteSpace(_upworkChromeCdpUrl)
+                    ? DefaultChromeCdpUrl
+                    : _upworkChromeCdpUrl;
+                _upworkLastCdpAttemptUtc = DateTimeOffset.UtcNow;
+
+                // Try to connect, and if it fails, launch Chrome and retry
+                var cdpConnectTimeoutMs = Math.Min(_timeoutMs, 3000);
+                LogUpwork($"Attempting CDP attach to {cdpUrl} (timeout {cdpConnectTimeoutMs}ms)");
+                try
+                {
+                    var cdpBrowser = await _playwright.Chromium.ConnectOverCDPAsync(cdpUrl, new BrowserTypeConnectOverCDPOptions
+                    {
+                        Timeout = cdpConnectTimeoutMs
+                    });
+                    if (_upworkBrowser is not null && !_upworkUsingCdp)
+                    {
+                        await SafeCloseBrowserAsync(_upworkBrowser);
+                    }
+                    _upworkBrowser = cdpBrowser;
+                    _upworkUsingCdp = true;
+                    _upworkCdpLastError = null;
+                    _upworkSessionPage = null;
+                    _upworkSessionContext = null;
+                    LogUpwork("CDP attach succeeded. Upwork will use shared Chrome session.");
+                    return _upworkBrowser;
+                }
+                catch (Exception ex)
+                {
+                    LogUpwork($"CDP attach failed. Attempting to launch Chrome in debug mode. Error: {ex.Message}");
+                    // Try to launch Chrome
+                    try
+                    {
+                        var chromePath = GetChromeExecutablePath();
+                        var chromeArgs = "--remote-debugging-port=9222 --user-data-dir=chrome-upwork-profile";
+                        LogUpwork($"Launching Chrome: {chromePath} {chromeArgs}");
+                        var proc = new System.Diagnostics.Process
+                        {
+                            StartInfo = new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = chromePath,
+                                Arguments = chromeArgs,
+                                UseShellExecute = true
+                            }
+                        };
+                        proc.Start();
+                        // Wait for DevTools endpoint to be available
+                        var sw = System.Diagnostics.Stopwatch.StartNew();
+                        bool available = false;
+                        while (sw.Elapsed < TimeSpan.FromSeconds(10))
+                        {
+                            await Task.Delay(1000, cancellationToken);
+                            try
+                            {
+                                using var client = new System.Net.Http.HttpClient();
+                                var resp = await client.GetAsync(cdpUrl, cancellationToken);
+                                if (resp.IsSuccessStatusCode)
+                                {
+                                    available = true;
+                                    break;
+                                }
+                            }
+                            catch { }
+                        }
+                        if (!available)
+                        {
+                            throw new InvalidOperationException($"Chrome DevTools endpoint did not become available at {cdpUrl} after launch.");
+                        }
+                        LogUpwork("Chrome launched and DevTools endpoint is available. Retrying CDP attach...");
+                        // Retry CDP attach
+                        var cdpBrowser = await _playwright.Chromium.ConnectOverCDPAsync(cdpUrl, new BrowserTypeConnectOverCDPOptions
+                        {
+                            Timeout = cdpConnectTimeoutMs
+                        });
+                        if (_upworkBrowser is not null && !_upworkUsingCdp)
+                        {
+                            await SafeCloseBrowserAsync(_upworkBrowser);
+                        }
+                        _upworkBrowser = cdpBrowser;
+                        _upworkUsingCdp = true;
+                        _upworkCdpLastError = null;
+                        _upworkSessionPage = null;
+                        _upworkSessionContext = null;
+                        LogUpwork("CDP attach succeeded after launching Chrome.");
+                        return _upworkBrowser;
+                    }
+                    catch (Exception launchEx)
+                    {
+                        _upworkCdpLastError = ex.ToString() + "\nChrome launch error: " + launchEx.ToString();
+                        _upworkUsingCdp = false;
+                        LogUpwork($"CDP attach and Chrome launch failed. Error: {launchEx}");
+                        throw new InvalidOperationException($"Failed to attach to Chrome via CDP at {cdpUrl}. Error: {ex.Message}\nChrome launch error: {launchEx.Message}", launchEx);
+                    }
+                }
+            }
+
+            if (_upworkBrowser is not null)
+            {
+                return _upworkBrowser;
+            }
+
+            _upworkBrowser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+            {
+                Headless = false
+            });
+            _upworkUsingCdp = false;
+            LogUpwork("Started fallback automation browser for Upwork session.");
+            return _upworkBrowser;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
+
+    private bool ShouldAttemptCdpConnect()
+    {
+        if (_upworkUsingCdp)
+        {
+            return false;
+        }
+
+        if (_upworkLastCdpAttemptUtc is null)
+        {
+            return true;
+        }
+
+        return DateTimeOffset.UtcNow - _upworkLastCdpAttemptUtc.Value >= UpworkCdpRetryCooldown;
+    }
+
+    private static async Task SafeCloseBrowserAsync(IBrowser browser)
+    {
+        try
+        {
+            await browser.CloseAsync();
+        }
+        catch
+        {
+            // Best effort cleanup when switching browser strategy.
+        }
     }
 
     private static async Task<string> ExtractReadableTextAsync(IPage page)
@@ -601,19 +788,52 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         return result.ToString().Trim();
     }
 
+    private string BuildCdpHint()
+    {
+        var cdpUrl = string.IsNullOrWhiteSpace(_upworkChromeCdpUrl)
+            ? DefaultChromeCdpUrl
+            : _upworkChromeCdpUrl;
+
+        var errorSuffix = string.IsNullOrWhiteSpace(_upworkCdpLastError)
+            ? string.Empty
+            : $" Last CDP connect error: {_upworkCdpLastError}";
+
+        return $"To reuse your logged-in Chrome tab/session, start Chrome with remote debugging and set UPWORK_CHROME_CDP_URL={cdpUrl}.{errorSuffix}";
+    }
+
+    private static void LogUpwork(string message)
+    {
+        var logLine = $"[upwork.browser] {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss} {message}";
+        Console.WriteLine(logLine);
+        try
+        {
+            System.IO.File.AppendAllText(UpworkLogFile, logLine + System.Environment.NewLine);
+        }
+        catch
+        {
+            // Ignore file log errors (e.g. permissions, locked file)
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
-        if (_upworkSessionPage is not null && !_upworkSessionPage.IsClosed)
+        if (_upworkSessionPage is not null && !_upworkSessionPage.IsClosed && !_upworkUsingCdp)
         {
             await _upworkSessionPage.CloseAsync();
-            _upworkSessionPage = null;
         }
+        _upworkSessionPage = null;
 
-        if (_upworkSessionContext is not null)
+        if (_upworkSessionContext is not null && !_upworkUsingCdp)
         {
             await _upworkSessionContext.CloseAsync();
-            _upworkSessionContext = null;
         }
+        _upworkSessionContext = null;
+
+        if (_upworkBrowser is not null && !_upworkUsingCdp)
+        {
+            await _upworkBrowser.CloseAsync();
+        }
+        _upworkBrowser = null;
 
         if (_browser is not null)
         {
