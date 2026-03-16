@@ -216,6 +216,33 @@ Terminal commands:
 - `Open Downloads\Invoices in File Explorer`
 - `Open the repo folder in File Explorer`
 
+## Upwork browser-assisted reply flow (draft-first)
+
+This is an assistive workflow for an already authenticated user session. It is not a bypass flow and should only be used with explicit user review before send.
+
+Prerequisites:
+
+- Set `PLAYWRIGHT_HEADLESS=false` and restart the assistant so the browser window is visible.
+- Use the new Upwork tools through normal assistant prompts.
+
+Recommended sequence:
+
+1. Open and authenticate session context:
+   - `Open Upwork messages portal`
+2. Confirm session is ready:
+   - `Check Upwork session status`
+3. Read current room context:
+   - `Read the current Upwork room and pull the latest 8 messages`
+4. Draft from rough intent:
+   - `Reply to this room saying roughly that I can do the change, will deliver tomorrow, and ask if they want EN and FR labels exactly as discussed`
+5. Send only on explicit confirmation:
+   - `Send that now`
+
+Safety behavior:
+
+- The assistant should draft into the composer first (`sendNow=false`).
+- The assistant should only attempt send after you explicitly confirm in that turn.
+
 ## Local attachment behavior
 
 The assistant can attach existing local files from these folders (when they exist on the machine running the bot):

@@ -97,6 +97,28 @@ internal static class AssistantToolsFactory
                 "search_web",
                 "Search the web using Bing and return the results. Use this to look up information, find jobs, news, or anything else on the internet."),
             AIFunctionFactory.Create(
+                async () =>
+                    await webBrowserService.GetUpworkSessionStatusAsync(),
+                "upwork_session_status",
+                "Check the current status of the Upwork browser-assisted session and whether a room page is open."),
+            AIFunctionFactory.Create(
+                async () =>
+                    await webBrowserService.OpenUpworkMessagesPortalAsync(),
+                "upwork_open_messages_portal",
+                "Open Upwork messages in the automation browser for logged-in room workflows. Use this before reading room context or drafting replies."),
+            AIFunctionFactory.Create(
+                async ([Description("How many latest messages to capture from the current room (1-30)")] int latestMessageCount = 8) =>
+                    await webBrowserService.ReadUpworkCurrentRoomContextAsync(latestMessageCount),
+                "upwork_read_current_room",
+                "Read the currently open Upwork message room context, including room id, counterpart, and latest messages for reply drafting."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Reply text to place into the current Upwork room composer")] string replyText,
+                    [Description("When true, attempt to click Send after inserting the draft. Use only after explicit user confirmation.")] bool sendNow = false) =>
+                    await webBrowserService.ReplyInUpworkCurrentRoomAsync(replyText, sendNow),
+                "upwork_reply_current_room",
+                "Insert a reply into the current Upwork room composer, and optionally send it after explicit confirmation."),
+            AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search for across Voice Admin launcher Name, CommandLine, and CategoryName")] string keyword,
                     [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
