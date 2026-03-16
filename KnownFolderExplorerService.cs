@@ -79,6 +79,63 @@ internal sealed class KnownFolderExplorerService
         }
     }
 
+    public Task<string> OpenFileInVsCodeAsync(string folderAlias, string relativeFilePath)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return Task.FromResult("Opening files in VS Code is only supported on Windows hosts.");
+        }
+
+        if (string.IsNullOrWhiteSpace(folderAlias))
+        {
+            return Task.FromResult("No folder alias was provided. Allowed aliases: documents, desktop, downloads, pictures, videos, repo.");
+        }
+
+        if (string.IsNullOrWhiteSpace(relativeFilePath))
+        {
+            return Task.FromResult("No file path was provided.");
+        }
+
+        if (!TryResolveAlias(folderAlias, out var canonicalAlias))
+        {
+            return Task.FromResult($"Unknown folder alias '{folderAlias}'. Allowed aliases: documents, desktop, downloads, pictures, videos, repo.");
+        }
+
+        var root = _rootByAlias[canonicalAlias];
+        if (!Directory.Exists(root))
+        {
+            return Task.FromResult($"Folder root is not available for alias '{canonicalAlias}': {root}");
+        }
+
+        try
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(root, relativeFilePath.Trim()));
+
+            if (!IsUnderRoot(root, fullPath))
+            {
+                return Task.FromResult("Requested file path is outside the selected folder root.");
+            }
+
+            if (!File.Exists(fullPath))
+            {
+                return Task.FromResult($"File not found: {fullPath}");
+            }
+
+            _ = Process.Start(new ProcessStartInfo
+            {
+                FileName = "code",
+                ArgumentList = { fullPath },
+                UseShellExecute = true
+            });
+
+            return Task.FromResult($"Opened '{relativeFilePath}' in Visual Studio Code ({fullPath}).");
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult($"Failed to open file in VS Code: {ex.Message}");
+        }
+    }
+
     private static string Fallback(string value, string fallback)
     {
         return string.IsNullOrWhiteSpace(value) ? fallback : value;

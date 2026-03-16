@@ -203,7 +203,14 @@ internal static class AssistantToolsFactory
                     [Description("Optional relative subdirectory inside the selected folder root")] string? relativePath = null) =>
                     await knownFolderExplorerService.OpenInExplorerAsync(folderAlias, relativePath),
                 "open_known_folder_in_explorer",
-                "Open Windows File Explorer at an allowlisted folder root (documents, desktop, downloads, pictures, videos, repo) or an optional relative subdirectory inside that root.")
+                "Open Windows File Explorer at an allowlisted folder root (documents, desktop, downloads, pictures, videos, repo) or an optional relative subdirectory inside that root."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Folder alias containing the file. Allowed values: documents, desktop, downloads, pictures, videos, repo")] string folderAlias,
+                    [Description("Relative file path inside the selected folder root (for example: PersonalityProfile.cs or subfolder/file.txt)")] string relativeFilePath) =>
+                    await knownFolderExplorerService.OpenFileInVsCodeAsync(folderAlias, relativeFilePath),
+                "open_file_in_vscode",
+                "Open a specific file in Visual Studio Code on the host machine. Use the folder alias and a relative path to identify the file. Always use this tool when the user asks to open, view, or edit a file in VS Code or in the editor.")
         ];
     }
 }
