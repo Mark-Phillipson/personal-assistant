@@ -12,6 +12,7 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
     private readonly bool _headless;
     private readonly int _timeoutMs;
     private readonly string? _upworkChromeCdpUrl;
+    private readonly ClipboardAssistantService? _clipboardService;
 
     private IPlaywright? _playwright;
     private IBrowser? _browser;
@@ -23,11 +24,12 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
     private string? _upworkCdpLastError;
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
-    private WebBrowserAssistantService(bool headless, int timeoutMs, string? upworkChromeCdpUrl)
+    private WebBrowserAssistantService(bool headless, int timeoutMs, string? upworkChromeCdpUrl, ClipboardAssistantService? clipboardService)
     {
         _headless = headless;
         _timeoutMs = timeoutMs;
         _upworkChromeCdpUrl = upworkChromeCdpUrl;
+        _clipboardService = clipboardService;
     }
 
     private static string GetChromeExecutablePath()
@@ -40,12 +42,12 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         throw new InvalidOperationException("Could not find Google Chrome executable. Please install Chrome or set UPWORK_CHROME_CDP_URL to a running instance.");
     }
 
-    public static WebBrowserAssistantService FromEnvironment()
+    public static WebBrowserAssistantService FromEnvironment(ClipboardAssistantService? clipboardService = null)
     {
         var headless = EnvironmentSettings.ReadBool("PLAYWRIGHT_HEADLESS", fallback: true);
         var timeoutSeconds = EnvironmentSettings.ReadInt("PLAYWRIGHT_TIMEOUT_SECONDS", fallback: 30, min: 5, max: 120);
         var upworkChromeCdpUrl = EnvironmentSettings.ReadOptionalString("UPWORK_CHROME_CDP_URL");
-        return new WebBrowserAssistantService(headless, timeoutSeconds * 1000, upworkChromeCdpUrl);
+        return new WebBrowserAssistantService(headless, timeoutSeconds * 1000, upworkChromeCdpUrl, clipboardService);
     }
 
     public string GetSetupStatusText()
@@ -209,6 +211,7 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         {
             var page = await EnsureUpworkSessionPageAsync(cancellationToken);
             var mode = sendNow ? "send" : "draft";
+            var trimmedReply = replyText.Trim();
 
             var result = await page.EvaluateAsync<UpworkReplyActionResult>("""
                 ({ replyText, sendNow }) => {
@@ -275,11 +278,20 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
                         details: 'Reply was sent from the current room.'
                     };
                 }
-                """, new { replyText = replyText.Trim(), sendNow });
+                """, new { replyText = trimmedReply, sendNow });
 
             if (!result.Success)
             {
                 return $"Upwork {mode} action failed: {result.Details}";
+            }
+
+            if (!sendNow)
+            {
+                var clipboardMessage = await TryCopyDraftToClipboardAsync(trimmedReply, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(clipboardMessage))
+                {
+                    return $"{result.Details}\n{clipboardMessage}";
+                }
             }
 
             return result.Details;
@@ -288,6 +300,22 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         {
             return $"Failed to { (sendNow ? "send" : "draft") } Upwork reply: {ex.Message}";
         }
+    }
+
+    private async Task<string?> TryCopyDraftToClipboardAsync(string draftText, CancellationToken cancellationToken)
+    {
+        if (_clipboardService is null || !_clipboardService.IsSupported)
+        {
+            return null;
+        }
+
+        var result = await _clipboardService.SetClipboardTextAsync(draftText, cancellationToken);
+        if (result.Success)
+        {
+            return "The draft was also copied to your clipboard.";
+        }
+
+        return $"Draft created, but clipboard copy failed: {result.Message}";
     }
 
     /// <summary>Open a URL in the machine's default browser.</summary>

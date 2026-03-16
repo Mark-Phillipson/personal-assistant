@@ -117,7 +117,7 @@ internal static class AssistantToolsFactory
                     [Description("When true, attempt to click Send after inserting the draft. Use only after explicit user confirmation.")] bool sendNow = false) =>
                     await webBrowserService.ReplyInUpworkCurrentRoomAsync(replyText, sendNow),
                 "upwork_reply_current_room",
-                "Insert a reply into the current Upwork room composer, and optionally send it after explicit confirmation."),
+                "Insert a reply into the current Upwork room composer, and optionally send it after explicit confirmation. In draft mode, the reply text is also copied to clipboard."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search for across Voice Admin launcher Name, CommandLine, and CategoryName")] string keyword,
