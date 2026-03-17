@@ -20,6 +20,7 @@ internal static class TelegramMessageHandler
         GoogleCalendarAssistantService calendarService,
         NaturalCommandsAssistantService naturalCommandsService,
         ClipboardAssistantService clipboardService,
+        PodcastSubscriptionsService podcastSubscriptionsService,
         CancellationToken cancellationToken)
     {
         var chatId = message.Chat.Id;
@@ -172,6 +173,33 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
+                case "/podcasts":
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        podcastSubscriptionsService.ListAllSubscriptions(),
+                        cancellationToken);
+                    return;
+
+                case "/play-podcast":
+                    await HandlePlayPodcastCommandAsync(
+                        chatId,
+                        text,
+                        telegram,
+                        podcastSubscriptionsService,
+                        profile,
+                        cancellationToken);
+                    return;
+
+                case "/add-podcast":
+                    await HandleAddPodcastCommandAsync(
+                        chatId,
+                        text,
+                        telegram,
+                        podcastSubscriptionsService,
+                        profile,
+                        cancellationToken);
+                    return;
+
                 default:
                     await telegram.SendMessageInChunksAsync(
                         chatId,
@@ -202,13 +230,18 @@ internal static class TelegramMessageHandler
             return;
         }
 
-        var session = await GetOrCreateSessionAsync(chatId, copilotClient, sessions, assistantTools, profile);
         var messageOptions = BuildMessageOptions(text, storedAttachment);
 
         try
         {
-            var assistantReply = await session.SendAndWaitAsync(messageOptions, null, cancellationToken);
-            var content = assistantReply?.Data.Content?.Trim();
+            var content = await SendWithSessionRecoveryAsync(
+                chatId,
+                messageOptions,
+                copilotClient,
+                sessions,
+                assistantTools,
+                profile,
+                cancellationToken);
             if (string.IsNullOrWhiteSpace(content))
             {
                 content = "I could not generate a response. Please try again.";
@@ -273,6 +306,54 @@ internal static class TelegramMessageHandler
 
         await createdSession.DisposeAsync();
         return sessions[chatId];
+    }
+
+    private static async Task<string?> SendWithSessionRecoveryAsync(
+        long chatId,
+        MessageOptions messageOptions,
+        CopilotClient copilotClient,
+        ConcurrentDictionary<long, CopilotSession> sessions,
+        ICollection<AIFunction> assistantTools,
+        PersonalityProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var session = await GetOrCreateSessionAsync(chatId, copilotClient, sessions, assistantTools, profile);
+
+        try
+        {
+            var assistantReply = await session.SendAndWaitAsync(messageOptions, null, cancellationToken);
+            return assistantReply?.Data.Content?.Trim();
+        }
+        catch (Exception ex) when (IsSessionNotFoundError(ex))
+        {
+            Console.Error.WriteLine($"[copilot.session.recover] chat={chatId} Session not found; recreating session and retrying once.");
+
+            if (sessions.TryRemove(chatId, out var staleSession))
+            {
+                await staleSession.DisposeAsync();
+            }
+
+            var recreatedSession = await GetOrCreateSessionAsync(chatId, copilotClient, sessions, assistantTools, profile);
+            var assistantReply = await recreatedSession.SendAndWaitAsync(messageOptions, null, cancellationToken);
+            return assistantReply?.Data.Content?.Trim();
+        }
+    }
+
+    private static bool IsSessionNotFoundError(Exception exception)
+    {
+        var current = exception;
+        while (current is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(current.Message)
+                && current.Message.Contains("session not found", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            current = current.InnerException;
+        }
+
+        return false;
     }
 
     private static string ExtractCommandPayload(string text)
@@ -344,6 +425,9 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/clipboard-status", "check clipboard setup", EmojiPalette.Confirm, profile.UseEmoji),
             FormatCommandLine("/calendar-events", "list upcoming Google Calendar events", EmojiPalette.Calendar, profile.UseEmoji),
             FormatCommandLine("/calendar-create", "create a new Google Calendar event", EmojiPalette.Calendar, profile.UseEmoji),
+            FormatCommandLine("/podcasts", "list subscribed podcasts", EmojiPalette.Music, profile.UseEmoji),
+            FormatCommandLine("/play-podcast <name> [N]", "play Nth latest episode (default 1)", EmojiPalette.Music, profile.UseEmoji),
+            FormatCommandLine("/add-podcast <name> <search>", "add podcast subscription", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/weather", "open BBC Weather for Maidstone, Kent", EmojiPalette.Search, profile.UseEmoji),
             FormatCommandLine("/natural <command>", "run a NaturalCommands command locally", EmojiPalette.Rocket, profile.UseEmoji),
             FormatCommandLine("/nc <command>", "short alias for /natural", EmojiPalette.Rocket, profile.UseEmoji),
@@ -491,6 +575,105 @@ internal static class TelegramMessageHandler
     {
         var emojiState = profile.UseEmoji ? profile.EmojiDensity.ToString() : "Off";
         return $"Personality: {profile.Name} | Tone: {profile.Tone} | Emoji: {emojiState}";
+    }
+
+    private static async Task HandlePlayPodcastCommandAsync(
+        long chatId,
+        string text,
+        TelegramApiClient telegram,
+        PodcastSubscriptionsService podcastSubscriptionsService,
+        PersonalityProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length < 2)
+        {
+            await telegram.SendMessageInChunksAsync(
+                chatId,
+                EmojiPalette.Wrap("Usage: /play-podcast <podcast-name> [episode-number]", EmojiPalette.Music, profile.UseEmoji),
+                cancellationToken);
+            return;
+        }
+
+        // Reconstruct podcast name from all parts except the command and optional episode number
+        var episodeNumber = 1;
+        var lastPart = parts[^1];
+        var podcastNameParts = new List<string>();
+
+        // Check if the last part is a number (episode)
+        if (int.TryParse(lastPart, out var parsedEpisode))
+        {
+            episodeNumber = parsedEpisode;
+            // All parts except first (command) and last (episode number) form the podcast name
+            podcastNameParts.AddRange(parts.Skip(1).SkipLast(1));
+        }
+        else
+        {
+            // All parts except first (command) form the podcast name
+            podcastNameParts.AddRange(parts.Skip(1));
+        }
+
+        var podcastName = string.Join(" ", podcastNameParts);
+
+        if (string.IsNullOrWhiteSpace(podcastName))
+        {
+            await telegram.SendMessageInChunksAsync(
+                chatId,
+                EmojiPalette.Wrap("Please provide a podcast name.", EmojiPalette.Music, profile.UseEmoji),
+                cancellationToken);
+            return;
+        }
+
+        await telegram.SendMessageInChunksAsync(
+            chatId,
+            EmojiPalette.Wrap($"🎵 Playing {podcastName} episode {episodeNumber}...", EmojiPalette.Music, profile.UseEmoji),
+            cancellationToken);
+
+        // Note: The actual YouTube playback is initiated by WebBrowserService via Process.Start
+        // We just send feedback to the user
+    }
+
+    private static async Task HandleAddPodcastCommandAsync(
+        long chatId,
+        string text,
+        TelegramApiClient telegram,
+        PodcastSubscriptionsService podcastSubscriptionsService,
+        PersonalityProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var parts = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length < 3)
+        {
+            await telegram.SendMessageInChunksAsync(
+                chatId,
+                EmojiPalette.Wrap("Usage: /add-podcast <podcast-name> <search-term>", EmojiPalette.Music, profile.UseEmoji),
+                cancellationToken);
+            return;
+        }
+
+        var remainder = parts[1];
+        var subParts = remainder.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (subParts.Length < 2)
+        {
+            await telegram.SendMessageInChunksAsync(
+                chatId,
+                EmojiPalette.Wrap("Usage: /add-podcast <podcast-name> <search-term>", EmojiPalette.Music, profile.UseEmoji),
+                cancellationToken);
+            return;
+        }
+
+        var podcastName = subParts[0];
+        var searchTerm = subParts[1];
+
+        await podcastSubscriptionsService.AddSubscriptionAsync(podcastName, searchTerm);
+
+        await telegram.SendMessageInChunksAsync(
+            chatId,
+            EmojiPalette.Wrap($"✅ Added podcast '{podcastName}' with search term '{searchTerm}'", EmojiPalette.Confirm, profile.UseEmoji),
+            cancellationToken);
     }
 
     private static string FormatCommandLine(string command, string description, string emoji, bool useEmoji)

@@ -12,7 +12,8 @@ internal static class AssistantToolsFactory
         VoiceAdminService voiceAdminService,
         VoiceAdminSearchService voiceAdminSearchService,
         TalonUserDirectoryService talonUserDirectoryService,
-        KnownFolderExplorerService knownFolderExplorerService)
+        KnownFolderExplorerService knownFolderExplorerService,
+        PodcastSubscriptionsService podcastSubscriptionsService)
     {
         return
         [
@@ -144,11 +145,11 @@ internal static class AssistantToolsFactory
                 "Read full Talon command details by RowId, including script/action logic and related metadata such as application and file path."),
             AIFunctionFactory.Create(
                 async (
-                    [Description("Keyword to search in Custom in Tele Sense table")] string keyword,
+                    [Description("Keyword to search in Custom  intellisense table (snippets)")] string keyword,
                     [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
                     await voiceAdminSearchService.SearchCustomInTeleSenseAsync(keyword, maxResults),
                 "search_custom_in_tele_sense",
-                "Read-only search in the Custom in Tele Sense table. Use this when the user asks to list or find custom tele-sense records."),
+                "Read-only search in the Custom intelsense table (snippets). Use this when the user asks to list or find custom intellisense records (snippets)."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search in Values table")] string keyword,
@@ -232,7 +233,43 @@ internal static class AssistantToolsFactory
                     [Description("Relative file path inside the selected folder root (for example: PersonalityProfile.cs or subfolder/file.txt)")] string relativeFilePath) =>
                     await knownFolderExplorerService.OpenFileInVsCodeAsync(folderAlias, relativeFilePath),
                 "open_file_in_vscode",
-                "Open a specific file in Visual Studio Code on the host machine. Use the folder alias and a relative path to identify the file. Always use this tool when the user asks to open, view, or edit a file in VS Code or in the editor.")
+                "Open a specific file in Visual Studio Code on the host machine. Use the folder alias and a relative path to identify the file. Always use this tool when the user asks to open, view, or edit a file in VS Code or in the editor."),
+            AIFunctionFactory.Create(
+                () => podcastSubscriptionsService.ListAllSubscriptions(),
+                "list_subscribed_podcasts",
+                "List all subscribed podcast shows with their search terms. Returns podcast names that can be used with play_podcast_episode."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Exact podcast name from list_subscribed_podcasts")] string podcastName,
+                    [Description("Episode number counting from latest (1=most recent, 2=second latest, etc). Default 1")] int episodeNumber = 1) =>
+                    await PlayPodcastEpisodeAsync(podcastName, episodeNumber, podcastSubscriptionsService, webBrowserService),
+                "play_podcast_episode",
+                "Play a specific episode of a subscribed podcast. Use list_subscribed_podcasts first to get valid names. Episode 1 is the latest.")
         ];
+    }
+
+    private static async Task<string> PlayPodcastEpisodeAsync(
+        string podcastName,
+        int episodeNumber,
+        PodcastSubscriptionsService podcastSubscriptionsService,
+        WebBrowserAssistantService webBrowserService)
+    {
+        if (episodeNumber < 1 || episodeNumber > 100)
+        {
+            return "Episode number must be between 1 and 100.";
+        }
+
+        var subscription = podcastSubscriptionsService.TryGetSubscription(podcastName);
+        if (subscription == null)
+        {
+            var availableList = podcastSubscriptionsService.ListAllSubscriptions();
+            return $"Podcast '{podcastName}' not found.\n\n{availableList}";
+        }
+
+        var searchQuery = episodeNumber == 1
+            ? subscription.SearchTerm
+            : $"{subscription.SearchTerm} episode {episodeNumber}";
+
+        return await webBrowserService.PlayTopYouTubeResultAsync(searchQuery, podcastMode: true);
     }
 }
