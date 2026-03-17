@@ -21,6 +21,7 @@ internal static class TelegramMessageHandler
         NaturalCommandsAssistantService naturalCommandsService,
         ClipboardAssistantService clipboardService,
         PodcastSubscriptionsService podcastSubscriptionsService,
+        ClipboardHistoryService clipboardHistoryService,
         CancellationToken cancellationToken)
     {
         var chatId = message.Chat.Id;
@@ -197,6 +198,32 @@ internal static class TelegramMessageHandler
                         telegram,
                         podcastSubscriptionsService,
                         profile,
+                        cancellationToken);
+                    return;
+
+                case "/clipboard-search":
+                    var keyword = ExtractCommandPayload(text);
+                    if (string.IsNullOrWhiteSpace(keyword))
+                    {
+                        await telegram.SendMessageInChunksAsync(
+                            chatId,
+                            EmojiPalette.Wrap("Usage: /clipboard-search <keyword>", EmojiPalette.Search, profile.UseEmoji),
+                            cancellationToken);
+                        return;
+                    }
+
+                    var searchResult = await clipboardHistoryService.SearchAsync(keyword, cancellationToken);
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        EmojiPalette.Wrap(searchResult, EmojiPalette.Search, profile.UseEmoji),
+                        cancellationToken);
+                    return;
+
+                case "/clipboard-today":
+                    var todayResult = await clipboardHistoryService.GetTodayEntriesAsync(cancellationToken);
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        EmojiPalette.Wrap(todayResult, EmojiPalette.Search, profile.UseEmoji),
                         cancellationToken);
                     return;
 
@@ -423,6 +450,8 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/gmail-status", "check Gmail setup", EmojiPalette.Email, profile.UseEmoji),
             FormatCommandLine("/calendar-status", "check Google Calendar setup", EmojiPalette.Calendar, profile.UseEmoji),
             FormatCommandLine("/clipboard-status", "check clipboard setup", EmojiPalette.Confirm, profile.UseEmoji),
+            FormatCommandLine("/clipboard-search <keyword>", "search clipboard history", EmojiPalette.Search, profile.UseEmoji),
+            FormatCommandLine("/clipboard-today", "view today's clipboard history", EmojiPalette.Search, profile.UseEmoji),
             FormatCommandLine("/calendar-events", "list upcoming Google Calendar events", EmojiPalette.Calendar, profile.UseEmoji),
             FormatCommandLine("/calendar-create", "create a new Google Calendar event", EmojiPalette.Calendar, profile.UseEmoji),
             FormatCommandLine("/podcasts", "list subscribed podcasts", EmojiPalette.Music, profile.UseEmoji),

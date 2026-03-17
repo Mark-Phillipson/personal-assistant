@@ -31,7 +31,7 @@ internal sealed class ClipboardAssistantService
         return $"Clipboard integration is configured. Timeout: {_timeout.TotalSeconds:0}s";
     }
 
-    public async Task<ClipboardExecutionResult> SetClipboardTextAsync(string text, CancellationToken cancellationToken)
+    public async Task<ClipboardExecutionResult> SetClipboardTextAsync(string text, CancellationToken cancellationToken, ClipboardHistoryService? historyService = null)
     {
         if (!IsSupported)
         {
@@ -55,15 +55,26 @@ internal sealed class ClipboardAssistantService
         var attempt = await ExecutePowerShellAsync("pwsh", script, cancellationToken);
         if (attempt.Success || !attempt.ExecutableMissing)
         {
+            // Record in history if successful
+            if (attempt.Success && historyService != null)
+            {
+                await historyService.AddEntryAsync(text, cancellationToken);
+            }
             return attempt;
         }
 
-        return await ExecutePowerShellAsync("powershell", script, cancellationToken);
+        // Try with powershell as fallback
+        var fallbackAttempt = await ExecutePowerShellAsync("powershell", script, cancellationToken);
+        if (fallbackAttempt.Success && historyService != null)
+        {
+            await historyService.AddEntryAsync(text, cancellationToken);
+        }
+        return fallbackAttempt;
     }
 
-    public async Task<string> SetClipboardTextForAssistantAsync(string text, CancellationToken cancellationToken = default)
+    public async Task<string> SetClipboardTextForAssistantAsync(string text, CancellationToken cancellationToken = default, ClipboardHistoryService? historyService = null)
     {
-        var result = await SetClipboardTextAsync(text, cancellationToken);
+        var result = await SetClipboardTextAsync(text, cancellationToken, historyService);
         return result.Message;
     }
 

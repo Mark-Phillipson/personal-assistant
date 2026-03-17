@@ -13,7 +13,8 @@ internal static class AssistantToolsFactory
         VoiceAdminSearchService voiceAdminSearchService,
         TalonUserDirectoryService talonUserDirectoryService,
         KnownFolderExplorerService knownFolderExplorerService,
-        PodcastSubscriptionsService podcastSubscriptionsService)
+        PodcastSubscriptionsService podcastSubscriptionsService,
+        ClipboardHistoryService clipboardHistoryService)
     {
         return
         [
@@ -244,7 +245,19 @@ internal static class AssistantToolsFactory
                     [Description("Episode number counting from latest (1=most recent, 2=second latest, etc). Default 1")] int episodeNumber = 1) =>
                     await PlayPodcastEpisodeAsync(podcastName, episodeNumber, podcastSubscriptionsService, webBrowserService),
                 "play_podcast_episode",
-                "Play a specific episode of a subscribed podcast. Use list_subscribed_podcasts first to get valid names. Episode 1 is the latest.")
+                "Play a specific episode of a subscribed podcast. Use list_subscribed_podcasts first to get valid names. Episode 1 is the latest."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Keyword to search for in clipboard history")] string keyword,
+                    [Description("Maximum number of results to return (1-50)")] int? maxResults = null) =>
+                    await clipboardHistoryService.SearchAsync(keyword),
+                "search_clipboard_history",
+                "Search the clipboard history for entries matching a keyword. Returns entries with timestamps and truncated content snippets from the last 21 days."),
+            AIFunctionFactory.Create(
+                async () =>
+                    await clipboardHistoryService.GetTodayEntriesAsync(),
+                "get_clipboard_history_today",
+                "Get all clipboard history entries recorded today. Shows timestamps and content snippets. Includes both assistant-copied and manually-monitored entries.")
         ];
     }
 

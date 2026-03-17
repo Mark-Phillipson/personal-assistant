@@ -21,10 +21,17 @@ var talonUserDirectoryService = TalonUserDirectoryService.FromEnvironment();
 var knownFolderExplorerService = KnownFolderExplorerService.FromEnvironment();
 var telegramAttachmentService = TelegramAttachmentService.FromEnvironment();
 var podcastSubscriptionsService = PodcastSubscriptionsService.FromEnvironmentOrJson();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService);
+var clipboardHistoryService = ClipboardHistoryService.FromEnvironment();
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
+
+// Cleanup old clipboard history entries on startup
+await clipboardHistoryService.CleanupOldEntriesAsync(default);
+
+// Start clipboard monitor for recording manual copy events
+clipboardHistoryService.StartMonitoring();
 
 using var appCancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>
@@ -33,43 +40,52 @@ Console.CancelKeyPress += (_, eventArgs) =>
     appCancellation.Cancel();
 };
 
-switch (assistantTransport)
+try
 {
-    case "terminal":
-        await RunTerminalAsync(
-            copilotClient,
-            assistantTools,
-            defaultPersonality,
-            gmailService,
-            calendarService,
-            naturalCommandsService,
-            clipboardService,
-            voiceAdminService,
-            voiceAdminSearchService,
-            talonUserDirectoryService,
-            knownFolderExplorerService,
-            podcastSubscriptionsService,
-            appCancellation.Token);
-        break;
+    switch (assistantTransport)
+    {
+        case "terminal":
+            await RunTerminalAsync(
+                copilotClient,
+                assistantTools,
+                defaultPersonality,
+                gmailService,
+                calendarService,
+                naturalCommandsService,
+                clipboardService,
+                voiceAdminService,
+                voiceAdminSearchService,
+                talonUserDirectoryService,
+                knownFolderExplorerService,
+                podcastSubscriptionsService,
+                clipboardHistoryService,
+                appCancellation.Token);
+            break;
 
-    default:
-        await RunTelegramAsync(
-            copilotClient,
-            assistantTools,
-            defaultPersonality,
-            environmentPersonality,
-            gmailService,
-            calendarService,
-            naturalCommandsService,
-            clipboardService,
-            voiceAdminService,
-            voiceAdminSearchService,
-            talonUserDirectoryService,
-            knownFolderExplorerService,
-            telegramAttachmentService,
-            podcastSubscriptionsService,
-            appCancellation.Token);
-        break;
+        default:
+            await RunTelegramAsync(
+                copilotClient,
+                assistantTools,
+                defaultPersonality,
+                environmentPersonality,
+                gmailService,
+                calendarService,
+                naturalCommandsService,
+                clipboardService,
+                voiceAdminService,
+                voiceAdminSearchService,
+                talonUserDirectoryService,
+                knownFolderExplorerService,
+                telegramAttachmentService,
+                podcastSubscriptionsService,
+                clipboardHistoryService,
+                appCancellation.Token);
+            break;
+    }
+}
+finally
+{
+    clipboardHistoryService.StopMonitoring();
 }
 
 static string ResolveAssistantTransport(string[] args)
@@ -108,6 +124,7 @@ static async Task RunTelegramAsync(
     KnownFolderExplorerService knownFolderExplorerService,
     TelegramAttachmentService telegramAttachmentService,
     PodcastSubscriptionsService podcastSubscriptionsService,
+    ClipboardHistoryService clipboardHistoryService,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -122,6 +139,7 @@ static async Task RunTelegramAsync(
     Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
+    Console.WriteLine($"ClipboardHistory: {clipboardHistoryService.GetSetupStatusText()}");
     Console.WriteLine($"VoiceAdmin: {(voiceAdminService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"VoiceAdminSearch: {(voiceAdminSearchService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"TalonUserDir: {(talonUserDirectoryService.DirectoryExists ? "configured" : "not found")}. Root: {talonUserDirectoryService.RootPath}");
@@ -187,6 +205,7 @@ static async Task RunTelegramAsync(
                         naturalCommandsService,
                         clipboardService,
                         podcastSubscriptionsService,
+                        clipboardHistoryService,
                         cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -222,6 +241,7 @@ static async Task RunTerminalAsync(
     TalonUserDirectoryService talonUserDirectoryService,
     KnownFolderExplorerService knownFolderExplorerService,
     PodcastSubscriptionsService podcastSubscriptionsService,
+    ClipboardHistoryService clipboardHistoryService,
     CancellationToken cancellationToken)
 {
     Console.WriteLine("Terminal Copilot assistant started. Type /help for commands, /exit to quit.");
@@ -229,6 +249,7 @@ static async Task RunTerminalAsync(
     Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
+    Console.WriteLine($"ClipboardHistory: {clipboardHistoryService.GetSetupStatusText()}");
     Console.WriteLine($"VoiceAdmin: {(voiceAdminService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"VoiceAdminSearch: {(voiceAdminSearchService.IsConfigured ? "configured" : "not configured")}.");
     Console.WriteLine($"TalonUserDir: {(talonUserDirectoryService.DirectoryExists ? "configured" : "not found")}. Root: {talonUserDirectoryService.RootPath}");
