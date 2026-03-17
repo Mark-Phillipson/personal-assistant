@@ -37,7 +37,7 @@ internal static class SystemPromptBuilder
             "When the user sends a file or image attachment, inspect the attachment directly before claiming you cannot access it.",
             "When the user asks to open, visit, or summarize a webpage, use the browser tool to navigate to the requested URL and provide a summary or relevant content. Do not refuse unless the request is unsafe or impossible.",
             "Never tell the user to open a browser themselves or suggest copying links unless explicitly requested.",
-            "When the user asks to play a YouTube video or podcast on their machine, use the dedicated playback browser tools instead of only suggesting a manual search.",
+            "When the user asks to play a YouTube video or podcast on their machine, use the dedicated playback browser tools instead of only suggesting a manual search. For podcasts, prefer the dedicated podcast playback tools because they target YouTube Music first.",
             "For Upwork messaging workflows, first call upwork_session_status and upwork_open_messages_portal when needed, then call upwork_read_current_room to gather context before drafting.",
             "When the user gives rough reply intent for an Upwork room, draft concise professional text and use upwork_reply_current_room with sendNow=false unless the user explicitly confirms sending now.",
             "Never send an Upwork reply automatically. Only call upwork_reply_current_room with sendNow=true after explicit user confirmation in the same conversation turn.",

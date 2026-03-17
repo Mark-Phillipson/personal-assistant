@@ -5,8 +5,13 @@
       "searchTerm": "Ukraine the latest telegraph"
     },
     {
+      "name": "Iran the Latest from the Telegraph",
+      "searchTerm": "Iran the latest telegraph"
+    },
+    {
       "name": "dotnet rocks",
-      "searchTerm": "dotnet rocks"
+      "searchTerm": "dotnet rocks",
+      "directUrl": "https://www.dotnetrocks.com/"
     },
     {
       "name": "Empire",

@@ -92,7 +92,7 @@ internal static class AssistantToolsFactory
                 async ([Description("Podcast topic or show name (for example: Ukraine war daily briefing)")] string query) =>
                     await webBrowserService.PlayTopYouTubeResultAsync(query, podcastMode: true),
                 "play_latest_youtube_podcast",
-                "Find and play the top current YouTube podcast-style result for a topic in the host machine default browser with autoplay."),
+                "Find and play the top current podcast-style result for a topic. Uses a YouTube Music URL first on the host machine and falls back to YouTube when needed."),
             AIFunctionFactory.Create(
                 async ([Description("Search query (e.g. Blazor developer jobs Upwork)")] string query) =>
                     await webBrowserService.SearchWebAsync(query),
@@ -253,7 +253,7 @@ internal static class AssistantToolsFactory
                     [Description("Episode number counting from latest (1=most recent, 2=second latest, etc). Default 1")] int episodeNumber = 1) =>
                     await PlayPodcastEpisodeAsync(podcastName, episodeNumber, podcastSubscriptionsService, webBrowserService),
                 "play_podcast_episode",
-                "Play a specific episode of a subscribed podcast. Use list_subscribed_podcasts first to get valid names. Episode 1 is the latest."),
+                "Play a specific episode of a subscribed podcast. Use list_subscribed_podcasts first to get valid names. Episode 1 is the latest. Podcast playback prefers YouTube Music URLs and falls back to YouTube if needed."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search for in clipboard history")] string keyword,
@@ -287,9 +287,14 @@ internal static class AssistantToolsFactory
             return $"Podcast '{podcastName}' not found.\n\n{availableList}";
         }
 
+        if (!string.IsNullOrWhiteSpace(subscription.DirectUrl))
+        {
+            return await webBrowserService.OpenInDefaultBrowserAsync(subscription.DirectUrl);
+        }
+
         var searchQuery = episodeNumber == 1
-            ? subscription.SearchTerm
-            : $"{subscription.SearchTerm} episode {episodeNumber}";
+            ? $"{subscription.Name} {subscription.SearchTerm}"
+            : $"{subscription.Name} {subscription.SearchTerm} episode {episodeNumber}";
 
         return await webBrowserService.PlayTopYouTubeResultAsync(searchQuery, podcastMode: true);
     }

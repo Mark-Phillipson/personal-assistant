@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-internal sealed record PodcastSubscription(string Name, string SearchTerm);
+internal sealed record PodcastSubscription(string Name, string SearchTerm, string? DirectUrl = null);
 
 internal sealed record PodcastSubscriptions(List<PodcastSubscription> Subscriptions)
 {

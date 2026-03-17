@@ -4,10 +4,17 @@ using System.Diagnostics;
 internal sealed class WebBrowserAssistantService : IAsyncDisposable
 {
     private const int MaxContentLength = 6000;
+    private const int MinimumPodcastCandidateScore = 45;
     private const string UpworkMessagesUrl = "https://www.upwork.com/ab/messages/";
     private const string DefaultChromeCdpUrl = "http://127.0.0.1:9222";
     private static readonly string UpworkLogFile = "logs/upwork-browser.log";
     private static readonly TimeSpan UpworkCdpRetryCooldown = TimeSpan.FromSeconds(10);
+    private static readonly string[] PodcastHintKeywords = ["podcast", "episode", "ep.", "ep ", "interview", "show", "full episode"];
+    private static readonly string[] NonPodcastKeywords = ["remix", "speed up", "sped up", "song", "lyrics", "lyric", "instrumental", "playlist", "mix", "beats", "official audio", "official music video", "karaoke"];
+    private static readonly HashSet<string> QueryStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "the", "a", "an", "and", "or", "for", "to", "from", "of", "latest", "new", "podcast", "episode", "show"
+    };
 
     private readonly bool _headless;
     private readonly int _timeoutMs;
@@ -352,10 +359,13 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         }
 
         var searchQuery = podcastMode
-            ? $"{query} podcast"
+            ? BuildPodcastSearchQuery(query)
             : query;
 
         var searchUrl = $"https://www.youtube.com/results?search_query={Uri.EscapeDataString(searchQuery)}";
+        var fallbackUrl = podcastMode
+            ? $"https://music.youtube.com/search?q={Uri.EscapeDataString(searchQuery)}"
+            : searchUrl;
 
         try
         {
@@ -381,26 +391,49 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
                     Timeout = _timeoutMs
                 });
 
-                var topResultHref = await page.EvaluateAsync<string>("""
+                var candidates = await page.EvaluateAsync<List<YouTubeSearchCandidate>>("""
                     (() => {
-                        const anchor = document.querySelector('ytd-video-renderer a#video-title');
-                        return anchor?.getAttribute('href') || '';
+                        const renderers = Array.from(document.querySelectorAll('ytd-video-renderer')).slice(0, 8);
+                        return renderers.map(renderer => {
+                            const anchor = renderer.querySelector('a#video-title');
+                            const metadata = Array.from(renderer.querySelectorAll('#metadata-line span'))
+                                .map(node => (node.textContent || '').trim())
+                                .filter(Boolean)
+                                .join(' | ');
+                            return {
+                                href: anchor?.getAttribute('href') || '',
+                                title: (anchor?.textContent || '').trim(),
+                                metadata,
+                                ariaLabel: anchor?.getAttribute('aria-label') || ''
+                            };
+                        });
                     })()
                     """);
 
-                if (string.IsNullOrWhiteSpace(topResultHref))
+                var selectedCandidate = SelectBestYouTubeCandidate(candidates, query, podcastMode);
+
+                if (selectedCandidate == null || string.IsNullOrWhiteSpace(selectedCandidate.Href))
                 {
-                    OpenUrlInDefaultBrowser(searchUrl);
-                    return "I opened YouTube search results, but could not confidently detect the top video to auto-play.";
+                    OpenUrlInDefaultBrowser(fallbackUrl);
+                    return podcastMode
+                        ? "I opened YouTube Music search results because I could not confidently identify a podcast episode to auto-play."
+                        : "I opened YouTube search results, but could not confidently detect the top video to auto-play.";
                 }
 
-                var topResultUrl = NormalizeYouTubeUrl(topResultHref);
-                var playbackUrl = EnsureAutoplay(topResultUrl);
+                var topResultUrl = NormalizeYouTubeUrl(selectedCandidate.Href);
+                var youtubePlaybackUrl = EnsureAutoplay(topResultUrl);
+                var useYouTubeMusic = podcastMode && ShouldUseYouTubeMusicForPodcastCandidate(selectedCandidate);
+                var playbackUrl = useYouTubeMusic
+                    ? TryConvertToYouTubeMusicUrl(youtubePlaybackUrl) ?? youtubePlaybackUrl
+                    : youtubePlaybackUrl;
 
                 OpenUrlInDefaultBrowser(playbackUrl);
 
                 var modeText = podcastMode ? "podcast" : "video";
-                return $"Playing top YouTube {modeText} result for '{query}'.\nURL: {playbackUrl}";
+                var serviceName = podcastMode && IsYouTubeMusicUrl(playbackUrl)
+                    ? "YouTube Music"
+                    : "YouTube";
+                return $"Playing top {serviceName} {modeText} result for '{query}'.\nTitle: {selectedCandidate.Title}\nURL: {playbackUrl}";
             }
             finally
             {
@@ -411,8 +444,10 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         {
             try
             {
-                OpenUrlInDefaultBrowser(searchUrl);
-                return $"Browser automation could not pick the top result ({ex.Message}). Opened YouTube search results instead: {searchUrl}";
+                OpenUrlInDefaultBrowser(fallbackUrl);
+                return podcastMode
+                    ? $"Browser automation could not pick the top result ({ex.Message}). Opened YouTube Music search results instead: {fallbackUrl}"
+                    : $"Browser automation could not pick the top result ({ex.Message}). Opened YouTube search results instead: {fallbackUrl}";
             }
             catch (Exception fallbackEx)
             {
@@ -870,6 +905,149 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
 
         return "https://www.youtube.com/" + href.TrimStart('/');
     }
+
+    private static string BuildPodcastSearchQuery(string query)
+    {
+        return $"\"{query.Trim()}\" podcast latest episode -remix -song -lyrics -playlist -karaoke";
+    }
+
+    private static YouTubeSearchCandidate? SelectBestYouTubeCandidate(List<YouTubeSearchCandidate>? candidates, string query, bool podcastMode)
+    {
+        if (candidates == null || candidates.Count == 0)
+        {
+            return null;
+        }
+
+        var usableCandidates = candidates.Where(candidate => !string.IsNullOrWhiteSpace(candidate.Href)).ToList();
+        if (usableCandidates.Count == 0)
+        {
+            return null;
+        }
+
+        if (!podcastMode)
+        {
+            return usableCandidates[0];
+        }
+
+        var bestCandidate = usableCandidates
+            .Select(candidate => new { Candidate = candidate, Score = ScorePodcastCandidate(candidate, query) })
+            .OrderByDescending(result => result.Score)
+            .First();
+
+        return bestCandidate.Score >= MinimumPodcastCandidateScore
+            ? bestCandidate.Candidate
+            : null;
+    }
+
+    private static int ScorePodcastCandidate(YouTubeSearchCandidate candidate, string query)
+    {
+        var haystack = $"{candidate.Title} {candidate.Metadata} {candidate.AriaLabel}";
+        var normalizedHaystack = NormalizeForSearch(haystack);
+        var normalizedQuery = NormalizeForSearch(query);
+        var score = 0;
+
+        if (!string.IsNullOrWhiteSpace(normalizedQuery) && normalizedHaystack.Contains(normalizedQuery, StringComparison.Ordinal))
+        {
+            score += 40;
+        }
+
+        foreach (var term in ExtractQueryTerms(query))
+        {
+            if (normalizedHaystack.Contains(term, StringComparison.Ordinal))
+            {
+                score += 10;
+            }
+        }
+
+        foreach (var keyword in PodcastHintKeywords)
+        {
+            if (haystack.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            {
+                score += 18;
+            }
+        }
+
+        foreach (var keyword in NonPodcastKeywords)
+        {
+            if (haystack.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            {
+                score -= 35;
+            }
+        }
+
+        if (candidate.AriaLabel.Contains("hour", StringComparison.OrdinalIgnoreCase))
+        {
+            score += 12;
+        }
+
+        if (candidate.AriaLabel.Contains("minute", StringComparison.OrdinalIgnoreCase))
+        {
+            score += 6;
+        }
+
+        return score;
+    }
+
+    private static IEnumerable<string> ExtractQueryTerms(string query)
+    {
+        return NormalizeForSearch(query)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(term => term.Length >= 3 && !QueryStopWords.Contains(term))
+            .Distinct(StringComparer.Ordinal);
+    }
+
+    private static string NormalizeForSearch(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var chars = value
+            .ToLowerInvariant()
+            .Select(ch => char.IsLetterOrDigit(ch) ? ch : ' ')
+            .ToArray();
+
+        return string.Join(' ', new string(chars)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
+
+    private static bool ShouldUseYouTubeMusicForPodcastCandidate(YouTubeSearchCandidate candidate)
+    {
+        var haystack = $"{candidate.Title} {candidate.Metadata} {candidate.AriaLabel}";
+
+        return PodcastHintKeywords.Any(keyword => haystack.Contains(keyword, StringComparison.OrdinalIgnoreCase)) &&
+               !NonPodcastKeywords.Any(keyword => haystack.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? TryConvertToYouTubeMusicUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        if (!string.Equals(uri.Host, "www.youtube.com", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(uri.Host, "youtube.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (!uri.AbsolutePath.StartsWith("/watch", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return $"https://music.youtube.com{uri.PathAndQuery}";
+    }
+
+    private static bool IsYouTubeMusicUrl(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+               string.Equals(uri.Host, "music.youtube.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed record YouTubeSearchCandidate(string Href, string Title, string Metadata, string AriaLabel);
 
     private static string EnsureAutoplay(string url)
     {

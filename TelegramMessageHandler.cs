@@ -659,7 +659,7 @@ internal static class TelegramMessageHandler
             EmojiPalette.Wrap($"🎵 Playing {podcastName} episode {episodeNumber}...", EmojiPalette.Music, profile.UseEmoji),
             cancellationToken);
 
-        // Note: The actual YouTube playback is initiated by WebBrowserService via Process.Start
+        // Note: The actual browser playback is initiated by WebBrowserService via Process.Start
         // We just send feedback to the user
     }
 
