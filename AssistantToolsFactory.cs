@@ -99,6 +99,14 @@ internal static class AssistantToolsFactory
                 "search_web",
                 "Search the web using Bing and return the results. Use this to look up information, find jobs, news, or anything else on the internet."),
             AIFunctionFactory.Create(
+                async (
+                    [Description("Full URL of the page containing the form")] string url,
+                    [Description("JSON object mapping form field name/id to value, e.g. {\"firstName\":\"Carla\",\"lastName\":\"Schmid\"}")] string formFieldsJson,
+                    [Description("When true, attempt to submit the form after filling. Default is false.")] bool submitForm = false) =>
+                    await webBrowserService.FillWebFormAsync(url, formFieldsJson, submitForm),
+                "fill_web_form",
+                "Navigate to a URL and fill in web form fields by their name or id attributes. Provide the fields as a JSON object. Optionally submit the form."),
+            AIFunctionFactory.Create(
                 async () =>
                     await webBrowserService.GetUpworkSessionStatusAsync(),
                 "upwork_session_status",

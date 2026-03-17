@@ -484,6 +484,111 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Navigate to a URL and fill in named form fields, then optionally submit the form.
+    /// <paramref name="formFieldsJson"/> should be a JSON object mapping field name/id to value,
+    /// e.g. {"firstName":"Carla","lastName":"Schmid"}.
+    /// </summary>
+    public async Task<string> FillWebFormAsync(string url, string formFieldsJson, bool submitForm = false, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return "No URL provided.";
+        if (string.IsNullOrWhiteSpace(formFieldsJson))
+            return "No form fields provided.";
+
+        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            url = "https://" + url;
+
+        Dictionary<string, string> fields;
+        try
+        {
+            fields = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(formFieldsJson)
+                     ?? throw new InvalidOperationException("Parsed result was null.");
+        }
+        catch (Exception ex)
+        {
+            return $"Invalid formFieldsJson: {ex.Message}";
+        }
+
+        try
+        {
+            var browser = await GetBrowserAsync(cancellationToken);
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            });
+
+            var page = await context.NewPageAsync();
+            page.SetDefaultTimeout(_timeoutMs);
+
+            try
+            {
+                await page.GotoAsync(url, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = _timeoutMs
+                });
+
+                var filled = new List<string>();
+                var skipped = new List<string>();
+
+                foreach (var (fieldName, value) in fields)
+                {
+                    // Try by name attribute first, then by id
+                    var selector = $"[name='{fieldName}'], #{fieldName}";
+                    var element = page.Locator(selector).First;
+                    try
+                    {
+                        await element.WaitForAsync(new LocatorWaitForOptions { Timeout = 5000 });
+                        var tagName = await element.EvaluateAsync<string>("el => el.tagName.toLowerCase()");
+                        if (tagName == "select")
+                            await element.SelectOptionAsync(value);
+                        else
+                            await element.FillAsync(value);
+                        filled.Add(fieldName);
+                    }
+                    catch
+                    {
+                        skipped.Add(fieldName);
+                    }
+                }
+
+                if (submitForm)
+                {
+                    try
+                    {
+                        await page.Locator("form button[type='submit'], form input[type='submit']").First.ClickAsync();
+                        await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Form fields filled ({string.Join(", ", filled)}) but submit failed: {ex.Message}";
+                    }
+                }
+
+                var summary = $"Filled {filled.Count} field(s): {string.Join(", ", filled)}.";
+                if (skipped.Count > 0)
+                    summary += $" Could not locate {skipped.Count} field(s): {string.Join(", ", skipped)}.";
+                if (submitForm)
+                    summary += " Form submitted.";
+                return summary;
+            }
+            finally
+            {
+                await page.CloseAsync();
+            }
+        }
+        catch (PlaywrightException ex)
+        {
+            return $"Browser form fill failed: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to fill form: {ex.Message}";
+        }
+    }
+
     /// <summary>Search the web using Bing and return the results as readable text.</summary>
     public async Task<string> SearchWebAsync(string query, CancellationToken cancellationToken = default)
     {
