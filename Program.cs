@@ -27,6 +27,9 @@ var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
 
+// Remove duplicate clipboard history entries on startup
+await clipboardHistoryService.RemoveDuplicateEntriesAsync(default);
+
 // Cleanup old clipboard history entries on startup
 await clipboardHistoryService.CleanupOldEntriesAsync(default);
 

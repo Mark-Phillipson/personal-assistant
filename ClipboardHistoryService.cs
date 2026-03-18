@@ -293,6 +293,39 @@ internal sealed class ClipboardHistoryService
         }
     }
 
+    public async Task RemoveDuplicateEntriesAsync(CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_dbPath) || !File.Exists(_dbPath))
+            return;
+
+        try
+        {
+            await InitializeDatabaseAsync(cancellationToken);
+            await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadWriteCreate, cancellationToken);
+
+            const string sql = """
+                DELETE FROM ClipboardHistory
+                WHERE id NOT IN (
+                    SELECT MAX(id)
+                    FROM ClipboardHistory
+                    GROUP BY contentHash
+                )
+                """;
+
+            await using var cmd = new SqliteCommand(sql, conn);
+            var deletedCount = await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            if (deletedCount > 0)
+            {
+                Console.WriteLine($"[clipboard-history] Removed {deletedCount} duplicate entries");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[clipboard-history.error] Failed to remove duplicate entries: {ex.Message}");
+        }
+    }
+
     private async Task InitializeDatabaseAsync(CancellationToken cancellationToken = default)
     {
         if (_initialized || string.IsNullOrWhiteSpace(_dbPath))
@@ -318,6 +351,14 @@ internal sealed class ClipboardHistoryService
 
             await using var cmd = new SqliteCommand(sql, conn);
             await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            const string indexSql = """
+                CREATE INDEX IF NOT EXISTS IX_ClipboardHistory_ContentHash
+                ON ClipboardHistory(contentHash)
+                """;
+
+            await using var indexCmd = new SqliteCommand(indexSql, conn);
+            await indexCmd.ExecuteNonQueryAsync(cancellationToken);
 
             _initialized = true;
         }
@@ -357,6 +398,34 @@ internal sealed class ClipboardHistoryService
         catch
         {
             return null;
+        }
+    }
+
+    private async Task<bool> EntryExistsByHashAsync(string contentHash, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_dbPath) || !File.Exists(_dbPath))
+            return false;
+
+        try
+        {
+            await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadOnly, cancellationToken);
+
+            const string sql = """
+                SELECT 1
+                FROM ClipboardHistory
+                WHERE contentHash = @hash
+                LIMIT 1
+                """;
+
+            await using var cmd = new SqliteCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@hash", contentHash);
+
+            var result = await cmd.ExecuteScalarAsync(cancellationToken);
+            return result != null;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -406,6 +475,12 @@ internal sealed class ClipboardHistoryService
             if (recentHash == contentHash)
             {
                 Console.WriteLine("[clipboard-history.add] Skipped: duplicate of most recent entry");
+                return;
+            }
+
+            if (await EntryExistsByHashAsync(contentHash, cancellationToken))
+            {
+                Console.WriteLine("[clipboard-history.add] Skipped: duplicate already exists in history");
                 return;
             }
 
