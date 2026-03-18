@@ -1,5 +1,7 @@
 using Microsoft.Playwright;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 internal sealed class WebBrowserAssistantService : IAsyncDisposable
 {
@@ -456,7 +458,79 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         }
         catch (Exception ex)
         {
+            try
+            {
+                OpenUrlInDefaultBrowser(fallbackUrl);
+                return podcastMode
+                    ? $"YouTube automation timed out while selecting a video ({ex.Message}). Opened YouTube Music search results instead: {fallbackUrl}"
+                    : $"YouTube automation timed out while selecting a video ({ex.Message}). Opened YouTube search results instead: {fallbackUrl}";
+            }
+            catch
+            {
+                // If fallback open also fails, return the original error.
+            }
+
             return $"Failed to play YouTube result: {ex.Message}";
+        }
+    }
+
+    /// <summary>Play the latest uploaded video from a YouTube channel URL using the public channel feed.</summary>
+    public async Task<string> PlayLatestFromYouTubeChannelAsync(string channelUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(channelUrl))
+        {
+            return "No YouTube channel URL provided.";
+        }
+
+        if (!Uri.TryCreate(channelUrl, UriKind.Absolute, out var parsedChannelUri))
+        {
+            return "Invalid YouTube channel URL.";
+        }
+
+        try
+        {
+            using var httpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(Math.Clamp(_timeoutMs / 1000, 8, 45))
+            };
+
+            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+
+            var channelId = await TryResolveYouTubeChannelIdAsync(httpClient, parsedChannelUri, cancellationToken);
+            if (string.IsNullOrWhiteSpace(channelId))
+            {
+                return await OpenInDefaultBrowserAsync(channelUrl, cancellationToken);
+            }
+
+            var feedUrl = $"https://www.youtube.com/feeds/videos.xml?channel_id={Uri.EscapeDataString(channelId)}";
+            var feedXml = await httpClient.GetStringAsync(feedUrl, cancellationToken);
+
+            var document = XDocument.Parse(feedXml);
+            XNamespace atom = "http://www.w3.org/2005/Atom";
+            XNamespace yt = "http://www.youtube.com/xml/schemas/2015";
+
+            var latestEntry = document.Root?
+                .Elements(atom + "entry")
+                .FirstOrDefault();
+            var latestVideoId = latestEntry?.Element(yt + "videoId")?.Value?.Trim();
+            var latestTitle = latestEntry?.Element(atom + "title")?.Value?.Trim();
+
+            if (string.IsNullOrWhiteSpace(latestVideoId))
+            {
+                return await OpenInDefaultBrowserAsync(channelUrl, cancellationToken);
+            }
+
+            var playbackUrl = EnsureAutoplay($"https://www.youtube.com/watch?v={latestVideoId}");
+            OpenUrlInDefaultBrowser(playbackUrl);
+
+            var safeTitle = string.IsNullOrWhiteSpace(latestTitle) ? "Latest upload" : latestTitle;
+            return $"Playing latest episode from channel '{channelUrl}'.\nTitle: {safeTitle}\nURL: {playbackUrl}";
+        }
+        catch (Exception ex)
+        {
+            // Fall back to opening the channel if feed lookup fails.
+            var openResult = await OpenInDefaultBrowserAsync(channelUrl, cancellationToken);
+            return $"Could not resolve latest channel upload automatically ({ex.Message}). {openResult}";
         }
     }
 
@@ -906,6 +980,29 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         return "https://www.youtube.com/" + href.TrimStart('/');
     }
 
+    private static async Task<string?> TryResolveYouTubeChannelIdAsync(HttpClient httpClient, Uri channelUri, CancellationToken cancellationToken)
+    {
+        if (!channelUri.Host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var path = channelUri.AbsolutePath ?? string.Empty;
+        if (path.StartsWith("/channel/", StringComparison.OrdinalIgnoreCase))
+        {
+            return path.Split('/', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
+        }
+
+        var html = await httpClient.GetStringAsync(channelUri, cancellationToken);
+        var channelIdMatch = Regex.Match(html, "\"channelId\":\"(?<id>[^\"]+)\"", RegexOptions.IgnoreCase);
+        if (channelIdMatch.Success)
+        {
+            return channelIdMatch.Groups["id"].Value;
+        }
+
+        return null;
+    }
+
     private static string BuildPodcastSearchQuery(string query)
     {
         return $"\"{query.Trim()}\" podcast latest episode -remix -song -lyrics -playlist -karaoke";
@@ -918,7 +1015,15 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
             return null;
         }
 
-        var usableCandidates = candidates.Where(candidate => !string.IsNullOrWhiteSpace(candidate.Href)).ToList();
+        var usableCandidates = candidates
+            .Where(static candidate => candidate is not null && !string.IsNullOrWhiteSpace(candidate.Href))
+            .Select(static candidate => new YouTubeSearchCandidate(
+                candidate.Href ?? string.Empty,
+                candidate.Title ?? string.Empty,
+                candidate.Metadata ?? string.Empty,
+                candidate.AriaLabel ?? string.Empty))
+            .ToList();
+
         if (usableCandidates.Count == 0)
         {
             return null;
@@ -941,7 +1046,10 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
 
     private static int ScorePodcastCandidate(YouTubeSearchCandidate candidate, string query)
     {
-        var haystack = $"{candidate.Title} {candidate.Metadata} {candidate.AriaLabel}";
+        var title = candidate.Title ?? string.Empty;
+        var metadata = candidate.Metadata ?? string.Empty;
+        var ariaLabel = candidate.AriaLabel ?? string.Empty;
+        var haystack = $"{title} {metadata} {ariaLabel}";
         var normalizedHaystack = NormalizeForSearch(haystack);
         var normalizedQuery = NormalizeForSearch(query);
         var score = 0;
@@ -975,12 +1083,12 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
             }
         }
 
-        if (candidate.AriaLabel.Contains("hour", StringComparison.OrdinalIgnoreCase))
+        if (ariaLabel.Contains("hour", StringComparison.OrdinalIgnoreCase))
         {
             score += 12;
         }
 
-        if (candidate.AriaLabel.Contains("minute", StringComparison.OrdinalIgnoreCase))
+        if (ariaLabel.Contains("minute", StringComparison.OrdinalIgnoreCase))
         {
             score += 6;
         }
@@ -1014,7 +1122,10 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
 
     private static bool ShouldUseYouTubeMusicForPodcastCandidate(YouTubeSearchCandidate candidate)
     {
-        var haystack = $"{candidate.Title} {candidate.Metadata} {candidate.AriaLabel}";
+        var title = candidate.Title ?? string.Empty;
+        var metadata = candidate.Metadata ?? string.Empty;
+        var ariaLabel = candidate.AriaLabel ?? string.Empty;
+        var haystack = $"{title} {metadata} {ariaLabel}";
 
         return PodcastHintKeywords.Any(keyword => haystack.Contains(keyword, StringComparison.OrdinalIgnoreCase)) &&
                !NonPodcastKeywords.Any(keyword => haystack.Contains(keyword, StringComparison.OrdinalIgnoreCase));

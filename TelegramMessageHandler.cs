@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
 
@@ -20,6 +21,7 @@ internal static class TelegramMessageHandler
         GoogleCalendarAssistantService calendarService,
         NaturalCommandsAssistantService naturalCommandsService,
         ClipboardAssistantService clipboardService,
+        WebBrowserAssistantService webBrowserService,
         PodcastSubscriptionsService podcastSubscriptionsService,
         ClipboardHistoryService clipboardHistoryService,
         CancellationToken cancellationToken)
@@ -191,6 +193,7 @@ internal static class TelegramMessageHandler
                         text,
                         telegram,
                         podcastSubscriptionsService,
+                        webBrowserService,
                         profile,
                         cancellationToken);
                     return;
@@ -257,6 +260,18 @@ internal static class TelegramMessageHandler
         }
 
         if (string.IsNullOrWhiteSpace(text) && storedAttachment is null)
+        {
+            return;
+        }
+
+        if (storedAttachment is null && await TryHandleNaturalPodcastPlayAsync(
+                chatId,
+                text,
+                telegram,
+                podcastSubscriptionsService,
+                webBrowserService,
+                profile,
+                cancellationToken))
         {
             return;
         }
@@ -615,6 +630,7 @@ internal static class TelegramMessageHandler
         string text,
         TelegramApiClient telegram,
         PodcastSubscriptionsService podcastSubscriptionsService,
+        WebBrowserAssistantService webBrowserService,
         PersonalityProfile profile,
         CancellationToken cancellationToken)
     {
@@ -663,8 +679,16 @@ internal static class TelegramMessageHandler
             EmojiPalette.Wrap($"🎵 Playing {podcastName} episode {episodeNumber}...", EmojiPalette.Music, profile.UseEmoji),
             cancellationToken);
 
-        // Note: The actual browser playback is initiated by WebBrowserService via Process.Start
-        // We just send feedback to the user
+        var playbackResult = await PlayPodcastEpisodeAsync(
+            podcastName,
+            episodeNumber,
+            podcastSubscriptionsService,
+            webBrowserService);
+
+        await telegram.SendMessageInChunksAsync(
+            chatId,
+            EmojiPalette.Wrap(playbackResult, EmojiPalette.Music, profile.UseEmoji),
+            cancellationToken);
     }
 
     private static async Task HandleAddPodcastCommandAsync(
@@ -675,7 +699,7 @@ internal static class TelegramMessageHandler
         PersonalityProfile profile,
         CancellationToken cancellationToken)
     {
-        var parts = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         if (parts.Length < 3)
         {
@@ -686,20 +710,8 @@ internal static class TelegramMessageHandler
             return;
         }
 
-        var remainder = parts[1];
-        var subParts = remainder.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        if (subParts.Length < 2)
-        {
-            await telegram.SendMessageInChunksAsync(
-                chatId,
-                EmojiPalette.Wrap("Usage: /add-podcast <podcast-name> <search-term>", EmojiPalette.Music, profile.UseEmoji),
-                cancellationToken);
-            return;
-        }
-
-        var podcastName = subParts[0];
-        var searchTerm = subParts[1];
+        var podcastName = parts[1];
+        var searchTerm = string.Join(' ', parts.Skip(2));
 
         await podcastSubscriptionsService.AddSubscriptionAsync(podcastName, searchTerm);
 
@@ -709,9 +721,115 @@ internal static class TelegramMessageHandler
             cancellationToken);
     }
 
+    private static async Task<string> PlayPodcastEpisodeAsync(
+        string podcastName,
+        int episodeNumber,
+        PodcastSubscriptionsService podcastSubscriptionsService,
+        WebBrowserAssistantService webBrowserService)
+    {
+        if (episodeNumber < 1 || episodeNumber > 100)
+        {
+            return "Episode number must be between 1 and 100.";
+        }
+
+        var subscription = podcastSubscriptionsService.ResolveSubscription(podcastName);
+        if (subscription == null)
+        {
+            var availableList = podcastSubscriptionsService.ListAllSubscriptions();
+            return $"Podcast '{podcastName}' not found.\n\n{availableList}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(subscription.DirectUrl))
+        {
+            if (episodeNumber == 1 && IsLikelyYouTubeChannelUrl(subscription.DirectUrl))
+            {
+                return await webBrowserService.PlayLatestFromYouTubeChannelAsync(subscription.DirectUrl);
+            }
+
+            return await webBrowserService.OpenInDefaultBrowserAsync(subscription.DirectUrl);
+        }
+
+        var searchQuery = episodeNumber == 1
+            ? $"{subscription.Name} {subscription.SearchTerm}"
+            : $"{subscription.Name} {subscription.SearchTerm} episode {episodeNumber}";
+
+        return await webBrowserService.PlayTopYouTubeResultAsync(searchQuery, podcastMode: true);
+    }
+
+    private static bool IsLikelyYouTubeChannelUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        if (!uri.Host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var path = uri.AbsolutePath ?? string.Empty;
+        return path.StartsWith("/@", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("/channel/", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("/c/", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string FormatCommandLine(string command, string description, string emoji, bool useEmoji)
     {
         return $"{EmojiPrefix(emoji, useEmoji)}{command} - {description}";
+    }
+
+    private static async Task<bool> TryHandleNaturalPodcastPlayAsync(
+        long chatId,
+        string text,
+        TelegramApiClient telegram,
+        PodcastSubscriptionsService podcastSubscriptionsService,
+        WebBrowserAssistantService webBrowserService,
+        PersonalityProfile profile,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var lower = text.ToLowerInvariant();
+        if (!lower.Contains("play", StringComparison.Ordinal) ||
+            !lower.Contains("podcast", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var requestedEpisode = 1;
+        var episodeMatch = Regex.Match(text, @"\bepisode\s+(\d{1,3})\b", RegexOptions.IgnoreCase);
+        if (episodeMatch.Success && int.TryParse(episodeMatch.Groups[1].Value, out var parsedEpisode))
+        {
+            requestedEpisode = parsedEpisode;
+        }
+
+        var subscription = podcastSubscriptionsService.ResolveSubscription(text);
+        if (subscription is null)
+        {
+            return false;
+        }
+
+        await telegram.SendMessageInChunksAsync(
+            chatId,
+            EmojiPalette.Wrap($"🎵 Playing {subscription.Name} episode {requestedEpisode}...", EmojiPalette.Music, profile.UseEmoji),
+            cancellationToken);
+
+        var playbackResult = await PlayPodcastEpisodeAsync(
+            subscription.Name,
+            requestedEpisode,
+            podcastSubscriptionsService,
+            webBrowserService);
+
+        await telegram.SendMessageInChunksAsync(
+            chatId,
+            EmojiPalette.Wrap(playbackResult, EmojiPalette.Music, profile.UseEmoji),
+            cancellationToken);
+
+        return true;
     }
 
     private static string EmojiPrefix(string emoji, bool useEmoji)

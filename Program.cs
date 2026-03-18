@@ -75,6 +75,7 @@ try
                 calendarService,
                 naturalCommandsService,
                 clipboardService,
+                webBrowserService,
                 voiceAdminService,
                 voiceAdminSearchService,
                 talonUserDirectoryService,
@@ -121,6 +122,7 @@ static async Task RunTelegramAsync(
     GoogleCalendarAssistantService calendarService,
     NaturalCommandsAssistantService naturalCommandsService,
     ClipboardAssistantService clipboardService,
+    WebBrowserAssistantService webBrowserService,
     VoiceAdminService voiceAdminService,
     VoiceAdminSearchService voiceAdminSearchService,
     TalonUserDirectoryService talonUserDirectoryService,
@@ -207,6 +209,7 @@ static async Task RunTelegramAsync(
                         calendarService,
                         naturalCommandsService,
                         clipboardService,
+                        webBrowserService,
                         podcastSubscriptionsService,
                         clipboardHistoryService,
                         cancellationToken);

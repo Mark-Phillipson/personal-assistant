@@ -286,7 +286,7 @@ internal static class AssistantToolsFactory
             return "Episode number must be between 1 and 100.";
         }
 
-        var subscription = podcastSubscriptionsService.TryGetSubscription(podcastName);
+        var subscription = podcastSubscriptionsService.ResolveSubscription(podcastName);
         if (subscription == null)
         {
             var availableList = podcastSubscriptionsService.ListAllSubscriptions();
@@ -295,6 +295,11 @@ internal static class AssistantToolsFactory
 
         if (!string.IsNullOrWhiteSpace(subscription.DirectUrl))
         {
+            if (episodeNumber == 1 && IsLikelyYouTubeChannelUrl(subscription.DirectUrl))
+            {
+                return await webBrowserService.PlayLatestFromYouTubeChannelAsync(subscription.DirectUrl);
+            }
+
             return await webBrowserService.OpenInDefaultBrowserAsync(subscription.DirectUrl);
         }
 
@@ -303,5 +308,23 @@ internal static class AssistantToolsFactory
             : $"{subscription.Name} {subscription.SearchTerm} episode {episodeNumber}";
 
         return await webBrowserService.PlayTopYouTubeResultAsync(searchQuery, podcastMode: true);
+    }
+
+    private static bool IsLikelyYouTubeChannelUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        if (!uri.Host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var path = uri.AbsolutePath ?? string.Empty;
+        return path.StartsWith("/@", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("/channel/", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("/c/", StringComparison.OrdinalIgnoreCase);
     }
 }
