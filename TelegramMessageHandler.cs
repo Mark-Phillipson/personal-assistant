@@ -92,10 +92,14 @@ internal static class TelegramMessageHandler
                     }
                     else
                     {
-                        var eventList = string.Join("\n\n", events.Select(ev => $"{ev.Summary}\nStart: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"));
+                        var eventItems = events.Select(ev => (
+                            label: TelegramRichTextFormatter.Bold(ev.Summary ?? "Event"),
+                            secondary: $"Start: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"
+                        )).ToList();
+                        var eventList = TelegramRichTextFormatter.LabeledList("📅 Upcoming Events", eventItems);
                         await telegram.SendMessageInChunksAsync(
                             chatId,
-                            EmojiPalette.Wrap(eventList, EmojiPalette.Calendar, profile.UseEmoji),
+                            eventList,
                             cancellationToken);
                     }
 
@@ -123,7 +127,7 @@ internal static class TelegramMessageHandler
                         EmojiPalette.Wrap("Opening BBC Weather for Maidstone, Kent...", EmojiPalette.Search, profile.UseEmoji),
                         cancellationToken);
 
-                    var weatherUrl = "https://www.bbc.co.uk/weather/2643179";
+                    var weatherUrl = "https://www.bbc.co.uk/weather/ME15";
                     try
                     {
                         _ = Process.Start(new ProcessStartInfo

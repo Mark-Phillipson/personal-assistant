@@ -91,12 +91,13 @@ internal sealed class TelegramApiClient : IDisposable
         }
     }
 
-    private async Task SendMessageAsync(long chatId, string text, CancellationToken cancellationToken)
+    private async Task SendMessageAsync(long chatId, string text, CancellationToken cancellationToken, string parseMode = "HTML")
     {
         var payload = new List<KeyValuePair<string, string>>
         {
             new("chat_id", chatId.ToString()),
             new("text", text),
+            new("parse_mode", parseMode),
             new("disable_web_page_preview", "true")
         };
 

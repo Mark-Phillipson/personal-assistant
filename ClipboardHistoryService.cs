@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 using System.Runtime.InteropServices;
 
@@ -8,6 +9,9 @@ internal sealed class ClipboardHistoryService
     private readonly string? _dbPath;
     private readonly int _maxResults;
     private readonly int _retentionDays;
+    private readonly Channel<ClipboardWriteRequest> _writeQueue;
+    private readonly CancellationTokenSource _writeProcessorCancellation;
+    private readonly Task _writeProcessorTask;
     private bool _initialized = false;
     private ClipboardMonitor? _monitor;
 
@@ -16,6 +20,13 @@ internal sealed class ClipboardHistoryService
         _dbPath = dbPath;
         _maxResults = maxResults;
         _retentionDays = retentionDays;
+        _writeQueue = Channel.CreateUnbounded<ClipboardWriteRequest>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+        _writeProcessorCancellation = new CancellationTokenSource();
+        _writeProcessorTask = Task.Run(ProcessWriteQueueAsync);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_dbPath) && File.Exists(_dbPath);
@@ -67,40 +78,19 @@ internal sealed class ClipboardHistoryService
 
         try
         {
-            await InitializeDatabaseAsync(cancellationToken);
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var writeRequest = new ClipboardWriteRequest(content, completion);
 
-            var contentHash = ComputeContentHash(content);
-            var recentHash = await GetRecentEntryHashAsync(cancellationToken);
-
-            // Skip if same as most recent entry (deduplication)
-            if (recentHash == contentHash)
-            {
-                Console.WriteLine("[clipboard-history.add] Skipped: duplicate of most recent entry");
-                return;
-            }
-
-            var timestamp = DateTime.UtcNow.ToString("O");  // ISO 8601 format
-            var connectionString = new SqliteConnectionStringBuilder
-            {
-                DataSource = _dbPath,
-                Mode = SqliteOpenMode.ReadWriteCreate
-            }.ToString();
-
-            await using var conn = new SqliteConnection(connectionString);
-            await conn.OpenAsync(cancellationToken);
-
-            const string sql = """
-                INSERT INTO ClipboardHistory (content, contentHash, timestamp)
-                VALUES (@content, @hash, @timestamp)
-                """;
-
-            await using var cmd = new SqliteCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@content", content);
-            cmd.Parameters.AddWithValue("@hash", contentHash);
-            cmd.Parameters.AddWithValue("@timestamp", timestamp);
-
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
-            Console.WriteLine($"[clipboard-history.add] Entry added successfully (hash={contentHash[..8]})");
+            await _writeQueue.Writer.WriteAsync(writeRequest, cancellationToken);
+            await completion.Task.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (ChannelClosedException)
+        {
+            Console.Error.WriteLine("[clipboard-history.error] Write queue is closed; clipboard entry was not recorded.");
         }
         catch (Exception ex)
         {
@@ -121,14 +111,7 @@ internal sealed class ClipboardHistoryService
             if (!File.Exists(_dbPath))
                 return "Clipboard history is empty.";
 
-            var connectionString = new SqliteConnectionStringBuilder
-            {
-                DataSource = _dbPath,
-                Mode = SqliteOpenMode.ReadOnly
-            }.ToString();
-
-            await using var conn = new SqliteConnection(connectionString);
-            await conn.OpenAsync(cancellationToken);
+            await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadOnly, cancellationToken);
 
             const string sql = """
                 SELECT id, content, timestamp
@@ -187,14 +170,7 @@ internal sealed class ClipboardHistoryService
             if (!File.Exists(_dbPath))
                 return "Clipboard history is empty. No entries for today.";
 
-            var connectionString = new SqliteConnectionStringBuilder
-            {
-                DataSource = _dbPath,
-                Mode = SqliteOpenMode.ReadOnly
-            }.ToString();
-
-            await using var conn = new SqliteConnection(connectionString);
-            await conn.OpenAsync(cancellationToken);
+            await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadOnly, cancellationToken);
 
             // Get entries from today (local time)
             var todayStart = DateTime.Now.Date.ToUniversalTime().ToString("O");
@@ -267,6 +243,23 @@ internal sealed class ClipboardHistoryService
             _monitor.Stop();
             _monitor = null;
         }
+
+        _writeQueue.Writer.TryComplete();
+
+        if (!_writeProcessorTask.Wait(TimeSpan.FromSeconds(5)))
+        {
+            _writeProcessorCancellation.Cancel();
+            try
+            {
+                _writeProcessorTask.Wait(TimeSpan.FromSeconds(2));
+            }
+            catch (AggregateException ex)
+            {
+                Console.Error.WriteLine($"[clipboard-history.error] Failed to stop write processor cleanly: {ex.Flatten().InnerException?.Message ?? ex.Message}");
+            }
+        }
+
+        _writeProcessorCancellation.Dispose();
     }
 
     public async Task CleanupOldEntriesAsync(CancellationToken cancellationToken = default)
@@ -276,14 +269,7 @@ internal sealed class ClipboardHistoryService
 
         try
         {
-            var connectionString = new SqliteConnectionStringBuilder
-            {
-                DataSource = _dbPath,
-                Mode = SqliteOpenMode.ReadWriteCreate
-            }.ToString();
-
-            await using var conn = new SqliteConnection(connectionString);
-            await conn.OpenAsync(cancellationToken);
+            await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadWriteCreate, cancellationToken);
 
             var cutoffDate = DateTime.UtcNow.AddDays(-_retentionDays).ToString("O");
 
@@ -314,14 +300,12 @@ internal sealed class ClipboardHistoryService
 
         try
         {
-            var connectionString = new SqliteConnectionStringBuilder
-            {
-                DataSource = _dbPath,
-                Mode = SqliteOpenMode.ReadWriteCreate
-            }.ToString();
+            await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadWriteCreate, cancellationToken);
 
-            await using var conn = new SqliteConnection(connectionString);
-            await conn.OpenAsync(cancellationToken);
+            await using (var pragmaCommand = new SqliteCommand("PRAGMA journal_mode = WAL;", conn))
+            {
+                await pragmaCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
 
             const string sql = """
                 CREATE TABLE IF NOT EXISTS ClipboardHistory (
@@ -357,14 +341,7 @@ internal sealed class ClipboardHistoryService
 
         try
         {
-            var connectionString = new SqliteConnectionStringBuilder
-            {
-                DataSource = _dbPath,
-                Mode = SqliteOpenMode.ReadOnly
-            }.ToString();
-
-            await using var conn = new SqliteConnection(connectionString);
-            await conn.OpenAsync(cancellationToken);
+            await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadOnly, cancellationToken);
 
             const string sql = """
                 SELECT contentHash
@@ -382,6 +359,113 @@ internal sealed class ClipboardHistoryService
             return null;
         }
     }
+
+    private async Task ProcessWriteQueueAsync()
+    {
+        try
+        {
+            await foreach (var request in _writeQueue.Reader.ReadAllAsync(_writeProcessorCancellation.Token))
+            {
+                try
+                {
+                    await PersistEntryCoreAsync(request.Content, _writeProcessorCancellation.Token);
+                    request.Completion.TrySetResult();
+                }
+                catch (OperationCanceledException) when (_writeProcessorCancellation.IsCancellationRequested)
+                {
+                    request.Completion.TrySetCanceled(_writeProcessorCancellation.Token);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[clipboard-history.error] Write processor failed: {ex.Message}");
+                    request.Completion.TrySetException(ex);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (_writeProcessorCancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            while (_writeQueue.Reader.TryRead(out var pendingRequest))
+            {
+                pendingRequest.Completion.TrySetCanceled(_writeProcessorCancellation.Token);
+            }
+        }
+    }
+
+    private async Task PersistEntryCoreAsync(string content, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await InitializeDatabaseAsync(cancellationToken);
+
+            var contentHash = ComputeContentHash(content);
+            var recentHash = await GetRecentEntryHashAsync(cancellationToken);
+
+            if (recentHash == contentHash)
+            {
+                Console.WriteLine("[clipboard-history.add] Skipped: duplicate of most recent entry");
+                return;
+            }
+
+            var timestamp = DateTime.UtcNow.ToString("O");
+
+            await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadWriteCreate, cancellationToken);
+
+            const string sql = """
+                INSERT INTO ClipboardHistory (content, contentHash, timestamp)
+                VALUES (@content, @hash, @timestamp)
+                """;
+
+            await using var cmd = new SqliteCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@content", content);
+            cmd.Parameters.AddWithValue("@hash", contentHash);
+            cmd.Parameters.AddWithValue("@timestamp", timestamp);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+            Console.WriteLine($"[clipboard-history.add] Entry added successfully (hash={contentHash[..8]})");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[clipboard-history.error] Failed to persist clipboard entry: {ex.Message}");
+        }
+    }
+
+    private async Task<SqliteConnection> OpenConnectionAsync(SqliteOpenMode mode, CancellationToken cancellationToken)
+    {
+        var connection = new SqliteConnection(BuildConnectionString(mode));
+
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+
+            await using var pragmaCommand = new SqliteCommand("PRAGMA busy_timeout = 5000;", connection);
+            await pragmaCommand.ExecuteNonQueryAsync(cancellationToken);
+
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    private string BuildConnectionString(SqliteOpenMode mode)
+    {
+        return new SqliteConnectionStringBuilder
+        {
+            DataSource = _dbPath,
+            Mode = mode
+        }.ToString();
+    }
+
+    private sealed record ClipboardWriteRequest(string Content, TaskCompletionSource Completion);
 }
 
 /// <summary>

@@ -36,15 +36,11 @@ internal sealed class PodcastSubscriptionsService
             return "No podcasts subscribed. Use `/add-podcast <name> <search-term>` to add one.";
         }
 
-        var lines = new List<string> { "🎵 **Subscribed Podcasts:**" };
-        foreach (var podcast in _subscriptions.Subscriptions)
-        {
-            lines.Add($"• {podcast.Name}");
-        }
-        lines.Add("");
-        lines.Add("Use `/play-podcast <name> [N]` to play the latest (or Nth latest) episode.");
-
-        return string.Join("\n", lines);
+        var podcastNames = _subscriptions.Subscriptions.Select(p => p.Name);
+        var formatted = TelegramRichTextFormatter.List("🎵 Subscribed Podcasts", podcastNames);
+        formatted += "\n\nUse <code>/play-podcast &lt;name&gt; [N]</code> to play the latest (or Nth latest) episode.";
+        
+        return formatted;
     }
 
     public PodcastSubscription? TryGetSubscription(string name)
