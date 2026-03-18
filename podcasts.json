@@ -2,11 +2,13 @@
   "subscriptions": [
     {
       "name": "Ukraine the Latest from the Telegraph",
-      "searchTerm": "Ukraine the latest telegraph"
+      "searchTerm": "Ukraine the latest telegraph",
+      "directUrl": "https://www.youtube.com/@UkraineTheLatest"
     },
     {
       "name": "Iran the Latest from the Telegraph",
-      "searchTerm": "Iran the latest telegraph"
+      "searchTerm": "Iran the latest telegraph",
+      "directUrl": "https://www.youtube.com/playlist?list=PLJnf_DDTfIVAif-vifC6F2aoPB8GIw6dk"
     },
     {
       "name": "dotnet rocks",
