@@ -263,15 +263,15 @@ internal static class AssistantToolsFactory
                 async (
                     [Description("Keyword to search for in clipboard history")] string keyword,
                     [Description("Maximum number of results to return (1-50)")] int? maxResults = null,
-                    [Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                    [Description("When true, return Telegram-compatible preformatted table text (<pre>). Telegram does not support true <table> tags.") ] bool htmlFormat = false) =>
                     await clipboardHistoryService.SearchAsync(keyword, CancellationToken.None, htmlFormat),
                 "search_clipboard_history",
-                "Search the clipboard history for entries matching a keyword. Returns entries with timestamps and truncated content snippets from the last 21 days. Set htmlFormat=true for Telegram table-style output."),
+                "Search the clipboard history for entries matching a keyword. Returns entries with timestamps and truncated content snippets from the last 21 days. Set htmlFormat=true for Telegram preformatted table-style output."),
             AIFunctionFactory.Create(
-                async ([Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                async ([Description("When true, return Telegram-compatible preformatted table text (<pre>). Telegram does not support true <table> tags.") ] bool htmlFormat = false) =>
                     await clipboardHistoryService.GetTodayEntriesAsync(CancellationToken.None, htmlFormat),
                 "get_clipboard_history_today",
-                "Get all clipboard history entries recorded today. Shows timestamps and content snippets. Includes both assistant-copied and manually-monitored entries. Set htmlFormat=true for Telegram table-style output.")
+                "Get all clipboard history entries recorded today. Shows timestamps and content snippets. Includes both assistant-copied and manually-monitored entries. Set htmlFormat=true for Telegram preformatted table-style output.")
         ];
     }
 
