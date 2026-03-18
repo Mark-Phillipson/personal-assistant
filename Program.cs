@@ -9,6 +9,7 @@ var environmentPersonality = PersonalityProfile.FromEnvironment();
 var defaultPersonality = PersonalityProfile.LoadFromEnvironmentOrJson(environmentPersonality);
 
 var assistantTransport = ResolveAssistantTransport(args);
+var cliPrompt = ExtractCliPrompt(args);
 
 var gmailService = GmailAssistantService.FromEnvironment();
 var calendarService = GoogleCalendarAssistantService.FromEnvironment();
@@ -47,6 +48,15 @@ try
 {
     switch (assistantTransport)
     {
+        case "cli":
+            await RunCliAsync(
+                copilotClient,
+                assistantTools,
+                defaultPersonality,
+                cliPrompt,
+                appCancellation.Token);
+            break;
+
         case "terminal":
             await RunTerminalAsync(
                 copilotClient,
@@ -94,6 +104,11 @@ finally
 
 static string ResolveAssistantTransport(string[] args)
 {
+    if (args.Any(arg => string.Equals(arg, "--cli", StringComparison.OrdinalIgnoreCase)))
+    {
+        return "cli";
+    }
+
     if (args.Any(arg => string.Equals(arg, "--terminal", StringComparison.OrdinalIgnoreCase)))
     {
         return "terminal";
@@ -105,12 +120,80 @@ static string ResolveAssistantTransport(string[] args)
     }
 
     var configuredTransport = Environment.GetEnvironmentVariable("ASSISTANT_TRANSPORT")?.Trim();
+    if (string.Equals(configuredTransport, "cli", StringComparison.OrdinalIgnoreCase))
+    {
+        return "cli";
+    }
+
     if (string.Equals(configuredTransport, "terminal", StringComparison.OrdinalIgnoreCase))
     {
         return "terminal";
     }
 
     return "telegram";
+}
+
+static string ExtractCliPrompt(string[] args)
+{
+    var cliIndex = Array.FindIndex(args, arg => string.Equals(arg, "--cli", StringComparison.OrdinalIgnoreCase));
+    if (cliIndex < 0)
+    {
+        return string.Empty;
+    }
+
+    if (cliIndex >= args.Length - 1)
+    {
+        return string.Empty;
+    }
+
+    return string.Join(' ', args[(cliIndex + 1)..]).Trim();
+}
+
+static async Task RunCliAsync(
+    CopilotClient copilotClient,
+    ICollection<AIFunction> assistantTools,
+    PersonalityProfile defaultPersonality,
+    string prompt,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(prompt))
+    {
+        Console.Error.WriteLine("Usage: personal-assistant --cli \"<prompt>\"");
+        Console.Error.WriteLine("Example: personal-assistant --cli \"bob please play Ukraine the latest podcast\"");
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
+
+    try
+    {
+        var assistantReply = await session.SendAndWaitAsync(new MessageOptions { Prompt = prompt }, null, cancellationToken);
+        var content = assistantReply?.Data.Content?.Trim();
+
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            Console.WriteLine("I could not generate a response. Please try again.");
+            Environment.ExitCode = 1;
+            return;
+        }
+
+        Console.WriteLine(content);
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+        Console.Error.WriteLine("CLI request canceled.");
+        Environment.ExitCode = 130;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[copilot.cli.error] {ex.Message}");
+        Environment.ExitCode = 1;
+    }
+    finally
+    {
+        await session.DisposeAsync();
+    }
 }
 
 static async Task RunTelegramAsync(
