@@ -50,17 +50,17 @@ internal sealed class VoiceAdminSearchService
         return $"Voice Admin database is configured and accessible at: {_dbPath}";
     }
 
-    public Task<string> SearchTalonCommandsAsync(string keyword, int? maxResults = null)
-        => SearchTableAsync("Talon Commands", keyword, maxResults);
+    public Task<string> SearchTalonCommandsAsync(string keyword, int? maxResults = null, bool asHtmlTable = false)
+        => SearchTableAsync("Talon Commands", keyword, maxResults, asHtmlTable);
 
-    public Task<string> SearchCustomInTeleSenseAsync(string keyword, int? maxResults = null)
-        => SearchTableAsync("Custom in Tele Sense", keyword, maxResults);
+    public Task<string> SearchCustomInTeleSenseAsync(string keyword, int? maxResults = null, bool asHtmlTable = false)
+        => SearchTableAsync("Custom in Tele Sense", keyword, maxResults, asHtmlTable);
 
-    public Task<string> SearchValuesAsync(string keyword, int? maxResults = null)
-        => SearchTableAsync("Values", keyword, maxResults);
+    public Task<string> SearchValuesAsync(string keyword, int? maxResults = null, bool asHtmlTable = false)
+        => SearchTableAsync("Values", keyword, maxResults, asHtmlTable);
 
-    public Task<string> SearchTransactionsAsync(string keyword, int? maxResults = null)
-        => SearchTableAsync("Transactions", keyword, maxResults);
+    public Task<string> SearchTransactionsAsync(string keyword, int? maxResults = null, bool asHtmlTable = false)
+        => SearchTableAsync("Transactions", keyword, maxResults, asHtmlTable);
 
     public async Task<string> GetTalonCommandDetailsByRowIdAsync(long rowId)
     {
@@ -107,7 +107,7 @@ internal sealed class VoiceAdminSearchService
         }
     }
 
-    public async Task<string> SearchTableAsync(string requestedTable, string keyword, int? maxResults = null)
+    public async Task<string> SearchTableAsync(string requestedTable, string keyword, int? maxResults = null, bool asHtmlTable = false)
     {
         if (!IsConfigured)
             return GetSetupStatusText();
@@ -147,6 +147,7 @@ internal sealed class VoiceAdminSearchService
 
             var results = new StringBuilder();
             var count = 0;
+            var tableRows = new List<(long rowId, string preview)>();
 
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -154,11 +155,15 @@ internal sealed class VoiceAdminSearchService
                 count++;
                 var rowId = reader.GetInt64(0);
                 var rowPreview = BuildRowPreview(reader, columns);
+                tableRows.Add((rowId, rowPreview));
                 results.AppendLine($"[RowId:{rowId}] {rowPreview}");
             }
 
             if (count == 0)
                 return $"No rows found in '{resolvedTable}' matching '{keyword}'.";
+
+            if (asHtmlTable)
+                return BuildHtmlSearchTableResult(resolvedTable, keyword, tableRows);
 
             return $"Found {count} row(s) in '{resolvedTable}' matching '{keyword}':\n{results}";
         }
@@ -458,6 +463,67 @@ internal sealed class VoiceAdminSearchService
 
     private static string QuoteIdentifier(string identifier)
         => $"\"{identifier.Replace("\"", "\"\"")}\"";
+
+    private static string BuildHtmlSearchTableResult(
+        string tableName,
+        string keyword,
+        IReadOnlyList<(long rowId, string preview)> rows)
+    {
+        var rowIdHeader = "RowId";
+        var previewHeader = "Preview";
+        var rowIdWidth = Math.Max(rowIdHeader.Length, rows.Select(row => row.rowId.ToString().Length).DefaultIfEmpty(rowIdHeader.Length).Max());
+        var previewWidth = 88;
+
+        var builder = new StringBuilder();
+        builder.Append("<b>")
+            .Append(EscapeHtml($"Found {rows.Count} row(s) in '{tableName}' matching '{keyword}'"))
+            .AppendLine("</b>")
+            .AppendLine("<pre>")
+            .AppendLine($"{rowIdHeader.PadRight(rowIdWidth)} | {previewHeader}")
+            .AppendLine($"{new string('-', rowIdWidth)}-+-{new string('-', previewWidth)}");
+
+        foreach (var (rowId, preview) in rows)
+        {
+            builder.Append(rowId.ToString().PadRight(rowIdWidth))
+                .Append(" | ")
+                .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(preview), previewWidth)));
+        }
+
+        builder.Append("</pre>");
+        return builder.ToString();
+    }
+
+    private static string SanitizeTableCell(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return value
+            .Replace("\r", string.Empty)
+            .Replace("\n", " ")
+            .Trim();
+    }
+
+    private static string TrimToWidth(string value, int width)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= width)
+            return value;
+
+        return value[..(width - 3)] + "...";
+    }
+
+    private static string EscapeHtml(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value ?? string.Empty;
+
+        return value
+            .Replace("&", "&amp;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;")
+            .Replace("\"", "&quot;")
+            .Replace("'", "&#39;");
+    }
 
     private string BuildObjectNotFoundMessage(string requestedTable, IReadOnlyList<string> availableObjects)
     {

@@ -40,7 +40,7 @@ internal sealed class VoiceAdminService
     }
 
     /// <summary>Search launcher entries by keyword across Name, CommandLine, and CategoryName.</summary>
-    public async Task<string> SearchLauncherEntriesAsync(string keyword, int? maxResults = null)
+    public async Task<string> SearchLauncherEntriesAsync(string keyword, int? maxResults = null, bool asHtmlTable = false)
     {
         if (!IsConfigured)
             return GetSetupStatusText();
@@ -77,6 +77,7 @@ internal sealed class VoiceAdminService
 
             var results = new StringBuilder();
             var count = 0;
+            var tableRows = new List<(int id, string name, string category, string command)>();
 
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -89,11 +90,15 @@ internal sealed class VoiceAdminService
                 var categoryName = reader.IsDBNull(4) ? "Uncategorised" : reader.GetString(4);
 
                 var argDisplay = string.IsNullOrWhiteSpace(arguments) ? "" : $" {arguments}";
+                tableRows.Add((id, name, categoryName, $"{commandLine}{argDisplay}"));
                 results.AppendLine($"[ID:{id}] {name} (Category: {categoryName}) -> {commandLine}{argDisplay}");
             }
 
             if (count == 0)
                 return $"No Voice Admin launcher records found matching '{keyword}'.";
+
+            if (asHtmlTable)
+                return BuildHtmlLauncherTable(keyword, tableRows);
 
             return $"Found {count} Voice Admin launcher record(s) matching '{keyword}':\n{results}";
         }
@@ -155,5 +160,72 @@ internal sealed class VoiceAdminService
         {
             return $"Error launching entry {launcherId}: {ex.Message}";
         }
+    }
+
+    private static string BuildHtmlLauncherTable(string keyword, IReadOnlyList<(int id, string name, string category, string command)> rows)
+    {
+        const string idHeader = "ID";
+        const string nameHeader = "Name";
+        const string categoryHeader = "Category";
+        const string commandHeader = "Command";
+
+        var idWidth = Math.Max(idHeader.Length, rows.Select(row => row.id.ToString().Length).DefaultIfEmpty(idHeader.Length).Max());
+        var nameWidth = 28;
+        var categoryWidth = 20;
+        var commandWidth = 52;
+
+        var builder = new StringBuilder();
+        builder.Append("<b>")
+            .Append(EscapeHtml($"Found {rows.Count} Voice Admin launcher record(s) matching '{keyword}'"))
+            .AppendLine("</b>")
+            .AppendLine("<pre>")
+            .AppendLine($"{idHeader.PadRight(idWidth)} | {nameHeader.PadRight(nameWidth)} | {categoryHeader.PadRight(categoryWidth)} | {commandHeader}")
+            .AppendLine($"{new string('-', idWidth)}-+-{new string('-', nameWidth)}-+-{new string('-', categoryWidth)}-+-{new string('-', commandWidth)}");
+
+        foreach (var row in rows)
+        {
+            builder.Append(row.id.ToString().PadRight(idWidth))
+                .Append(" | ")
+                .Append(EscapeHtml(TrimToWidth(SanitizeTableCell(row.name), nameWidth)).PadRight(nameWidth))
+                .Append(" | ")
+                .Append(EscapeHtml(TrimToWidth(SanitizeTableCell(row.category), categoryWidth)).PadRight(categoryWidth))
+                .Append(" | ")
+                .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(row.command), commandWidth)));
+        }
+
+        builder.Append("</pre>");
+        return builder.ToString();
+    }
+
+    private static string SanitizeTableCell(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return value
+            .Replace("\r", string.Empty)
+            .Replace("\n", " ")
+            .Trim();
+    }
+
+    private static string TrimToWidth(string value, int width)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= width)
+            return value;
+
+        return value[..(width - 3)] + "...";
+    }
+
+    private static string EscapeHtml(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value ?? string.Empty;
+
+        return value
+            .Replace("&", "&amp;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;")
+            .Replace("\"", "&quot;")
+            .Replace("'", "&#39;");
     }
 }

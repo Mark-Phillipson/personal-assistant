@@ -57,6 +57,8 @@ internal static class SystemPromptBuilder
             "When the user asks to search Custom in Tele Sense records, call search_custom_in_tele_sense.",
             "When the user asks to search Values records, call search_values_records.",
             "When the user asks to search Transactions records, call search_transactions_records.",
+            "When the user asks for Telegram-friendly table formatting for search/list results, set htmlFormat=true on supported search tools so results are returned as HTML preformatted tables.",
+            "Telegram Bot HTML parse mode does not support <table> tags. Never output <table>/<tr>/<td>; use preformatted table text inside <pre> or tool outputs with htmlFormat=true instead.",
             "When the user asks to copy a value from one of those tables, first search for the row, then call copy_voice_admin_value_to_clipboard with table name, RowId, and column name.",
             "Never perform SQL write operations for Voice Admin data. Only use read-only search and read+clipboard copy tools.",
             "For Talon local files, the default root is C:/Users/MPhil/AppData/Roaming/talon/user unless talon_user_directory_status reports a different configured root.",

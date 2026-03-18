@@ -74,7 +74,7 @@ internal static class AssistantToolsFactory
                 "web_browser_status",
                 "Check whether the web browser (Playwright) integration is available."),
             AIFunctionFactory.Create(
-                async ([Description("Full URL to open in the default browser on the host machine") ] string url) =>
+                async ([Description("Full URL to open in the default browser on the host machine")] string url) =>
                     await webBrowserService.OpenInDefaultBrowserAsync(url),
                 "open_in_default_browser",
                 "Open a URL in the host machine default browser. Use this when the user asks to open a site or app page visually."),
@@ -131,10 +131,11 @@ internal static class AssistantToolsFactory
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search for across Voice Admin launcher Name, CommandLine, and CategoryName")] string keyword,
-                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
-                    await voiceAdminService.SearchLauncherEntriesAsync(keyword, maxResults),
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null,
+                    [Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                    await voiceAdminService.SearchLauncherEntriesAsync(keyword, maxResults, htmlFormat),
                 "search_voice_admin_launchers",
-                "Search Voice Admin launcher records by keyword. Returns matching launcher entries with their ID, name, command line, arguments, and category. Use this before launching so you have the correct launcher ID."),
+                "Search Voice Admin launcher records by keyword. Returns matching launcher entries with their ID, name, command line, arguments, and category. Use this before launching so you have the correct launcher ID. Set htmlFormat=true for Telegram table-style output."),
             AIFunctionFactory.Create(
                 async ([Description("Numeric ID of the launcher to start, obtained from a prior search_voice_admin_launchers call")] int launcherId) =>
                     await voiceAdminService.LaunchLauncherByIdAsync(launcherId),
@@ -143,10 +144,11 @@ internal static class AssistantToolsFactory
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search in Talon Commands table")] string keyword,
-                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
-                    await voiceAdminSearchService.SearchTalonCommandsAsync(keyword, maxResults),
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null,
+                    [Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                    await voiceAdminSearchService.SearchTalonCommandsAsync(keyword, maxResults, htmlFormat),
                 "search_talon_commands",
-                "Read-only search in the Talon Commands table. Use this when the user asks to list or find Talon command records."),
+                "Read-only search in the Talon Commands table. Use this when the user asks to list or find Talon command records. Set htmlFormat=true for Telegram table-style output."),
             AIFunctionFactory.Create(
                 async ([Description("RowId returned by search_talon_commands")] long rowId) =>
                     await voiceAdminSearchService.GetTalonCommandDetailsByRowIdAsync(rowId),
@@ -155,24 +157,27 @@ internal static class AssistantToolsFactory
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search in Custom  intellisense table (snippets)")] string keyword,
-                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
-                    await voiceAdminSearchService.SearchCustomInTeleSenseAsync(keyword, maxResults),
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null,
+                    [Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                    await voiceAdminSearchService.SearchCustomInTeleSenseAsync(keyword, maxResults, htmlFormat),
                 "search_custom_in_tele_sense",
-                "Read-only search in the Custom intelsense table (snippets). Use this when the user asks to list or find custom intellisense records (snippets)."),
+                "Read-only search in the Custom intelsense table (snippets). Use this when the user asks to list or find custom intellisense records (snippets). Set htmlFormat=true for Telegram table-style output."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search in Values table")] string keyword,
-                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
-                    await voiceAdminSearchService.SearchValuesAsync(keyword, maxResults),
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null,
+                    [Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                    await voiceAdminSearchService.SearchValuesAsync(keyword, maxResults, htmlFormat),
                 "search_values_records",
-                "Read-only search in the Values table. Use this when the user asks to list or find values records."),
+                "Read-only search in the Values table. Use this when the user asks to list or find values records. Set htmlFormat=true for Telegram table-style output."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search in Transactions table")] string keyword,
-                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null) =>
-                    await voiceAdminSearchService.SearchTransactionsAsync(keyword, maxResults),
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null,
+                    [Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                    await voiceAdminSearchService.SearchTransactionsAsync(keyword, maxResults, htmlFormat),
                 "search_transactions_records",
-                "Read-only search in the Transactions table. Use this when the user asks to list or find transaction records."),
+                "Read-only search in the Transactions table. Use this when the user asks to list or find transaction records. Set htmlFormat=true for Telegram table-style output."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Target table name (for example: Talon Commands, Custom in Tele Sense, Values, or Transactions)")] string tableName,
@@ -257,15 +262,16 @@ internal static class AssistantToolsFactory
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search for in clipboard history")] string keyword,
-                    [Description("Maximum number of results to return (1-50)")] int? maxResults = null) =>
-                    await clipboardHistoryService.SearchAsync(keyword),
+                    [Description("Maximum number of results to return (1-50)")] int? maxResults = null,
+                    [Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                    await clipboardHistoryService.SearchAsync(keyword, CancellationToken.None, htmlFormat),
                 "search_clipboard_history",
-                "Search the clipboard history for entries matching a keyword. Returns entries with timestamps and truncated content snippets from the last 21 days."),
+                "Search the clipboard history for entries matching a keyword. Returns entries with timestamps and truncated content snippets from the last 21 days. Set htmlFormat=true for Telegram table-style output."),
             AIFunctionFactory.Create(
-                async () =>
-                    await clipboardHistoryService.GetTodayEntriesAsync(),
+                async ([Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                    await clipboardHistoryService.GetTodayEntriesAsync(CancellationToken.None, htmlFormat),
                 "get_clipboard_history_today",
-                "Get all clipboard history entries recorded today. Shows timestamps and content snippets. Includes both assistant-copied and manually-monitored entries.")
+                "Get all clipboard history entries recorded today. Shows timestamps and content snippets. Includes both assistant-copied and manually-monitored entries. Set htmlFormat=true for Telegram table-style output.")
         ];
     }
 

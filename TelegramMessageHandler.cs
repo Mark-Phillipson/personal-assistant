@@ -216,7 +216,7 @@ internal static class TelegramMessageHandler
                         return;
                     }
 
-                    var searchResult = await clipboardHistoryService.SearchAsync(keyword, cancellationToken);
+                    var searchResult = await clipboardHistoryService.SearchAsync(keyword, cancellationToken, asHtmlTable: true);
                     await telegram.SendMessageInChunksAsync(
                         chatId,
                         EmojiPalette.Wrap(searchResult, EmojiPalette.Search, profile.UseEmoji),
@@ -224,7 +224,7 @@ internal static class TelegramMessageHandler
                     return;
 
                 case "/clipboard-today":
-                    var todayResult = await clipboardHistoryService.GetTodayEntriesAsync(cancellationToken);
+                    var todayResult = await clipboardHistoryService.GetTodayEntriesAsync(cancellationToken, asHtmlTable: true);
                     await telegram.SendMessageInChunksAsync(
                         chatId,
                         EmojiPalette.Wrap(todayResult, EmojiPalette.Search, profile.UseEmoji),

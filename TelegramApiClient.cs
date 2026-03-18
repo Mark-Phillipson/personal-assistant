@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 internal sealed class TelegramApiClient : IDisposable
 {
@@ -85,21 +86,36 @@ internal sealed class TelegramApiClient : IDisposable
 
     public async Task SendMessageInChunksAsync(long chatId, string text, CancellationToken cancellationToken)
     {
-        foreach (var chunk in ChunkText(text, 4000))
+        foreach (var chunk in ChunkTextPreservingHtml(text, 4000))
         {
-            await SendMessageAsync(chatId, chunk, cancellationToken);
+            try
+            {
+                await SendMessageAsync(chatId, chunk, cancellationToken);
+            }
+            catch (InvalidOperationException ex) when (IsTelegramHtmlParseError(ex.Message))
+            {
+                // Telegram HTML mode rejects unsupported tags (for example <table>) and malformed entities.
+                // Fall back to plain text so the user still receives the content instead of a hard failure.
+                Console.Error.WriteLine($"[telegram.send.html_fallback] {ex.Message}");
+                var plainText = ConvertHtmlToPlainText(chunk);
+                await SendMessageAsync(chatId, plainText, cancellationToken, parseMode: null);
+            }
         }
     }
 
-    private async Task SendMessageAsync(long chatId, string text, CancellationToken cancellationToken, string parseMode = "HTML")
+    private async Task SendMessageAsync(long chatId, string text, CancellationToken cancellationToken, string? parseMode = "HTML")
     {
         var payload = new List<KeyValuePair<string, string>>
         {
             new("chat_id", chatId.ToString()),
             new("text", text),
-            new("parse_mode", parseMode),
             new("disable_web_page_preview", "true")
         };
+
+        if (!string.IsNullOrWhiteSpace(parseMode))
+        {
+            payload.Add(new("parse_mode", parseMode));
+        }
 
         using var response = await PostAsyncWithRetry("sendMessage", payload, cancellationToken);
         var parsed = await response.Content.ReadFromJsonAsync<TelegramApiResponse<JsonElement>>(cancellationToken: cancellationToken);
@@ -205,6 +221,167 @@ internal sealed class TelegramApiClient : IDisposable
             yield return text.Substring(start, length);
             start += length;
         }
+    }
+
+    private static IEnumerable<string> ChunkTextPreservingHtml(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            yield return string.Empty;
+            yield break;
+        }
+
+        var index = 0;
+        while (index < text.Length)
+        {
+            var preStart = text.IndexOf("<pre>", index, StringComparison.OrdinalIgnoreCase);
+            if (preStart < 0)
+            {
+                foreach (var chunk in ChunkText(text[index..], maxLength))
+                {
+                    yield return chunk;
+                }
+                yield break;
+            }
+
+            if (preStart > index)
+            {
+                foreach (var chunk in ChunkText(text[index..preStart], maxLength))
+                {
+                    yield return chunk;
+                }
+            }
+
+            var preEndTagIndex = text.IndexOf("</pre>", preStart, StringComparison.OrdinalIgnoreCase);
+            if (preEndTagIndex < 0)
+            {
+                foreach (var chunk in ChunkText(text[preStart..], maxLength))
+                {
+                    yield return chunk;
+                }
+                yield break;
+            }
+
+            var preBlockEnd = preEndTagIndex + "</pre>".Length;
+            var preBlock = text[preStart..preBlockEnd];
+            foreach (var chunk in ChunkPreBlock(preBlock, maxLength))
+            {
+                yield return chunk;
+            }
+
+            index = preBlockEnd;
+        }
+    }
+
+    private static IEnumerable<string> ChunkPreBlock(string preBlock, int maxLength)
+    {
+        if (preBlock.Length <= maxLength)
+        {
+            yield return preBlock;
+            yield break;
+        }
+
+        const string openTag = "<pre>";
+        const string closeTag = "</pre>";
+
+        var innerStart = preBlock.IndexOf(openTag, StringComparison.OrdinalIgnoreCase) + openTag.Length;
+        var innerEnd = preBlock.LastIndexOf(closeTag, StringComparison.OrdinalIgnoreCase);
+        if (innerStart < openTag.Length || innerEnd < innerStart)
+        {
+            foreach (var chunk in ChunkText(preBlock, maxLength))
+            {
+                yield return chunk;
+            }
+            yield break;
+        }
+
+        var inner = preBlock[innerStart..innerEnd];
+        var wrapperOverhead = openTag.Length + closeTag.Length;
+        var payloadLimit = Math.Max(1, maxLength - wrapperOverhead);
+
+        var current = new StringBuilder();
+        foreach (var line in inner.Split('\n'))
+        {
+            var normalized = line;
+
+            if (normalized.Length > payloadLimit)
+            {
+                if (current.Length > 0)
+                {
+                    yield return $"{openTag}{current}{closeTag}";
+                    current.Clear();
+                }
+
+                foreach (var hardChunk in ChunkText(normalized, payloadLimit))
+                {
+                    yield return $"{openTag}{hardChunk}{closeTag}";
+                }
+
+                continue;
+            }
+
+            var projected = current.Length == 0
+                ? normalized.Length
+                : current.Length + 1 + normalized.Length;
+
+            if (projected > payloadLimit && current.Length > 0)
+            {
+                yield return $"{openTag}{current}{closeTag}";
+                current.Clear();
+            }
+
+            if (current.Length > 0)
+            {
+                current.Append('\n');
+            }
+
+            current.Append(normalized);
+        }
+
+        if (current.Length > 0)
+        {
+            yield return $"{openTag}{current}{closeTag}";
+        }
+    }
+
+    private static bool IsTelegramHtmlParseError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        return message.Contains("can't parse entities", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("unsupported start tag", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("unsupported end tag", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("tag", StringComparison.OrdinalIgnoreCase) && message.Contains("not allowed", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ConvertHtmlToPlainText(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return string.Empty;
+
+        var text = html
+            .Replace("<pre>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("</pre>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("<b>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("</b>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("<i>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("</i>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("<u>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("</u>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("<s>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("</s>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("<code>", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("</code>", string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        text = Regex.Replace(text, "<[^>]+>", string.Empty);
+
+        return text
+            .Replace("&amp;", "&", StringComparison.Ordinal)
+            .Replace("&lt;", "<", StringComparison.Ordinal)
+            .Replace("&gt;", ">", StringComparison.Ordinal)
+            .Replace("&quot;", "\"", StringComparison.Ordinal)
+            .Replace("&#39;", "'", StringComparison.Ordinal);
     }
 
     public void Dispose()

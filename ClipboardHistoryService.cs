@@ -98,7 +98,7 @@ internal sealed class ClipboardHistoryService
         }
     }
 
-    public async Task<string> SearchAsync(string keyword, CancellationToken cancellationToken = default)
+    public async Task<string> SearchAsync(string keyword, CancellationToken cancellationToken = default, bool asHtmlTable = false)
     {
         if (string.IsNullOrWhiteSpace(_dbPath))
             return GetSetupStatusText();
@@ -127,6 +127,7 @@ internal sealed class ClipboardHistoryService
 
             var results = new StringBuilder();
             var count = 0;
+            var tableRows = new List<(string time, string preview)>();
 
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -145,11 +146,15 @@ internal sealed class ClipboardHistoryService
                     ? content[..200] + "..."
                     : content;
 
+                tableRows.Add((timeStr, preview));
                 results.AppendLine($"[{timeStr}] {preview}");
             }
 
             if (count == 0)
                 return $"No clipboard history entries found matching '{keyword}'.";
+
+            if (asHtmlTable)
+                return BuildHtmlTableResult($"Found {count} entry/entries matching '{keyword}'", tableRows);
 
             return $"Found {count} entry/entries matching '{keyword}':\n{results}";
         }
@@ -160,7 +165,7 @@ internal sealed class ClipboardHistoryService
         }
     }
 
-    public async Task<string> GetTodayEntriesAsync(CancellationToken cancellationToken = default)
+    public async Task<string> GetTodayEntriesAsync(CancellationToken cancellationToken = default, bool asHtmlTable = false)
     {
         if (string.IsNullOrWhiteSpace(_dbPath))
             return GetSetupStatusText();
@@ -191,6 +196,7 @@ internal sealed class ClipboardHistoryService
 
             var results = new StringBuilder();
             var count = 0;
+            var tableRows = new List<(string time, string preview)>();
 
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -209,11 +215,15 @@ internal sealed class ClipboardHistoryService
                     ? content[..200] + "..."
                     : content;
 
+                tableRows.Add((timeStr, preview));
                 results.AppendLine($"[{timeStr}] {preview}");
             }
 
             if (count == 0)
                 return "No clipboard entries recorded for today yet.";
+
+            if (asHtmlTable)
+                return BuildHtmlTableResult($"Today's clipboard ({count} entries)", tableRows);
 
             return $"Today's clipboard ({count} entries):\n{results}";
         }
@@ -538,6 +548,64 @@ internal sealed class ClipboardHistoryService
             DataSource = _dbPath,
             Mode = mode
         }.ToString();
+    }
+
+    private static string BuildHtmlTableResult(string title, IReadOnlyList<(string time, string preview)> rows)
+    {
+        const string timeHeader = "Time";
+        const string previewHeader = "Preview";
+        var timeWidth = Math.Max(timeHeader.Length, rows.Select(row => row.time.Length).DefaultIfEmpty(timeHeader.Length).Max());
+        const int previewWidth = 88;
+
+        var builder = new StringBuilder();
+        builder.Append("<b>")
+            .Append(EscapeHtml(title))
+            .AppendLine("</b>")
+            .AppendLine("<pre>")
+            .AppendLine($"{timeHeader.PadRight(timeWidth)} | {previewHeader}")
+            .AppendLine($"{new string('-', timeWidth)}-+-{new string('-', previewWidth)}");
+
+        foreach (var (time, preview) in rows)
+        {
+            builder.Append(EscapeHtml(SanitizeTableCell(time)).PadRight(timeWidth))
+                .Append(" | ")
+                .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(preview), previewWidth)));
+        }
+
+        builder.Append("</pre>");
+        return builder.ToString();
+    }
+
+    private static string SanitizeTableCell(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return value
+            .Replace("\r", string.Empty)
+            .Replace("\n", " ")
+            .Trim();
+    }
+
+    private static string TrimToWidth(string value, int width)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= width)
+            return value;
+
+        return value[..(width - 3)] + "...";
+    }
+
+    private static string EscapeHtml(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value ?? string.Empty;
+
+        return value
+            .Replace("&", "&amp;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;")
+            .Replace("\"", "&quot;")
+            .Replace("'", "&#39;");
     }
 
     private sealed record ClipboardWriteRequest(string Content, TaskCompletionSource Completion);
