@@ -94,6 +94,33 @@ internal static class AssistantToolsFactory
                 "play_latest_youtube_podcast",
                 "Find and play the top current podcast-style result for a topic. Uses a YouTube Music URL first on the host machine and falls back to YouTube when needed."),
             AIFunctionFactory.Create(
+                async ([Description("Spotify search query (for example: Master of Puppets or Metallica latest album)")] string query) =>
+                    await webBrowserService.OpenSpotifySearchAsync(query),
+                "open_spotify_search",
+                "Open Spotify search in the host machine browser for a query. Use this when the user wants Spotify content but exact API-controlled playback is not available."),
+            AIFunctionFactory.Create(
+                async ([Description("Artist name to find the latest Spotify album for (for example: Metallica)")] string artistName) =>
+                    await webBrowserService.PlayLatestSpotifyAlbumAsync(artistName),
+                "play_latest_spotify_album",
+                "Find the most likely latest Spotify album for an artist and open it in the host machine browser. This uses browser search/open rather than Spotify API playback control."),
+            AIFunctionFactory.Create(
+                async ([Description("Optional activity or mood such as coding, studying, contemplation, or deep work. Default is general focus music.")] string? activity = null) =>
+                    await webBrowserService.PlaySpotifyFocusMusicAsync(activity),
+                "play_spotify_focus_music",
+                "Open Spotify results for instrumental focus music without lyrics. Use this for requests like play music to code by, study music, deep work music, or contemplation music."),
+            AIFunctionFactory.Create(
+                async ([Description("Optional activity or mood such as coding, studying, contemplation, or deep work. Default is general focus music.")] string? activity = null) =>
+                    await webBrowserService.PlayYouTubeMusicFocusAsync(activity),
+                "play_youtube_music_focus",
+                "Open YouTube Music results for instrumental focus music without lyrics. Use this as an alternative to Spotify for focus/concentration music."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Optional activity or mood such as coding, studying, contemplation, or deep work. Default is general focus music.")] string? activity = null,
+                    [Description("Optional preferred service: 'spotify' (default) or 'youtube music'. Defaults to Spotify with YouTube Music as fallback.")] string? preferredService = null) =>
+                    await webBrowserService.PlayFocusMusicAsync(activity, preferredService),
+                "play_focus_music",
+                "Open focus music on your preferred service (Spotify by default, falling back to YouTube Music). Use this for requests like play music to code by, study music, or contemplation music."),
+            AIFunctionFactory.Create(
                 async ([Description("Search query (e.g. Blazor developer jobs Upwork)")] string query) =>
                     await webBrowserService.SearchWebAsync(query),
                 "search_web",

@@ -21,3 +21,6 @@ obj/**
 *.log
 .gmail-token-store/Google.Apis.Auth.OAuth2.Responses.TokenResponse-MPhillipson0@gmail.com
 .calendar-token-store/Google.Apis.Auth.OAuth2.Responses.TokenResponse-MPhillipson0@gmail.com
+clipboard-history.db
+clipboard-history.db-shm
+clipboard-history.db-wal

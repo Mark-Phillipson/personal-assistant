@@ -7,6 +7,7 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
 {
     private const int MaxContentLength = 6000;
     private const int MinimumPodcastCandidateScore = 45;
+    private const int MinimumSpotifyAlbumCandidateScore = 85;
     private const string UpworkMessagesUrl = "https://www.upwork.com/ab/messages/";
     private const string DefaultChromeCdpUrl = "http://127.0.0.1:9222";
     private static readonly string UpworkLogFile = "logs/upwork-browser.log";
@@ -531,6 +532,149 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
             // Fall back to opening the channel if feed lookup fails.
             var openResult = await OpenInDefaultBrowserAsync(channelUrl, cancellationToken);
             return $"Could not resolve latest channel upload automatically ({ex.Message}). {openResult}";
+        }
+    }
+
+    public Task<string> OpenSpotifySearchAsync(string query, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Task.FromResult("No Spotify search query provided.");
+        }
+
+        var searchUrl = $"https://open.spotify.com/search/{Uri.EscapeDataString(query.Trim())}";
+        return OpenInDefaultBrowserAsync(searchUrl, cancellationToken);
+    }
+
+    public Task<string> PlaySpotifyFocusMusicAsync(string? activity = null, CancellationToken cancellationToken = default)
+    {
+        var trimmedActivity = activity?.Trim();
+        var focusQuery = BuildSpotifyFocusQuery(trimmedActivity);
+        return OpenSpotifySearchAsync(focusQuery, cancellationToken);
+    }
+
+    public Task<string> PlayYouTubeMusicFocusAsync(string? activity = null, CancellationToken cancellationToken = default)
+    {
+        var trimmedActivity = activity?.Trim();
+        var focusQuery = BuildSpotifyFocusQuery(trimmedActivity);
+        var youtubeUrl = $"https://music.youtube.com/search?q={Uri.EscapeDataString(focusQuery)}";
+        return OpenInDefaultBrowserAsync(youtubeUrl, cancellationToken);
+    }
+
+    public async Task<string> PlayFocusMusicAsync(string? activity = null, string? preferredService = null, CancellationToken cancellationToken = default)
+    {
+        preferredService = preferredService?.Trim().ToLowerInvariant();
+        var trimmedActivity = activity?.Trim();
+
+        if (preferredService == "youtube" || preferredService == "youtube music")
+        {
+            var youtubeResult = await PlayYouTubeMusicFocusAsync(trimmedActivity, cancellationToken);
+            return youtubeResult;
+        }
+
+        try
+        {
+            var spotifyResult = await PlaySpotifyFocusMusicAsync(trimmedActivity, cancellationToken);
+            return spotifyResult + "\n\nTip: If Spotify isn't logged in or you prefer YouTube Music, try 'play focus music on YouTube Music' instead.";
+        }
+        catch
+        {
+            var youtubeResult = await PlayYouTubeMusicFocusAsync(trimmedActivity, cancellationToken);
+            return $"Spotify is unavailable, so opening YouTube Music focus music instead.\n{youtubeResult}";
+        }
+    }
+
+    public async Task<string> PlayLatestSpotifyAlbumAsync(string artistName, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(artistName))
+        {
+            return "No artist name provided.";
+        }
+
+        var trimmedArtistName = artistName.Trim();
+        var fallbackUrl = $"https://open.spotify.com/search/{Uri.EscapeDataString($"{trimmedArtistName} latest album")}";
+        var searchQuery = $"site:open.spotify.com/album {trimmedArtistName} latest album Spotify";
+        var searchUrl = $"https://www.bing.com/search?q={Uri.EscapeDataString(searchQuery)}";
+
+        try
+        {
+            var browser = await GetBrowserAsync(cancellationToken);
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            });
+
+            var page = await context.NewPageAsync();
+            page.SetDefaultTimeout(_timeoutMs);
+
+            try
+            {
+                await page.GotoAsync(searchUrl, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = _timeoutMs
+                });
+
+                await page.WaitForSelectorAsync("li.b_algo h2 a, a[href*='open.spotify.com/album/']", new PageWaitForSelectorOptions
+                {
+                    Timeout = _timeoutMs
+                });
+
+                var candidates = await page.EvaluateAsync<List<WebSearchCandidate>>("""
+                    (() => {
+                        const resultNodes = Array.from(document.querySelectorAll('li.b_algo')).slice(0, 10);
+                        return resultNodes.map(node => {
+                            const anchor = node.querySelector('h2 a, a[href]');
+                            const snippetNode = node.querySelector('.b_caption p, .b_snippet, p');
+                            return {
+                                href: anchor?.href || '',
+                                title: (anchor?.textContent || '').trim(),
+                                snippet: (snippetNode?.textContent || '').trim()
+                            };
+                        }).filter(result => result.href);
+                    })()
+                    """);
+
+                var selectedCandidate = SelectBestSpotifyAlbumCandidate(candidates, trimmedArtistName);
+                if (selectedCandidate is null || string.IsNullOrWhiteSpace(selectedCandidate.Href))
+                {
+                    OpenUrlInDefaultBrowser(fallbackUrl);
+                    return $"I could not confidently identify the latest Spotify album for '{trimmedArtistName}', so I opened Spotify search instead: {fallbackUrl}";
+                }
+
+                OpenUrlInDefaultBrowser(selectedCandidate.Href);
+                return $"Opened the latest Spotify album I found for '{trimmedArtistName}'.\nAlbum: {selectedCandidate.Title}\nURL: {selectedCandidate.Href}\nNote: this uses browser search/open, so playback still depends on your logged-in Spotify session and free-account limits.";
+            }
+            finally
+            {
+                await page.CloseAsync();
+            }
+        }
+        catch (PlaywrightException ex)
+        {
+            try
+            {
+                OpenUrlInDefaultBrowser(fallbackUrl);
+                return $"Spotify album lookup could not confirm the latest result ({ex.Message}). Opened Spotify search instead: {fallbackUrl}";
+            }
+            catch (Exception fallbackEx)
+            {
+                return $"Spotify album lookup failed: {ex.Message}. Fallback open also failed: {fallbackEx.Message}";
+            }
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                OpenUrlInDefaultBrowser(fallbackUrl);
+                return $"Spotify album lookup failed ({ex.Message}). Opened Spotify search instead: {fallbackUrl}";
+            }
+            catch
+            {
+                // If fallback open also fails, return the original error.
+            }
+
+            return $"Failed to open latest Spotify album: {ex.Message}";
         }
     }
 
@@ -1158,7 +1302,137 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
                string.Equals(uri.Host, "music.youtube.com", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static WebSearchCandidate? SelectBestSpotifyAlbumCandidate(List<WebSearchCandidate>? candidates, string artistName)
+    {
+        if (candidates is null || candidates.Count == 0)
+        {
+            return null;
+        }
+
+        var usableCandidates = candidates
+            .Where(static candidate => candidate is not null &&
+                !string.IsNullOrWhiteSpace(candidate.Href) &&
+                candidate.Href.Contains("open.spotify.com/album/", StringComparison.OrdinalIgnoreCase))
+            .Select(static candidate => new WebSearchCandidate(
+                candidate.Href ?? string.Empty,
+                candidate.Title ?? string.Empty,
+                candidate.Snippet ?? string.Empty))
+            .ToList();
+
+        if (usableCandidates.Count == 0)
+        {
+            return null;
+        }
+
+        var bestCandidate = usableCandidates
+            .Select(candidate => new { Candidate = candidate, Score = ScoreSpotifyAlbumCandidate(candidate, artistName) })
+            .OrderByDescending(result => result.Score)
+            .First();
+
+        return bestCandidate.Score >= MinimumSpotifyAlbumCandidateScore
+            ? bestCandidate.Candidate
+            : null;
+    }
+
+    private static string BuildSpotifyFocusQuery(string? activity)
+    {
+        if (string.IsNullOrWhiteSpace(activity))
+        {
+            return "instrumental focus music deep work no lyrics";
+        }
+
+        var normalized = activity.Trim().ToLowerInvariant();
+
+        if (normalized.Contains("code", StringComparison.Ordinal) ||
+            normalized.Contains("coding", StringComparison.Ordinal) ||
+            normalized.Contains("program", StringComparison.Ordinal) ||
+            normalized.Contains("develop", StringComparison.Ordinal))
+        {
+            return "coding music instrumental focus deep work no lyrics";
+        }
+
+        if (normalized.Contains("study", StringComparison.Ordinal) ||
+            normalized.Contains("read", StringComparison.Ordinal) ||
+            normalized.Contains("learn", StringComparison.Ordinal))
+        {
+            return "study music instrumental concentration no lyrics";
+        }
+
+        if (normalized.Contains("meditat", StringComparison.Ordinal) ||
+            normalized.Contains("contemplat", StringComparison.Ordinal) ||
+            normalized.Contains("think", StringComparison.Ordinal))
+        {
+            return "ambient contemplation music instrumental calm focus no lyrics";
+        }
+
+        return $"{activity.Trim()} instrumental focus music no lyrics";
+    }
+
+    private static int ScoreSpotifyAlbumCandidate(WebSearchCandidate candidate, string artistName)
+    {
+        var title = candidate.Title ?? string.Empty;
+        var snippet = candidate.Snippet ?? string.Empty;
+        var haystack = $"{title} {snippet}";
+        var normalizedHaystack = NormalizeForSearch(haystack);
+        var normalizedArtistName = NormalizeForSearch(artistName);
+        var score = 0;
+
+        if (candidate.Href.Contains("open.spotify.com/album/", StringComparison.OrdinalIgnoreCase))
+        {
+            score += 60;
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedArtistName) && normalizedHaystack.Contains(normalizedArtistName, StringComparison.Ordinal))
+        {
+            score += 25;
+        }
+
+        foreach (var term in ExtractQueryTerms(artistName))
+        {
+            if (normalizedHaystack.Contains(term, StringComparison.Ordinal))
+            {
+                score += 10;
+            }
+        }
+
+        if (haystack.Contains("album", StringComparison.OrdinalIgnoreCase))
+        {
+            score += 10;
+        }
+
+        var candidateYear = ExtractLatestYear(haystack);
+        if (candidateYear >= 1950)
+        {
+            score += Math.Max(0, candidateYear - 2000);
+        }
+
+        return score;
+    }
+
+    private static int ExtractLatestYear(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return 0;
+        }
+
+        var matches = Regex.Matches(value, @"\b(19|20)\d{2}\b");
+        var latestYear = 0;
+
+        foreach (Match match in matches)
+        {
+            if (int.TryParse(match.Value, out var year) && year > latestYear)
+            {
+                latestYear = year;
+            }
+        }
+
+        return latestYear;
+    }
+
     private sealed record YouTubeSearchCandidate(string Href, string Title, string Metadata, string AriaLabel);
+
+    private sealed record WebSearchCandidate(string Href, string Title, string Snippet);
 
     private static string EnsureAutoplay(string url)
     {

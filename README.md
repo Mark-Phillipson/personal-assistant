@@ -27,6 +27,11 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
    - `open_in_default_browser`
    - `play_youtube_top_result`
    - `play_latest_youtube_podcast`
+   - `open_spotify_search`
+   - `play_latest_spotify_album`
+   - `play_spotify_focus_music` — explicit Spotify focus music
+   - `play_youtube_music_focus` — explicit YouTube Music focus music
+   - `play_focus_music` — Spotify with automatic YouTube Music fallback
 - Exposes Voice Admin launcher tools to Copilot (requires `VOICE_ADMIN_DB_PATH`, legacy fallback `VOICE_LAUNCHER_DB_PATH`):
    - `search_voice_admin_launchers` — keyword search across Name, CommandLine, and CategoryName
    - `launch_voice_admin_launcher` — start a launcher entry by its numeric ID
@@ -191,6 +196,14 @@ Terminal commands:
 5. Keep or adjust `NATURAL_COMMANDS_TIMEOUT_SECONDS` (default 15 seconds).
 6. Restart the assistant.
 
+## Spotify notes
+
+- The current Spotify integration in this project is browser-based, not OAuth/Web API playback control.
+- It can open Spotify search and album pages for prompts like `Play the latest album from Metallica on Spotify`.
+- It can also open lyric-free focus music results for prompts like `Play music to code by` or `Play contemplation music`. Spotify is tried first, with automatic YouTube Music fallback if needed.
+- Per Spotify's current developer docs, official Web API and Web Playback SDK usage require a Premium account, so this project does not try to control Spotify playback through the API on a free account.
+- Actual playback behavior still depends on your logged-in Spotify browser/app session and any free-tier playback restrictions.
+
 ## Telegram usage examples
 
 - `/gmail-status`
@@ -214,6 +227,12 @@ Terminal commands:
 - `Show recent videos in Videos and send trip.mp4`
 - `Play the latest Ukraine podcast on YouTube`
 - `Play the latest Linus Tech Tips video on YouTube`
+- `Play the latest album from Metallica on Spotify`
+- `Open Spotify search for Master of Puppets`
+- `Play music to code by` (Spotify → YouTube Music fallback)
+- `Play music to code by on Spotify` (explicit Spotify)
+- `Play music to code by on YouTube Music` (explicit YouTube Music)
+- `Play contemplation music without lyrics`
 - `List Talon Commands with Upwork`
 - `Find Custom in Tele Sense entries containing Blazor`
 - `Search Values for customerId`
