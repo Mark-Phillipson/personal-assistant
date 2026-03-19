@@ -8,6 +8,7 @@ internal static class AssistantToolsFactory
         GoogleCalendarAssistantService calendarService,
         NaturalCommandsAssistantService naturalCommandsService,
         ClipboardAssistantService clipboardService,
+        DadJokeService dadJokeService,
         WebBrowserAssistantService webBrowserService,
         VoiceAdminService voiceAdminService,
         VoiceAdminSearchService voiceAdminSearchService,
@@ -64,6 +65,11 @@ internal static class AssistantToolsFactory
                 () => clipboardService.GetSetupStatusText(),
                 "clipboard_setup_status",
                 "Check whether clipboard integration is available on the machine hosting this bot."),
+            AIFunctionFactory.Create(
+                async ([Description("Optional search term to find a dad joke (for example: 'chicken')")] string? term = null) =>
+                    await dadJokeService.GetJokeAsync(term),
+                "get_dad_joke",
+                "Get a random dad joke or search for a joke containing a keyword."),
             AIFunctionFactory.Create(
                 async ([Description("Exact text to copy to the system clipboard")] string text) =>
                     await clipboardService.SetClipboardTextForAssistantAsync(text),

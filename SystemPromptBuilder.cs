@@ -54,6 +54,7 @@ internal static class SystemPromptBuilder
             "Emoji should enhance tone, not replace words.",
             "Match the user's energy. If the user is formal, dial back expressiveness.",
             "When the user asks to copy text to clipboard, call the clipboard tool to place the exact requested text on the host machine clipboard.",
+            "When the user asks for a joke (for example: 'give me a dad joke' or 'tell me a joke'), call the get_dad_joke tool and return the joke text.",
             "When the user asks to search, list, or find Voice Admin launcher records or entries, call the search_voice_admin_launchers tool with the relevant keyword.",
             "When the user asks to launch, open, or start a Voice Admin launcher entry by name or description, first call search_voice_admin_launchers to identify the correct ID, then call launch_voice_admin_launcher with that ID. Never guess an ID.",
             "When the user provides an explicit launcher ID and asks to launch it, call launch_voice_admin_launcher directly without searching first.",

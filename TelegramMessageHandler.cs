@@ -21,6 +21,7 @@ internal static class TelegramMessageHandler
         GoogleCalendarAssistantService calendarService,
         NaturalCommandsAssistantService naturalCommandsService,
         ClipboardAssistantService clipboardService,
+        DadJokeService dadJokeService,
         WebBrowserAssistantService webBrowserService,
         PodcastSubscriptionsService podcastSubscriptionsService,
         ClipboardHistoryService clipboardHistoryService,
@@ -52,6 +53,19 @@ internal static class TelegramMessageHandler
                         BuildHelpText(profile),
                         cancellationToken);
                     return;
+
+                case "/dadjoke":
+                    {
+                        var searchTerm = ExtractCommandPayload(text);
+                        var joke = await dadJokeService.GetJokeAsync(
+                            string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm,
+                            cancellationToken);
+                        await telegram.SendMessageInChunksAsync(
+                            chatId,
+                            EmojiPalette.Wrap(joke, EmojiPalette.Happy, profile.UseEmoji),
+                            cancellationToken);
+                        return;
+                    }
 
                 case "/gmail-status":
                     await telegram.SendMessageInChunksAsync(
@@ -243,26 +257,37 @@ internal static class TelegramMessageHandler
             }
         }
 
-        TelegramStoredAttachment? storedAttachment = null;
+    // Handle natural dad joke requests (e.g. "give me a dad joke" or "dad joke about chickens").
+    var dadJoke = await TryGetDadJokeAsync(text, dadJokeService, cancellationToken);
+    if (!string.IsNullOrWhiteSpace(dadJoke))
+    {
+        await telegram.SendMessageInChunksAsync(
+            chatId,
+            EmojiPalette.Wrap(dadJoke, EmojiPalette.Happy, profile.UseEmoji),
+            cancellationToken);
+        return;
+    }
 
-        try
-        {
-            storedAttachment = await attachmentService.TryStoreMessageAttachmentAsync(message, telegram, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[telegram.attachment.error] chat={chatId} {ex}");
-            await telegram.SendMessageInChunksAsync(
-                chatId,
-                EmojiPalette.Wrap($"I couldn't download the Telegram attachment: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji),
-                cancellationToken);
-            return;
-        }
+    TelegramStoredAttachment? storedAttachment = null;
 
-        if (string.IsNullOrWhiteSpace(text) && storedAttachment is null)
-        {
-            return;
-        }
+    try
+    {
+        storedAttachment = await attachmentService.TryStoreMessageAttachmentAsync(message, telegram, cancellationToken);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[telegram.attachment.error] chat={chatId} {ex}");
+        await telegram.SendMessageInChunksAsync(
+            chatId,
+            EmojiPalette.Wrap($"I couldn't download the Telegram attachment: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji),
+            cancellationToken);
+        return;
+    }
+
+    if (string.IsNullOrWhiteSpace(text) && storedAttachment is null)
+    {
+        return;
+    }
 
         if (storedAttachment is null && await TryHandleNaturalPodcastPlayAsync(
                 chatId,
@@ -408,6 +433,27 @@ internal static class TelegramMessageHandler
         return parts.Length < 2 ? string.Empty : parts[1];
     }
 
+    private static async Task<string?> TryGetDadJokeAsync(string text, DadJokeService dadJokeService, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        // Only trigger on explicit dad joke requests.
+        if (!Regex.IsMatch(text, "\\bdad\\s*joke\\b", RegexOptions.IgnoreCase))
+        {
+            return null;
+        }
+
+        // Attempt to find an optional search term (e.g. "dad joke about chickens").
+        var match = Regex.Match(text, "\\bdad\\s*joke(?:\\s*(?:about|on|of)\\s+(.+))?$", RegexOptions.IgnoreCase);
+        var term = match.Success && match.Groups.Count > 1 ? match.Groups[1].Value.Trim() : string.Empty;
+
+        // Ensure we don't pass empty term to the API.
+        return await dadJokeService.GetJokeAsync(string.IsNullOrWhiteSpace(term) ? null : term, cancellationToken);
+    }
+
     private static PersonalityProfile GetPersonalityForChat(
         long chatId,
         ConcurrentDictionary<long, PersonalityProfile> personalityProfiles,
@@ -477,6 +523,7 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/play-podcast <name> [N]", "play Nth latest episode (default 1)", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/add-podcast <name> <search>", "add podcast subscription", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/weather", "open BBC Weather for Maidstone, Kent", EmojiPalette.Search, profile.UseEmoji),
+            FormatCommandLine("/dadjoke [keyword]", "get a random dad joke (optional keyword)", EmojiPalette.Happy, profile.UseEmoji),
             FormatCommandLine("/natural <command>", "run a NaturalCommands command locally", EmojiPalette.Rocket, profile.UseEmoji),
             FormatCommandLine("/nc <command>", "short alias for /natural", EmojiPalette.Rocket, profile.UseEmoji),
             FormatCommandLine("/personality ...", "adjust tone and emoji settings", EmojiPalette.Personality, profile.UseEmoji)

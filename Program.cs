@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using DotNetEnv;
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
@@ -15,6 +16,7 @@ var gmailService = GmailAssistantService.FromEnvironment();
 var calendarService = GoogleCalendarAssistantService.FromEnvironment();
 var naturalCommandsService = NaturalCommandsAssistantService.FromEnvironment();
 var clipboardService = ClipboardAssistantService.FromEnvironment();
+var dadJokeService = new DadJokeService();
 var webBrowserService = WebBrowserAssistantService.FromEnvironment(clipboardService);
 var voiceAdminService = VoiceAdminService.FromEnvironment();
 var voiceAdminSearchService = VoiceAdminSearchService.FromEnvironment();
@@ -23,7 +25,7 @@ var knownFolderExplorerService = KnownFolderExplorerService.FromEnvironment();
 var telegramAttachmentService = TelegramAttachmentService.FromEnvironment();
 var podcastSubscriptionsService = PodcastSubscriptionsService.FromEnvironmentOrJson();
 var clipboardHistoryService = ClipboardHistoryService.FromEnvironment();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
@@ -53,6 +55,7 @@ try
                 copilotClient,
                 assistantTools,
                 defaultPersonality,
+                dadJokeService,
                 cliPrompt,
                 appCancellation.Token);
             break;
@@ -85,6 +88,7 @@ try
                 calendarService,
                 naturalCommandsService,
                 clipboardService,
+                dadJokeService,
                 webBrowserService,
                 voiceAdminService,
                 voiceAdminSearchService,
@@ -153,6 +157,7 @@ static async Task RunCliAsync(
     CopilotClient copilotClient,
     ICollection<AIFunction> assistantTools,
     PersonalityProfile defaultPersonality,
+    DadJokeService dadJokeService,
     string prompt,
     CancellationToken cancellationToken)
 {
@@ -161,6 +166,16 @@ static async Task RunCliAsync(
         Console.Error.WriteLine("Usage: personal-assistant --cli \"<prompt>\"");
         Console.Error.WriteLine("Example: personal-assistant --cli \"bob please play Ukraine the latest podcast\"");
         Environment.ExitCode = 2;
+        return;
+    }
+
+    // Shortcut: handle dad joke requests locally without going through the Copilot toolchain.
+    if (Regex.IsMatch(prompt, "\\bdad\\s*joke\\b", RegexOptions.IgnoreCase))
+    {
+        var termMatch = Regex.Match(prompt, "\\bdad\\s*joke(?:\\s*(?:about|on|of)\\s+(.+))?$", RegexOptions.IgnoreCase);
+        var term = termMatch.Success && termMatch.Groups.Count > 1 ? termMatch.Groups[1].Value.Trim() : null;
+        var joke = await dadJokeService.GetJokeAsync(string.IsNullOrWhiteSpace(term) ? null : term, cancellationToken);
+        Console.WriteLine(joke);
         return;
     }
 
@@ -205,6 +220,7 @@ static async Task RunTelegramAsync(
     GoogleCalendarAssistantService calendarService,
     NaturalCommandsAssistantService naturalCommandsService,
     ClipboardAssistantService clipboardService,
+    DadJokeService dadJokeService,
     WebBrowserAssistantService webBrowserService,
     VoiceAdminService voiceAdminService,
     VoiceAdminSearchService voiceAdminSearchService,
@@ -292,6 +308,7 @@ static async Task RunTelegramAsync(
                         calendarService,
                         naturalCommandsService,
                         clipboardService,
+                        dadJokeService,
                         webBrowserService,
                         podcastSubscriptionsService,
                         clipboardHistoryService,
