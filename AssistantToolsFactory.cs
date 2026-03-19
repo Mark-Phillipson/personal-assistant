@@ -143,6 +143,50 @@ internal static class AssistantToolsFactory
                 "Launch a Voice Admin launcher entry by its numeric ID on the host machine. Always call search_voice_admin_launchers first to confirm the ID unless the user explicitly provides one."),
             AIFunctionFactory.Create(
                 async (
+                    [Description("Optional project/category filter for open todos (matches the Todos.Project field)")] string? projectOrCategory = null,
+                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null,
+                    [Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                    await voiceAdminService.ListIncompleteTodosAsync(projectOrCategory, maxResults, htmlFormat),
+                "list_voice_admin_open_todos",
+                "List Voice Admin Todos that are not completed and not archived. Includes TodoId, title, project/category, priority, and created date. Use projectOrCategory to filter."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Todo title") ] string title,
+                    [Description("Optional todo description") ] string? description = null,
+                    [Description("Optional project/category label (stored in the Todos.Project field)")] string? projectOrCategory = null,
+                    [Description("Optional sort priority (default 0)")] int sortPriority = 0) =>
+                    await voiceAdminService.AddTodoAsync(title, description, projectOrCategory, sortPriority),
+                "add_voice_admin_todo",
+                "Add a new Voice Admin todo item with title and optional description/project-category/priority. New items are created as incomplete and non-archived."),
+            AIFunctionFactory.Create(
+                async ([Description("Todo ID to mark complete")] int todoId) =>
+                    await voiceAdminService.MarkTodoCompleteAsync(todoId),
+                "complete_voice_admin_todo",
+                "Mark a Voice Admin todo item complete by Todo ID."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Todo title or keyword to find the open todo item") ] string titleOrKeyword,
+                    [Description("When true, only an exact title match is accepted. Default false for conversational partial matching.")] bool exactMatch = false) =>
+                    await voiceAdminService.MarkTodoCompleteByTextAsync(titleOrKeyword, exactMatch),
+                "complete_voice_admin_todo_by_text",
+                "Conversational shortcut: mark an open Voice Admin todo complete by title or keyword. If multiple matches are found, it returns candidate TodoIds so you can confirm."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Todo ID to update") ] int todoId,
+                    [Description("Project/category label to assign. Provide empty text to clear.")] string? projectOrCategory = null) =>
+                    await voiceAdminService.AssignTodoProjectAsync(todoId, projectOrCategory),
+                "assign_voice_admin_todo_project",
+                "Assign or clear the project/category value for a Voice Admin todo item by Todo ID. This updates the Todos.Project field."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Todo title or keyword to find the open todo item") ] string titleOrKeyword,
+                    [Description("Project/category label to assign. Provide empty text to clear.")] string? projectOrCategory = null,
+                    [Description("When true, only an exact title match is accepted. Default false for conversational partial matching.")] bool exactMatch = false) =>
+                    await voiceAdminService.AssignTodoProjectByTextAsync(titleOrKeyword, projectOrCategory, exactMatch),
+                "assign_voice_admin_todo_project_by_text",
+                "Conversational shortcut: assign or clear project/category for an open Voice Admin todo by title or keyword. If multiple matches are found, it returns candidate TodoIds so you can confirm."),
+            AIFunctionFactory.Create(
+                async (
                     [Description("Keyword to search in Talon Commands table")] string keyword,
                     [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null,
                     [Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>

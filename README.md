@@ -30,6 +30,13 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - Exposes Voice Admin launcher tools to Copilot (requires `VOICE_ADMIN_DB_PATH`, legacy fallback `VOICE_LAUNCHER_DB_PATH`):
    - `search_voice_admin_launchers` — keyword search across Name, CommandLine, and CategoryName
    - `launch_voice_admin_launcher` — start a launcher entry by its numeric ID
+- Exposes Voice Admin todo tools to Copilot (requires `VOICE_ADMIN_DB_PATH`, legacy fallback `VOICE_LAUNCHER_DB_PATH`):
+   - `list_voice_admin_open_todos` — list incomplete, non-archived todos with TodoId, title, project/category, priority, and created date
+   - `add_voice_admin_todo` — add a new todo item (title required; optional description/project-category/priority)
+   - `complete_voice_admin_todo` — mark a todo complete by TodoId
+   - `complete_voice_admin_todo_by_text` — conversational shortcut to mark a todo complete by title/keyword (returns candidates when multiple match)
+   - `assign_voice_admin_todo_project` — assign or clear project/category (stored in `Todos.Project`) for a todo by TodoId
+   - `assign_voice_admin_todo_project_by_text` — conversational shortcut to assign/clear project/category by title/keyword (returns candidates when multiple match)
 - Exposes read-only Voice Admin table search tools to Copilot (requires `VOICE_ADMIN_DB_PATH` or falls back to `VOICE_LAUNCHER_DB_PATH`):
    - `search_talon_commands` — keyword search in Talon Commands table
    - `get_talon_command_details` — fetch full Talon command details (including script) by RowId
