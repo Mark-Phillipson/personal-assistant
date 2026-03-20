@@ -1,10 +1,14 @@
 ﻿using System.Collections.Concurrent;
+using System.Net;
 using System.Text.RegularExpressions;
 using DotNetEnv;
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
 
-Env.Load();
+var assemblyDir = AppContext.BaseDirectory;
+var envFilePath = Path.Combine(assemblyDir, ".env");
+if (File.Exists(envFilePath))
+    Env.Load(envFilePath);
 
 var environmentPersonality = PersonalityProfile.FromEnvironment();
 var defaultPersonality = PersonalityProfile.LoadFromEnvironmentOrJson(environmentPersonality);
@@ -25,6 +29,7 @@ var knownFolderExplorerService = KnownFolderExplorerService.FromEnvironment();
 var telegramAttachmentService = TelegramAttachmentService.FromEnvironment();
 var podcastSubscriptionsService = PodcastSubscriptionsService.FromEnvironmentOrJson();
 var clipboardHistoryService = ClipboardHistoryService.FromEnvironment();
+var telegramChatIdStore = TelegramChatIdStore.FromEnvironment();
 var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
 
 await using var copilotClient = new CopilotClient();
@@ -56,6 +61,7 @@ try
                 assistantTools,
                 defaultPersonality,
                 dadJokeService,
+                telegramChatIdStore,
                 cliPrompt,
                 appCancellation.Token);
             break;
@@ -97,6 +103,7 @@ try
                 telegramAttachmentService,
                 podcastSubscriptionsService,
                 clipboardHistoryService,
+                telegramChatIdStore,
                 appCancellation.Token);
             break;
     }
@@ -158,6 +165,7 @@ static async Task RunCliAsync(
     ICollection<AIFunction> assistantTools,
     PersonalityProfile defaultPersonality,
     DadJokeService dadJokeService,
+    TelegramChatIdStore telegramChatIdStore,
     string prompt,
     CancellationToken cancellationToken)
 {
@@ -169,6 +177,18 @@ static async Task RunCliAsync(
         return;
     }
 
+    var telegramToken = EnvironmentSettings.ReadOptionalString("TELEGRAM_BOT_TOKEN");
+    var storedChatId = telegramToken is not null ? await telegramChatIdStore.LoadAsync() : null;
+    using var telegram = storedChatId.HasValue && telegramToken is not null
+        ? new TelegramApiClient(telegramToken)
+        : null;
+
+    // Echo the recognized command to Telegram so the user can confirm speech recognition.
+    if (telegram is not null && storedChatId.HasValue)
+    {
+        await telegram.SendMessageInChunksAsync(storedChatId.Value, $"🎤 <b>Voice command:</b> {System.Net.WebUtility.HtmlEncode(prompt)}", cancellationToken);
+    }
+
     // Shortcut: handle dad joke requests locally without going through the Copilot toolchain.
     if (Regex.IsMatch(prompt, "\\bdad\\s*joke\\b", RegexOptions.IgnoreCase))
     {
@@ -176,6 +196,10 @@ static async Task RunCliAsync(
         var term = termMatch.Success && termMatch.Groups.Count > 1 ? termMatch.Groups[1].Value.Trim() : null;
         var joke = await dadJokeService.GetJokeAsync(string.IsNullOrWhiteSpace(term) ? null : term, cancellationToken);
         Console.WriteLine(joke);
+        if (telegram is not null && storedChatId.HasValue)
+        {
+            await telegram.SendMessageInChunksAsync(storedChatId.Value, joke, cancellationToken);
+        }
         return;
     }
 
@@ -194,6 +218,10 @@ static async Task RunCliAsync(
         }
 
         Console.WriteLine(content);
+        if (telegram is not null && storedChatId.HasValue)
+        {
+            await telegram.SendMessageInChunksAsync(storedChatId.Value, content, cancellationToken);
+        }
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
@@ -229,6 +257,7 @@ static async Task RunTelegramAsync(
     TelegramAttachmentService telegramAttachmentService,
     PodcastSubscriptionsService podcastSubscriptionsService,
     ClipboardHistoryService clipboardHistoryService,
+    TelegramChatIdStore telegramChatIdStore,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -290,6 +319,8 @@ static async Task RunTelegramAsync(
                 {
                     continue;
                 }
+
+                await telegramChatIdStore.SaveAsync(incomingMessage.Chat.Id);
 
                 try
                 {
