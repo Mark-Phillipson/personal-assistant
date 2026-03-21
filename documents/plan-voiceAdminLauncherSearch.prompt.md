@@ -15,7 +15,7 @@ This keeps scope tight: query only, no writes, no slash commands.
 9. Phase 3: AI tool exposure
 10. Register a new tool in AssistantToolsFactory.cs with explicit description for launcher lookup intents.
 11. Add prompt guidance in SystemPromptBuilder.cs so the assistant calls the launcher tool for launcher-record search/list requests.
-12. Wire tool/service consistently for both terminal and Telegram paths in Program.cs.
+12. Wire tool/service consistently for both CLI and Telegram paths in Program.cs.
 13. Phase 4: Docs and validation
 14. Document new launcher env vars and usage examples in README.md.
 15. Add launcher env var template entries in .env.example.
@@ -34,7 +34,7 @@ This keeps scope tight: query only, no writes, no slash commands.
 **Verification**
 1. Set DB path env var to your database location and build the project.
 2. If apphost is locked, run: dotnet build -p:UseAppHost=false -p:OutDir=bin\\Debug\\net10.0-verify\\
-3. Run in terminal mode and test prompts:
+3. Run in CLI mode and test prompts (use `--cli "<prompt>"`):
 4. list launcher records with Upwork
 5. find launcher entries containing Blazor
 6. Confirm output includes launcher names and category names, and no write behavior exists.

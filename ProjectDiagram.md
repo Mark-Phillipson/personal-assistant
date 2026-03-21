@@ -8,8 +8,8 @@ mindmap
         Slash Commands
         Attachment Support
         Rich Text HTML Formatter
-      Terminal
-        Interactive Shell Loop
+      CLI
+        One-shot / Interactive (deprecated)
       CLI Voice Mode
         One-shot Command
         Telegram Echo-back

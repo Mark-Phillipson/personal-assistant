@@ -48,7 +48,7 @@ Key rules to encode in the prompt:
 
 ## Step 3 — Wire the System Prompt into Copilot Sessions
 
-Update `TelegramMessageHandler` (and the terminal runner in `Program.cs`) to:
+Update `TelegramMessageHandler` (and the CLI runner in `Program.cs`) to:
 
 1. Instantiate `PersonalityProfile` from environment on startup.
 2. Pass it to a `SystemPromptBuilder.Build(profile)` call.
