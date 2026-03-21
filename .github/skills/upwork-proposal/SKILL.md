@@ -15,7 +15,8 @@ Use this skill when creating an Upwork proposal, cover letter, or job applicatio
 2. Identify the main requirements, stack, deliverables, and likely client concerns.
 3. Select only the most relevant profile skills and experience for that role.
 4. Draft a concise plain-text proposal that follows the mandatory wording rules below.
-5. Avoid Markdown formatting in the final proposal text.
+5. If screening answers are requested, format them for easy copy/paste into separate text boxes.
+6. Avoid Markdown formatting in the final proposal text.
 
 ## Mandatory Proposal Rules
 
@@ -35,6 +36,7 @@ Mark P.
 - Mention that a detailed application specification is required so client needs can be met accurately, and that without it the project is more difficult to complete on time and within budget.
 - Keep the tone professional, direct, and concise.
 - Tailor the proposal to the actual job rather than producing a generic pitch.
+- If the platform uses separate text boxes for screening questions, keep the signoff only at the end of the cover letter block and do not repeat it under screening answers.
 
 ## Profile Facts
 
@@ -75,6 +77,18 @@ Mark P.
 
 - For database migration work, emphasize SQL Server, T-SQL, data migration, schema design, reliability, and performance.
 - For web application work, emphasize ASP.NET MVC, Blazor, C#, API work, UX, and front-end delivery.
+- If a job says MAUI is preferred but alternatives are acceptable, proactively suggest Blazor Hybrid as a viable option and explain practical benefits in plain language.
+- When suggesting Blazor Hybrid, prefer concrete advantages such as: shared codebase across Windows/iOS/Android, native API access, easier local/offline data workflows, C#/Razor consistency, and a clearer path to web Blazor reuse.
 - For AI-enhanced application work, emphasize Smart Paste, textarea suggestions, semantic search, and practical delivery speed with GitHub Copilot.
 - If the advert is vague, explicitly note the need for a detailed application specification.
 - Include the accessibility note when it is relevant to client communication, collaboration, or interview expectations, and frame it as both practical context and, where relevant, a productivity benefit.
+
+## Screening Questions Guidance
+
+- When the client includes screening questions, answer each one directly in a numbered list and keep tone practical and specific.
+- When answers will be pasted into separate platform text boxes that already contain the question title, format as `Answer 1:`, `Answer 2:`, etc., then include one blank line before the actual paragraph answer.
+- For time-tracking/payment questions, prefer wording that Mark uses Upwork's built-in tracker for hourly work, including periodic screenshots and interval-based work notes, with invoicing/payments handled via Upwork.
+- For security/confidentiality questions, mention NDA readiness, least-privilege access, and encrypted/password-managed workflows.
+- For individual-vs-company/availability questions, state that Mark is an individual developer, seeks long-term engagements, and is currently available.
+- For recent similar-project questions, include concrete examples when available (for example a relevant live demo), then offer to share more detail in a call.
+- Use this Blazor Hybrid example link when relevant to the job: https://www.fairieslittlehelper.online
