@@ -1,14 +1,22 @@
 ﻿using System.Collections.Concurrent;
+using System.IO;
 using System.Net;
 using System.Text.RegularExpressions;
 using DotNetEnv;
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
 
-var assemblyDir = AppContext.BaseDirectory;
-var envFilePath = Path.Combine(assemblyDir, ".env");
-if (File.Exists(envFilePath))
-    Env.Load(envFilePath);
+var workingDirectoryEnvFilePath = Path.Combine(Environment.CurrentDirectory, ".env");
+var assemblyDirectoryEnvFilePath = Path.Combine(AppContext.BaseDirectory, ".env");
+
+if (File.Exists(workingDirectoryEnvFilePath))
+{
+    Env.Load(workingDirectoryEnvFilePath);
+}
+else if (File.Exists(assemblyDirectoryEnvFilePath))
+{
+    Env.Load(assemblyDirectoryEnvFilePath);
+}
 
 var environmentPersonality = PersonalityProfile.FromEnvironment();
 var defaultPersonality = PersonalityProfile.LoadFromEnvironmentOrJson(environmentPersonality);
