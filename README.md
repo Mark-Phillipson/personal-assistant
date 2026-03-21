@@ -1,14 +1,14 @@
-﻿# Personal Assistant (Copilot SDK + Telegram/Terminal + Gmail, .NET 10)
+﻿# Personal Assistant (Copilot SDK + Telegram + Gmail, .NET 10)
 
 This project is a personal assistant built on the GitHub Copilot SDK with two runtime transports:
 
 - Telegram mode (long polling)
-- Terminal mode (direct interactive chat in your shell)
+- CLI mode (single-prompt invocation)
 
 ## What it does
 
 - In Telegram mode: receives Telegram messages via long polling, maintains one Copilot session per Telegram chat, forwards Telegram photos/documents to Copilot as attachments, and sends responses back to Telegram.
-- In terminal mode: runs as an interactive shell assistant with one local Copilot session.
+- In CLI mode: runs a single local request (use `--cli "<prompt>"` or `ASSISTANT_TRANSPORT=cli`).
 - Supports `/start`, `/help`, `/reset`, and `/gmail-status`.
 - Supports `/personality` to tune tone and emoji behavior per Telegram chat.
 - Supports `/natural` and `/nc` to run local NaturalCommands CLI actions.
@@ -69,7 +69,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 
 ## Environment variables
 
-- `ASSISTANT_TRANSPORT` (optional, default `telegram`; allowed: `telegram`, `terminal`)
+- `ASSISTANT_TRANSPORT` (optional, default `telegram`; allowed: `telegram`, `cli`)
 - `TELEGRAM_BOT_TOKEN` (required in `telegram` mode)
 - `TELEGRAM_POLL_TIMEOUT_SECONDS` (optional, default `25`, range `1-50`)
 - `TELEGRAM_ERROR_BACKOFF_SECONDS` (optional, default `3`, range `1-30`)
@@ -158,34 +158,22 @@ dotnet run
 
 On startup, the app begins polling Telegram updates and routes each chat to its own Copilot session. Telegram text, captions, photos, and documents are accepted. Photos and documents are downloaded to a local temp/cache folder and sent to Copilot as message attachments.
 
-### Terminal mode (no Telegram required)
+### CLI mode (single-prompt)
 
-Use either an environment variable:
+Run a single prompt and exit. Use the `--cli` flag or set `ASSISTANT_TRANSPORT=cli`.
 
-```bash
-ASSISTANT_TRANSPORT=terminal
-dotnet run
-```
-
-Or use a startup flag:
+Startup flag example:
 
 ```bash
-dotnet run -- --terminal
+dotnet run -- --cli "bob please play Ukraine the latest podcast"
 ```
 
-Terminal commands:
+Environment variable example:
 
-- `/help`
-- `/reset`
-- `/gmail-status`
-- `/calendar-status`
-- `/clipboard-status`
-- `/natural <command>`
-- `/nc <command>`
-- `/personality emoji on|off|subtle|moderate|expressive`
-- `/personality tone friendly|professional|witty|calm|irreverent`
-- `/personality reset`
-- `/exit`
+```bash
+ASSISTANT_TRANSPORT=cli
+dotnet run -- --cli "bob please play Ukraine the latest podcast"
+```
 
 ## NaturalCommands setup
 

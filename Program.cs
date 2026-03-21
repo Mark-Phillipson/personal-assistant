@@ -74,23 +74,7 @@ try
                 appCancellation.Token);
             break;
 
-        case "terminal":
-            await RunTerminalAsync(
-                copilotClient,
-                assistantTools,
-                defaultPersonality,
-                gmailService,
-                calendarService,
-                naturalCommandsService,
-                clipboardService,
-                voiceAdminService,
-                voiceAdminSearchService,
-                talonUserDirectoryService,
-                knownFolderExplorerService,
-                podcastSubscriptionsService,
-                clipboardHistoryService,
-                appCancellation.Token);
-            break;
+        // Terminal transport removed — use CLI or Telegram transports only.
 
         default:
             await RunTelegramAsync(
@@ -128,11 +112,6 @@ static string ResolveAssistantTransport(string[] args)
         return "cli";
     }
 
-    if (args.Any(arg => string.Equals(arg, "--terminal", StringComparison.OrdinalIgnoreCase)))
-    {
-        return "terminal";
-    }
-
     if (args.Any(arg => string.Equals(arg, "--telegram", StringComparison.OrdinalIgnoreCase)))
     {
         return "telegram";
@@ -142,11 +121,6 @@ static string ResolveAssistantTransport(string[] args)
     if (string.Equals(configuredTransport, "cli", StringComparison.OrdinalIgnoreCase))
     {
         return "cli";
-    }
-
-    if (string.Equals(configuredTransport, "terminal", StringComparison.OrdinalIgnoreCase))
-    {
-        return "terminal";
     }
 
     return "telegram";
@@ -247,6 +221,7 @@ static async Task RunCliAsync(
     }
 }
 
+    
 static async Task RunTelegramAsync(
     CopilotClient copilotClient,
     ICollection<AIFunction> assistantTools,
@@ -370,122 +345,6 @@ static async Task RunTelegramAsync(
         {
             await session.DisposeAsync();
         }
-    }
-}
-
-static async Task RunTerminalAsync(
-    CopilotClient copilotClient,
-    ICollection<AIFunction> assistantTools,
-    PersonalityProfile defaultPersonality,
-    GmailAssistantService gmailService,
-    GoogleCalendarAssistantService calendarService,
-    NaturalCommandsAssistantService naturalCommandsService,
-    ClipboardAssistantService clipboardService,
-    VoiceAdminService voiceAdminService,
-    VoiceAdminSearchService voiceAdminSearchService,
-    TalonUserDirectoryService talonUserDirectoryService,
-    KnownFolderExplorerService knownFolderExplorerService,
-    PodcastSubscriptionsService podcastSubscriptionsService,
-    ClipboardHistoryService clipboardHistoryService,
-    CancellationToken cancellationToken)
-{
-    Console.WriteLine("Terminal Copilot assistant started. Type /help for commands, /exit to quit.");
-    Console.WriteLine($"Personality: {defaultPersonality.Name} | Tone: {defaultPersonality.Tone} | Emoji: {(defaultPersonality.UseEmoji ? defaultPersonality.EmojiDensity : "Off")}");
-    Console.WriteLine($"Gmail tools: {(gmailService.IsConfigured ? "configured" : "not configured")}.");
-    Console.WriteLine($"NaturalCommands: {(naturalCommandsService.IsConfigured ? "configured" : "not configured")}.");
-    Console.WriteLine($"Clipboard: {(clipboardService.IsSupported ? "configured" : "not supported on this host")}.");
-    Console.WriteLine($"ClipboardHistory: {clipboardHistoryService.GetSetupStatusText()}");
-    Console.WriteLine($"VoiceAdmin: {(voiceAdminService.IsConfigured ? "configured" : "not configured")}.");
-    Console.WriteLine($"VoiceAdminSearch: {(voiceAdminSearchService.IsConfigured ? "configured" : "not configured")}.");
-    Console.WriteLine($"TalonUserDir: {(talonUserDirectoryService.DirectoryExists ? "configured" : "not found")}. Root: {talonUserDirectoryService.RootPath}");
-    Console.WriteLine($"KnownFolderExplorer: {knownFolderExplorerService.GetSetupStatusText()}");
-    Console.WriteLine($"Podcasts: {podcastSubscriptionsService.GetSetupStatusText()}");
-
-    var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
-
-    try
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            Console.Write("> ");
-            var incomingText = Console.ReadLine();
-            if (incomingText is null)
-            {
-                break;
-            }
-
-            incomingText = incomingText.Trim();
-            if (string.IsNullOrWhiteSpace(incomingText))
-            {
-                continue;
-            }
-
-            if (string.Equals(incomingText, "/exit", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(incomingText, "/quit", StringComparison.OrdinalIgnoreCase))
-            {
-                break;
-            }
-
-            if (string.Equals(incomingText, "/help", StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine("Commands: /help, /reset, /gmail-status, /calendar-status, /clipboard-status, /natural <command>, /nc <command>, /exit");
-                continue;
-            }
-
-            if (string.Equals(incomingText, "/gmail-status", StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine(gmailService.GetSetupStatusText());
-                continue;
-            }
-
-            if (string.Equals(incomingText, "/calendar-status", StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine(calendarService.GetSetupStatusText());
-                continue;
-            }
-
-            if (string.Equals(incomingText, "/clipboard-status", StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine(clipboardService.GetSetupStatusText());
-                continue;
-            }
-
-            if (string.Equals(incomingText, "/reset", StringComparison.OrdinalIgnoreCase))
-            {
-                await session.DisposeAsync();
-                session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
-
-                Console.WriteLine("Session reset.");
-                continue;
-            }
-
-            if (incomingText.StartsWith("/natural", StringComparison.OrdinalIgnoreCase)
-                || incomingText.StartsWith("/nc", StringComparison.OrdinalIgnoreCase))
-            {
-                var commandPayload = ExtractCommandPayload(incomingText);
-                var naturalCommandResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
-                Console.WriteLine(naturalCommandResult.Message);
-                continue;
-            }
-
-            try
-            {
-                var assistantReply = await session.SendAndWaitAsync(new MessageOptions { Prompt = incomingText });
-                var content = assistantReply?.Data.Content?.Trim();
-                Console.WriteLine(string.IsNullOrWhiteSpace(content)
-                    ? "I could not generate a response. Please try again."
-                    : content);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"[copilot.session.error] {ex.Message}");
-                Console.WriteLine("I hit an error while generating a reply. Please try again.");
-            }
-        }
-    }
-    finally
-    {
-        await session.DisposeAsync();
     }
 }
 
