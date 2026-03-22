@@ -6,6 +6,7 @@ internal sealed class VoiceAdminSearchService
     private static readonly string[] PreferredDisplayColumns =
     [
         "Name",
+        "Date",
         "Title",
         "Command",
         "Script",
@@ -15,6 +16,12 @@ internal sealed class VoiceAdminSearchService
         "Key",
         "Value",
         "Description",
+        // Common transaction amount column names so money-out values can be surfaced
+        "Amount",
+        "MoneyOut",
+        "Money Out",
+        "Debit",
+        "Credit",
         "Action",
         "Arguments",
         "Notes"
@@ -147,22 +154,55 @@ internal sealed class VoiceAdminSearchService
 
             var results = new StringBuilder();
             var count = 0;
-            var tableRows = new List<(long rowId, string preview)>();
+
+            // Detect a likely amount column (e.g. Money Out / MoneyOut / Amount / Debit / Credit)
+            var amountColumn = columns.FirstOrDefault(c =>
+                c.Equals("Money Out", StringComparison.OrdinalIgnoreCase)
+                || c.Equals("MoneyOut", StringComparison.OrdinalIgnoreCase)
+                || c.Equals("Amount", StringComparison.OrdinalIgnoreCase)
+                || c.Equals("Debit", StringComparison.OrdinalIgnoreCase)
+                || c.Equals("Credit", StringComparison.OrdinalIgnoreCase)
+            );
+
+            // Detect a likely date column (e.g. Date)
+            var dateColumn = columns.FirstOrDefault(c =>
+                c.Equals("Date", StringComparison.OrdinalIgnoreCase)
+                || c.Equals("TransactionDate", StringComparison.OrdinalIgnoreCase)
+                || c.Equals("PostedDate", StringComparison.OrdinalIgnoreCase)
+            );
+
+            var tableRows = new List<(long rowId, string preview, string? amount, string? date)>();
 
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
                 count++;
                 var rowId = reader.GetInt64(0);
-                var rowPreview = BuildRowPreview(reader, columns);
-                tableRows.Add((rowId, rowPreview));
+                var excludeList = new List<string>();
+                if (!string.IsNullOrWhiteSpace(amountColumn)) excludeList.Add(amountColumn!);
+                if (!string.IsNullOrWhiteSpace(dateColumn)) excludeList.Add(dateColumn!);
+                var rowPreview = BuildRowPreview(reader, columns, excludeList);
+                string? amountValue = null;
+                if (!string.IsNullOrWhiteSpace(amountColumn))
+                {
+                    amountValue = ReadColumnAsString(reader, columns, amountColumn);
+                }
+
+                string? dateValue = null;
+                if (!string.IsNullOrWhiteSpace(dateColumn))
+                {
+                    dateValue = ReadColumnAsString(reader, columns, dateColumn);
+                }
+
+                tableRows.Add((rowId, rowPreview, amountValue, dateValue));
                 results.AppendLine($"[RowId:{rowId}] {rowPreview}");
             }
 
             if (count == 0)
                 return $"No rows found in '{resolvedTable}' matching '{keyword}'.";
 
-            if (asHtmlTable)
+            var useHtml = asHtmlTable || string.Equals(Normalise(resolvedTable), "transactions", StringComparison.Ordinal);
+            if (useHtml)
                 return BuildHtmlSearchTableResult(resolvedTable, keyword, tableRows);
 
             return $"Found {count} row(s) in '{resolvedTable}' matching '{keyword}':\n{results}";
@@ -335,11 +375,12 @@ internal sealed class VoiceAdminSearchService
         return columns;
     }
 
-    private static string BuildRowPreview(SqliteDataReader reader, IReadOnlyList<string> columns)
+    private static string BuildRowPreview(SqliteDataReader reader, IReadOnlyList<string> columns, IReadOnlyList<string>? excludeColumns = null)
     {
         var preferredValues = PreferredDisplayColumns
             .Select(preferred => columns.FirstOrDefault(column => string.Equals(column, preferred, StringComparison.OrdinalIgnoreCase)))
             .Where(column => !string.IsNullOrWhiteSpace(column))
+            .Where(column => excludeColumns == null || !excludeColumns.Any(ex => string.Equals(ex, column, StringComparison.OrdinalIgnoreCase)))
             .Select(column => BuildColumnPreview(column!, ReadColumnAsString(reader, columns, column!)))
             .Where(preview => !string.IsNullOrWhiteSpace(preview))
             .Take(4)
@@ -351,8 +392,12 @@ internal sealed class VoiceAdminSearchService
         var fallbackValues = new List<string>();
         for (var index = 0; index < columns.Count && fallbackValues.Count < 4; index++)
         {
-            var value = ReadColumnAsString(reader, columns, columns[index]);
-            var preview = BuildColumnPreview(columns[index], value);
+            var columnName = columns[index];
+            if (excludeColumns != null && excludeColumns.Any(ex => string.Equals(ex, columnName, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            var value = ReadColumnAsString(reader, columns, columnName);
+            var preview = BuildColumnPreview(columnName, value);
             if (!string.IsNullOrWhiteSpace(preview))
             {
                 fallbackValues.Add(preview);
@@ -467,26 +512,74 @@ internal sealed class VoiceAdminSearchService
     private static string BuildHtmlSearchTableResult(
         string tableName,
         string keyword,
-        IReadOnlyList<(long rowId, string preview)> rows)
+        IReadOnlyList<(long rowId, string preview, string? amount, string? date)> rows)
     {
         var rowIdHeader = "RowId";
         var previewHeader = "Preview";
+        var amountHeader = "Money Out";
+        var dateHeader = "Date";
+
         var rowIdWidth = Math.Max(rowIdHeader.Length, rows.Select(row => row.rowId.ToString().Length).DefaultIfEmpty(rowIdHeader.Length).Max());
-        var previewWidth = 88;
+        var previewWidth = 72;
+        var amountWidth = Math.Max(amountHeader.Length, rows.Select(r => (r.amount ?? string.Empty).Length).DefaultIfEmpty(amountHeader.Length).Max());
+        var dateWidth = Math.Max(dateHeader.Length, rows.Select(r => (r.date ?? string.Empty).Length).DefaultIfEmpty(dateHeader.Length).Max());
+
+        var includeAmountColumn = rows.Any(r => !string.IsNullOrWhiteSpace(r.amount));
+        var includeDateColumn = rows.Any(r => !string.IsNullOrWhiteSpace(r.date));
 
         var builder = new StringBuilder();
         builder.Append("<b>")
             .Append(EscapeHtml($"Found {rows.Count} row(s) in '{tableName}' matching '{keyword}'"))
             .AppendLine("</b>")
-            .AppendLine("<pre>")
-            .AppendLine($"{rowIdHeader.PadRight(rowIdWidth)} | {previewHeader}")
-            .AppendLine($"{new string('-', rowIdWidth)}-+-{new string('-', previewWidth)}");
+            .AppendLine("<pre>");
 
-        foreach (var (rowId, preview) in rows)
+        if (includeAmountColumn && includeDateColumn)
         {
-            builder.Append(rowId.ToString().PadRight(rowIdWidth))
-                .Append(" | ")
-                .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(preview), previewWidth)));
+            builder.AppendLine($"{rowIdHeader.PadRight(rowIdWidth)} | {previewHeader.PadRight(previewWidth)} | {dateHeader.PadRight(dateWidth)} | {amountHeader.PadRight(amountWidth)}");
+            builder.AppendLine($"{new string('-', rowIdWidth)}-+-{new string('-', previewWidth)}-+-{new string('-', dateWidth)}-+-{new string('-', amountWidth)}");
+        }
+        else if (includeDateColumn)
+        {
+            builder.AppendLine($"{rowIdHeader.PadRight(rowIdWidth)} | {previewHeader.PadRight(previewWidth)} | {dateHeader.PadRight(dateWidth)}");
+            builder.AppendLine($"{new string('-', rowIdWidth)}-+-{new string('-', previewWidth)}-+-{new string('-', dateWidth)}");
+        }
+        else if (includeAmountColumn)
+        {
+            builder.AppendLine($"{rowIdHeader.PadRight(rowIdWidth)} | {previewHeader.PadRight(previewWidth)} | {amountHeader.PadRight(amountWidth)}");
+            builder.AppendLine($"{new string('-', rowIdWidth)}-+-{new string('-', previewWidth)}-+-{new string('-', amountWidth)}");
+        }
+        else
+        {
+            builder.AppendLine($"{rowIdHeader.PadRight(rowIdWidth)} | {previewHeader}");
+            builder.AppendLine($"{new string('-', rowIdWidth)}-+-{new string('-', previewWidth)}");
+        }
+
+        foreach (var (rowId, preview, amount, date) in rows)
+        {
+            builder.Append(rowId.ToString().PadRight(rowIdWidth)).Append(" | ");
+            var previewCell = EscapeHtml(TrimToWidth(SanitizeTableCell(preview), previewWidth));
+            builder.Append(previewCell.PadRight(includeAmountColumn ? previewWidth : 0));
+            if (includeAmountColumn && includeDateColumn)
+            {
+                builder.Append(" | ")
+                    .Append(date != null ? EscapeHtml(TrimToWidth(SanitizeTableCell(date), dateWidth)) : new string(' ', dateWidth))
+                    .Append(" | ")
+                    .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(amount ?? string.Empty), amountWidth)));
+            }
+            else if (includeDateColumn)
+            {
+                builder.Append(" | ")
+                    .AppendLine(date != null ? EscapeHtml(TrimToWidth(SanitizeTableCell(date), dateWidth)) : string.Empty);
+            }
+            else if (includeAmountColumn)
+            {
+                builder.Append(" | ")
+                    .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(amount ?? string.Empty), amountWidth)));
+            }
+            else
+            {
+                builder.AppendLine();
+            }
         }
 
         builder.Append("</pre>");
