@@ -178,10 +178,10 @@ internal static class AssistantToolsFactory
                 async (
                     [Description("Optional project/category filter for open todos (matches the Todos.Project field)")] string? projectOrCategory = null,
                     [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null,
-                    [Description("When true, return a Telegram-friendly HTML table (preformatted text).") ] bool htmlFormat = false) =>
+                    [Description("When true, return a Telegram-friendly HTML table (preformatted text). Defaults to true for Telegram readability.") ] bool htmlFormat = true) =>
                     await voiceAdminService.ListIncompleteTodosAsync(projectOrCategory, maxResults, htmlFormat),
                 "list_voice_admin_open_todos",
-                "List Voice Admin Todos that are not completed and not archived. Includes TodoId, title, project/category, priority, and created date. Use projectOrCategory to filter."),
+                "List Voice Admin Todos that are not completed and not archived. Includes TodoId, title, project/category, priority, and created date. Use projectOrCategory to filter. Returns Telegram preformatted table output by default."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Todo title") ] string title,

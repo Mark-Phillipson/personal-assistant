@@ -23,6 +23,7 @@ internal static class TelegramMessageHandler
         ClipboardAssistantService clipboardService,
         DadJokeService dadJokeService,
         WebBrowserAssistantService webBrowserService,
+        VoiceAdminService voiceAdminService,
         PodcastSubscriptionsService podcastSubscriptionsService,
         ClipboardHistoryService clipboardHistoryService,
         CancellationToken cancellationToken)
@@ -301,6 +302,14 @@ internal static class TelegramMessageHandler
             return;
         }
 
+        // Deterministic path for conversational todo-list requests to avoid model hallucinations.
+        if (storedAttachment is null && LooksLikeTodoListRequest(text) && voiceAdminService.IsConfigured)
+        {
+            var todoTable = await voiceAdminService.ListIncompleteTodosAsync(asHtmlTable: true);
+            await telegram.SendMessageInChunksAsync(chatId, todoTable, cancellationToken);
+            return;
+        }
+
         var messageOptions = BuildMessageOptions(text, storedAttachment);
 
         try
@@ -317,6 +326,8 @@ internal static class TelegramMessageHandler
             {
                 content = "I could not generate a response. Please try again.";
             }
+
+            content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
 
             await telegram.SendMessageInChunksAsync(chatId, content, cancellationToken);
         }
@@ -425,6 +436,37 @@ internal static class TelegramMessageHandler
         }
 
         return false;
+    }
+
+    private static bool LooksLikeTodoListRequest(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var mentionsTodo = Regex.IsMatch(text, "\\b(todo|to\\s*do|task|tasks|pending|open items?)\\b", RegexOptions.IgnoreCase);
+        var asksToList = Regex.IsMatch(text, "\\b(list|show|table|what|check|left|still|open)\\b", RegexOptions.IgnoreCase);
+        return mentionsTodo && asksToList;
+    }
+
+    private static bool LooksLikeNoTodoClaim(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return false;
+
+        return Regex.IsMatch(content, "\\b(no|none|empty)\\b", RegexOptions.IgnoreCase)
+            && Regex.IsMatch(content, "\\b(todo|to\\s*do|task|tasks)\\b", RegexOptions.IgnoreCase);
+    }
+
+    private static async Task<string> ReconcileTodoEmptyClaimAsync(string content, VoiceAdminService voiceAdminService)
+    {
+        if (!voiceAdminService.IsConfigured || !LooksLikeNoTodoClaim(content))
+            return content;
+
+        var verified = await voiceAdminService.ListIncompleteTodosAsync(asHtmlTable: true);
+        var isActuallyEmpty = verified.StartsWith("No incomplete Voice Admin todo items found.", StringComparison.OrdinalIgnoreCase)
+            || verified.StartsWith("No incomplete Voice Admin todo items found for project/category matching", StringComparison.OrdinalIgnoreCase);
+
+        return isActuallyEmpty ? content : verified;
     }
 
     private static string ExtractCommandPayload(string text)

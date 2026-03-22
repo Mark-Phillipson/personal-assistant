@@ -324,6 +324,7 @@ static async Task RunTelegramAsync(
                         clipboardService,
                         dadJokeService,
                         webBrowserService,
+                        voiceAdminService,
                         podcastSubscriptionsService,
                         clipboardHistoryService,
                         cancellationToken);

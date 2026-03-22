@@ -39,7 +39,7 @@ internal sealed class VoiceAdminService
         return $"Voice Admin database is configured and accessible at: {_dbPath}";
     }
 
-    public async Task<string> ListIncompleteTodosAsync(string? projectOrCategory = null, int? maxResults = null, bool asHtmlTable = false)
+    public async Task<string> ListIncompleteTodosAsync(string? projectOrCategory = null, int? maxResults = null, bool asHtmlTable = true)
     {
         if (!IsConfigured)
             return GetSetupStatusText();
@@ -627,15 +627,16 @@ internal sealed class VoiceAdminService
     {
         const string idHeader = "TodoId";
         const string titleHeader = "Title";
-        const string projectHeader = "Project/Category";
+        const string projectHeader = "Project";
         const string priorityHeader = "Priority";
         const string createdHeader = "Created";
 
         var idWidth = Math.Max(idHeader.Length, rows.Select(row => row.id.ToString().Length).DefaultIfEmpty(idHeader.Length).Max());
-        var titleWidth = 34;
-        var projectWidth = 24;
+        // Keep the line length compact so Telegram doesn't soft-wrap table rows.
+        var titleWidth = 22;
+        var projectWidth = 14;
         var priorityWidth = Math.Max(priorityHeader.Length, rows.Select(row => row.sortPriority.ToString().Length).DefaultIfEmpty(priorityHeader.Length).Max());
-        var createdWidth = 19;
+        var createdWidth = 16;
 
         var filterSuffix = string.IsNullOrWhiteSpace(projectOrCategory)
             ? string.Empty
@@ -651,15 +652,40 @@ internal sealed class VoiceAdminService
 
         foreach (var row in rows)
         {
+            var titleCell = SanitizeTableCell(row.title).Replace(" | ", " • ");
+            var projectCell = SanitizeTableCell(row.project).Replace(" | ", " • ");
             builder.Append(row.id.ToString().PadRight(idWidth))
                 .Append(" | ")
-                .Append(EscapeHtml(TrimToWidth(SanitizeTableCell(row.title), titleWidth)).PadRight(titleWidth))
+                .Append(EscapeHtml(TrimToWidth(titleCell, titleWidth)).PadRight(titleWidth))
                 .Append(" | ")
-                .Append(EscapeHtml(TrimToWidth(SanitizeTableCell(row.project), projectWidth)).PadRight(projectWidth))
+                .Append(EscapeHtml(TrimToWidth(projectCell, projectWidth)).PadRight(projectWidth))
                 .Append(" | ")
                 .Append(row.sortPriority.ToString().PadRight(priorityWidth))
                 .Append(" | ")
-                .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(row.created), createdWidth)));
+                .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(row.created), createdWidth)).PadRight(createdWidth));
+        }
+
+        builder.AppendLine("</pre>")
+            .AppendLine("<b>Details (full titles)</b>")
+            .AppendLine("<pre>");
+
+        foreach (var row in rows.Take(10))
+        {
+            builder.Append('[')
+                .Append(row.id)
+                .Append("] ")
+                .AppendLine(EscapeHtml(SanitizeTableCell(row.title)));
+
+            if (!string.IsNullOrWhiteSpace(row.description))
+            {
+                builder.Append("    ")
+                    .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(row.description), 180)));
+            }
+        }
+
+        if (rows.Count > 10)
+        {
+            builder.AppendLine(EscapeHtml($"...and {rows.Count - 10} more. Ask for details by TodoId."));
         }
 
         builder.Append("</pre>");

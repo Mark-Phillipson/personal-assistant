@@ -520,12 +520,17 @@ internal sealed class VoiceAdminSearchService
         var dateHeader = "Date";
 
         var rowIdWidth = Math.Max(rowIdHeader.Length, rows.Select(row => row.rowId.ToString().Length).DefaultIfEmpty(rowIdHeader.Length).Max());
-        var previewWidth = 72;
-        var amountWidth = Math.Max(amountHeader.Length, rows.Select(r => (r.amount ?? string.Empty).Length).DefaultIfEmpty(amountHeader.Length).Max());
-        var dateWidth = Math.Max(dateHeader.Length, rows.Select(r => (r.date ?? string.Empty).Length).DefaultIfEmpty(dateHeader.Length).Max());
-
         var includeAmountColumn = rows.Any(r => !string.IsNullOrWhiteSpace(r.amount));
         var includeDateColumn = rows.Any(r => !string.IsNullOrWhiteSpace(r.date));
+
+        // Keep total line length compact so Telegram desktop/mobile doesn't wrap rows.
+        var previewWidth = includeAmountColumn && includeDateColumn
+            ? 48
+            : includeAmountColumn || includeDateColumn
+                ? 58
+                : 72;
+        var amountWidth = Math.Max(amountHeader.Length, rows.Select(r => (r.amount ?? string.Empty).Length).DefaultIfEmpty(amountHeader.Length).Max());
+        var dateWidth = Math.Max(dateHeader.Length, rows.Select(r => (r.date ?? string.Empty).Length).DefaultIfEmpty(dateHeader.Length).Max());
 
         var builder = new StringBuilder();
         builder.Append("<b>")
@@ -557,24 +562,29 @@ internal sealed class VoiceAdminSearchService
         foreach (var (rowId, preview, amount, date) in rows)
         {
             builder.Append(rowId.ToString().PadRight(rowIdWidth)).Append(" | ");
-            var previewCell = EscapeHtml(TrimToWidth(SanitizeTableCell(preview), previewWidth));
-            builder.Append(previewCell.PadRight(includeAmountColumn ? previewWidth : 0));
+            var compactPreview = SanitizeTableCell(preview).Replace(" | ", " • ");
+            var previewCell = EscapeHtml(TrimToWidth(compactPreview, previewWidth));
+            builder.Append(previewCell.PadRight(previewWidth));
             if (includeAmountColumn && includeDateColumn)
             {
                 builder.Append(" | ")
-                    .Append(date != null ? EscapeHtml(TrimToWidth(SanitizeTableCell(date), dateWidth)) : new string(' ', dateWidth))
+                    .Append(date != null
+                        ? EscapeHtml(TrimToWidth(SanitizeTableCell(date), dateWidth)).PadRight(dateWidth)
+                        : new string(' ', dateWidth))
                     .Append(" | ")
-                    .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(amount ?? string.Empty), amountWidth)));
+                    .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(amount ?? string.Empty), amountWidth)).PadRight(amountWidth));
             }
             else if (includeDateColumn)
             {
                 builder.Append(" | ")
-                    .AppendLine(date != null ? EscapeHtml(TrimToWidth(SanitizeTableCell(date), dateWidth)) : string.Empty);
+                    .AppendLine(date != null
+                        ? EscapeHtml(TrimToWidth(SanitizeTableCell(date), dateWidth)).PadRight(dateWidth)
+                        : new string(' ', dateWidth));
             }
             else if (includeAmountColumn)
             {
                 builder.Append(" | ")
-                    .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(amount ?? string.Empty), amountWidth)));
+                    .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(amount ?? string.Empty), amountWidth)).PadRight(amountWidth));
             }
             else
             {

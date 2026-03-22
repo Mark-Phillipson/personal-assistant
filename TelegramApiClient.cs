@@ -86,7 +86,9 @@ internal sealed class TelegramApiClient : IDisposable
 
     public async Task SendMessageInChunksAsync(long chatId, string text, CancellationToken cancellationToken)
     {
-        foreach (var chunk in ChunkTextPreservingHtml(text, 4000))
+        var normalizedText = NormalizePlainTextTableForHtml(text);
+
+        foreach (var chunk in ChunkTextPreservingHtml(normalizedText, 4000))
         {
             try
             {
@@ -101,6 +103,51 @@ internal sealed class TelegramApiClient : IDisposable
                 await SendMessageAsync(chatId, plainText, cancellationToken, parseMode: null);
             }
         }
+    }
+
+    private static string NormalizePlainTextTableForHtml(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return text;
+
+        // If the model emits a plain pipe-table instead of Telegram HTML, wrap in <pre>
+        // so Telegram uses monospace layout and column alignment remains readable.
+        if (ContainsHtmlTags(text) || !LooksLikePipeTable(text))
+            return text;
+
+        return $"<pre>{EscapeHtml(text)}</pre>";
+    }
+
+    private static bool ContainsHtmlTags(string text)
+        => Regex.IsMatch(text, "<\\s*/?\\s*[a-zA-Z][^>]*>");
+
+    private static bool LooksLikePipeTable(string text)
+    {
+        var lines = text
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToArray();
+
+        if (lines.Length < 3)
+            return false;
+
+        var pipeLines = lines.Count(line => line.Contains('|'));
+        if (pipeLines < 3)
+            return false;
+
+        return lines.Any(line => Regex.IsMatch(line, "^-{3,}(?:\\|[-: ]{2,})+$"));
+    }
+
+    private static string EscapeHtml(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value ?? string.Empty;
+
+        return value
+            .Replace("&", "&amp;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;")
+            .Replace("\"", "&quot;")
+            .Replace("'", "&#39;");
     }
 
     private async Task SendMessageAsync(long chatId, string text, CancellationToken cancellationToken, string? parseMode = "HTML")
