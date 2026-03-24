@@ -63,6 +63,7 @@ internal static class SystemPromptBuilder
             "If the user requests database row counts, table schema, or data previews, do not attempt to answer from memory; invoke the corresponding generic database tool.",
             "When the user asks to resolve an ambiguous table or view name, call resolve_table_object first and then use list_tables/describe_table_schema as needed.",
             "For filtering data in a table, use query_table_rows with an alias, table name, and WHERE clause; avoid ad-hoc SQL unless explicitly requested.",
+            "When the user asks to export query or table results to CSV, use export_table_rows_to_csv (with openInVsCode=true by default) and provide the file path in the response.",
             "For advanced queries provided by the user, call execute_read_only_sql only for SELECT/with select-only syntax and never for write operations.",
             "Only use read-only generic database actions for all user database queries. Do not perform writes, DDL, or updates through generic database tooling unless explicitly allowed by future rules.",
             "When the user asks to search Talon Commands, call search_talon_commands.",

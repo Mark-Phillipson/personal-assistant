@@ -1,4 +1,8 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Text;
 using Microsoft.Extensions.AI;
 
 internal static class AssistantToolsFactory
@@ -345,20 +349,27 @@ internal static class AssistantToolsFactory
                     [Description("Optional WHERE clause without the WHERE keyword")] string? whereClause = null,
                     [Description("Maximum number of rows to return, default 50")] int maxRows = 50) =>
                 {
-                    var rows = await genericDatabaseService.QueryTableAsync(alias, tableName, whereClause, maxRows);
-                    if (!rows.Any())
+                    try
                     {
-                        return $"No rows returned for {tableName} with alias {alias}.";
-                    }
+                        var rows = await genericDatabaseService.QueryTableAsync(alias, tableName, whereClause, maxRows);
+                        if (!rows.Any())
+                        {
+                            return $"No rows returned for {tableName} with alias {alias}.";
+                        }
 
-                    var columns = rows.First().Keys.ToArray();
-                    var lines = new List<string> { string.Join("\t", columns) };
-                    foreach (var row in rows)
+                        var columns = rows.First().Keys.ToArray();
+                        var lines = new List<string> { string.Join("\t", columns) };
+                        foreach (var row in rows)
+                        {
+                            lines.Add(string.Join("\t", columns.Select(c => row[c]?.ToString() ?? "(null)")));
+                        }
+
+                        return string.Join("\n", lines);
+                    }
+                    catch (Exception ex)
                     {
-                        lines.Add(string.Join("\t", columns.Select(c => row[c]?.ToString() ?? "(null)")));
+                        return $"Error in query_table_rows: {ex.Message}. Stack: {ex.StackTrace}";
                     }
-
-                    return string.Join("\n", lines);
                 },
                 "query_table_rows",
                 "Run a read-only filtered SELECT query on a table (with optional WHERE clause)."),
@@ -368,28 +379,105 @@ internal static class AssistantToolsFactory
                     [Description("Read-only SQL statement (SELECT or WITH, no writes)")] string sql,
                     [Description("Maximum number of rows to return, default 100")] int maxRows = 100) =>
                 {
-                    if (!SqlSecurityHelper.IsSelectQueryOnly(sql))
+                    try
                     {
-                        return "SQL rejected: only SELECT/with read-only queries are allowed.";
-                    }
+                        if (!SqlSecurityHelper.IsSelectQueryOnly(sql))
+                        {
+                            return "SQL rejected: only SELECT/with read-only queries are allowed.";
+                        }
 
-                    var rows = await genericDatabaseService.ExecuteReadOnlySqlAsync(alias, sql, maxRows);
-                    if (!rows.Any())
+                        var rows = await genericDatabaseService.ExecuteReadOnlySqlAsync(alias, sql, maxRows);
+                        if (!rows.Any())
+                        {
+                            return "No rows returned (or alias/sql invalid).";
+                        }
+
+                        var columns = rows.First().Keys.ToArray();
+                        var lines = new List<string> { string.Join("\t", columns) };
+                        foreach (var row in rows)
+                        {
+                            lines.Add(string.Join("\t", columns.Select(c => row[c]?.ToString() ?? "(null)")));
+                        }
+
+                        return string.Join("\n", lines);
+                    }
+                    catch (Exception ex)
                     {
-                        return "No rows returned (or alias/sql invalid).";
+                        return $"Error in execute_read_only_sql: {ex.Message}. Stack: {ex.StackTrace}";
                     }
-
-                    var columns = rows.First().Keys.ToArray();
-                    var lines = new List<string> { string.Join("\t", columns) };
-                    foreach (var row in rows)
-                    {
-                        lines.Add(string.Join("\t", columns.Select(c => row[c]?.ToString() ?? "(null)")));
-                    }
-
-                    return string.Join("\n", lines);
                 },
                 "execute_read_only_sql",
                 "Execute a read-only SQL statement against the selected database alias (SELECT-only)."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Configured database alias")] string alias,
+                    [Description("Table name; optionally schema.table for SQL Server")] string tableName,
+                    [Description("Optional WHERE clause without the WHERE keyword")] string? whereClause = null,
+                    [Description("Maximum number of rows to export (default 100)")] int maxRows = 100,
+                    [Description("Optional output filename (without folder, fallback used if missing)")] string? outputFileName = null,
+                    [Description("When true, open the generated CSV in VS Code (default true)")] bool openInVsCode = true) =>
+                {
+                    try
+                    {
+                        if (string.IsNullOrWhiteSpace(alias))
+                        {
+                            return "No database alias provided. Use list_databases to see available aliases.";
+                        }
+
+                        if (string.IsNullOrWhiteSpace(tableName))
+                        {
+                            return "No table name provided. Use list_tables to identify a table name.";
+                        }
+
+                        var rows = await genericDatabaseService.QueryTableAsync(alias, tableName, whereClause, maxRows);
+                        if (!rows.Any())
+                        {
+                            return $"No rows returned from '{tableName}' in alias '{alias}'.";
+                        }
+
+                        string repoRoot;
+                        try
+                        {
+                            repoRoot = Path.GetFullPath(EnvironmentSettings.ReadString("ASSISTANT_REPO_DIRECTORY", Directory.GetCurrentDirectory()));
+                        }
+                        catch (Exception ex)
+                        {
+                            return $"Failed to resolve repository root for CSV export: {ex.Message}";
+                        }
+
+                        var exportFolder = Path.Combine(repoRoot, "db_exports");
+                        Directory.CreateDirectory(exportFolder);
+
+                        outputFileName = string.IsNullOrWhiteSpace(outputFileName)
+                            ? SanitizeFileName($"{alias}_{tableName}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv")
+                            : SanitizeFileName(outputFileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? outputFileName : outputFileName + ".csv");
+
+                        var fullPath = Path.Combine(exportFolder, outputFileName);
+
+                        try
+                        {
+                            File.WriteAllText(fullPath, BuildCsvContent(rows), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                        }
+                        catch (Exception ex)
+                        {
+                            return $"Failed to write CSV file '{fullPath}': {ex.Message}";
+                        }
+
+                        if (openInVsCode)
+                        {
+                            var openResult = await knownFolderExplorerService.OpenFileInVsCodeAsync("repo", Path.Combine("db_exports", outputFileName));
+                            return $"CSV exported to {fullPath}. {openResult}";
+                        }
+
+                        return $"CSV exported to {fullPath}.";
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Unexpected error exporting CSV: {ex.Message} {Environment.NewLine}{ex.StackTrace}";
+                    }
+                },
+                "export_table_rows_to_csv",
+                "Export table query results to CSV and optionally open it in Visual Studio Code."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search in Talon Commands table")] string keyword,
@@ -522,6 +610,46 @@ internal static class AssistantToolsFactory
                 "get_clipboard_history_today",
                 "Get all clipboard history entries recorded today. Shows timestamps and content snippets. Includes both assistant-copied and manually-monitored entries. Set htmlFormat=true for Telegram preformatted table-style output.")
         ];
+    }
+
+    private static string BuildCsvContent(IEnumerable<IDictionary<string, object?>> rows)
+    {
+        var first = rows.FirstOrDefault();
+        if (first == null)
+            return string.Empty;
+
+        var columns = first.Keys.ToArray();
+        var sb = new StringBuilder();
+
+        sb.AppendLine(string.Join(",", columns.Select(EscapeCsvValue)));
+
+        foreach (var row in rows)
+        {
+            sb.AppendLine(string.Join(",", columns.Select(col => EscapeCsvValue(row.ContainsKey(col) ? row[col] : null))));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string EscapeCsvValue(object? value)
+    {
+        if (value == null)
+            return string.Empty;
+
+        var asString = value.ToString() ?? string.Empty;
+        var needsQuotes = asString.Contains(',') || asString.Contains('"') || asString.Contains('\n') || asString.Contains('\r');
+        var escaped = asString.Replace("\"", "\"\"");
+        return needsQuotes ? $"\"{escaped}\"" : escaped;
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        foreach (var c in Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(c.ToString(), "_");
+        }
+
+        return fileName;
     }
 
     private static async Task<string> PlayPodcastEpisodeAsync(
