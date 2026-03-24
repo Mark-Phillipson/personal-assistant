@@ -12,6 +12,7 @@ internal static class AssistantToolsFactory
         WebBrowserAssistantService webBrowserService,
         VoiceAdminService voiceAdminService,
         VoiceAdminSearchService voiceAdminSearchService,
+        GenericDatabaseService genericDatabaseService,
         TalonUserDirectoryService talonUserDirectoryService,
         KnownFolderExplorerService knownFolderExplorerService,
         PodcastSubscriptionsService podcastSubscriptionsService,
@@ -218,6 +219,151 @@ internal static class AssistantToolsFactory
                     await voiceAdminService.AssignTodoProjectByTextAsync(titleOrKeyword, projectOrCategory, exactMatch),
                 "assign_voice_admin_todo_project_by_text",
                 "Conversational shortcut: assign or clear project/category for an open Voice Admin todo by title or keyword. If multiple matches are found, it returns candidate TodoIds so you can confirm."),
+            AIFunctionFactory.Create(
+                () => genericDatabaseService.ListSources().Count > 0 ? "configured" : "no sources configured",
+                "database_registry_status",
+                "Check whether any generic database sources are configured and report status."),
+            AIFunctionFactory.Create(
+                async ([Description("Optional database alias to select")] string? alias = null) =>
+                {
+                    if (string.IsNullOrWhiteSpace(alias))
+                    {
+                        var available = genericDatabaseService.ListSources().Select(s => s.Alias).ToList();
+                        return available.Any()
+                            ? "Please choose a database alias from: " + string.Join(", ", available)
+                            : "No configured databases available.";
+                    }
+
+                    var normalized = alias.Trim();
+                    if (genericDatabaseService.TryGetSource(normalized, out var source))
+                    {
+                        return $"Database '{source.Alias}' selected (provider={source.ProviderType}, readOnly={source.ReadOnly}). Use this alias in subsequent commands.";
+                    }
+
+                    return $"Alias '{normalized}' is not configured. Current aliases: {string.Join(", ", genericDatabaseService.ListSources().Select(s => s.Alias))}";
+                },
+                "select_database",
+                "Validate and select a configured database alias for future database queries."),
+            AIFunctionFactory.Create(
+                () => string.Join(", ", genericDatabaseService.ListSources().Select(s => s.Alias + " (" + s.ProviderType + ")")),
+                "list_databases",
+                "List configured generic database sources with their aliases and provider types."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias")] string alias) =>
+                {
+                    var tables = await genericDatabaseService.ListTablesAsync(alias);
+                    return tables.Any()
+                        ? string.Join("\n", tables)
+                        : $"No tables found for database alias '{alias}', or alias is invalid.";
+                },
+                "list_tables",
+                "List tables and views in a configured database alias."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias")] string alias,
+                    [Description("Table name; optionally schema.table for SQL Server")] string tableName) =>
+                {
+                    var columns = await genericDatabaseService.GetTableSchemaAsync(alias, tableName);
+                    return columns.Any()
+                        ? string.Join("\n", columns.Select(c => $"{c.Name} ({c.DataType}) nullable={c.IsNullable} pk={c.IsPrimaryKey}"))
+                        : $"No schema information found for table '{tableName}' in alias '{alias}'.";
+                },
+                "describe_table_schema",
+                "Get table schema including column names, data types, nullability and primary key."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias")] string alias,
+                    [Description("Table name; optionally schema.table for SQL Server")] string tableName) =>
+                {
+                    var count = await genericDatabaseService.CountRowsAsync(alias, tableName);
+                    return $"{count} row(s) in {tableName} (alias {alias}).";
+                },
+                "count_table_rows",
+                "Return number of rows in the named table."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias")] string alias,
+                    [Description("Object name hint (partial or full table name)")] string nameHint) =>
+                {
+                    var resolved = await genericDatabaseService.ResolveObjectNameAsync(alias, nameHint);
+                    return !string.IsNullOrWhiteSpace(resolved)
+                        ? $"Resolved table/view name: {resolved} (alias {alias})."
+                        : $"Could not resolve table/view name for hint '{nameHint}' in alias '{alias}'.";
+                },
+                "resolve_table_object",
+                "Resolve a requested table or view name to a configured canonical object name for the database alias."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias")] string alias,
+                    [Description("Table name; optionally schema.table for SQL Server")] string tableName,
+                    [Description("Maximum number of rows to preview, default 10")] int maxRows = 10) =>
+                {
+                    var preview = await genericDatabaseService.PreviewRowsAsync(alias, tableName, maxRows);
+                    if (!preview.Any())
+                    {
+                        return $"No preview rows found for table '{tableName}' using alias '{alias}'.";
+                    }
+
+                    var lines = new List<string>();
+                    var columns = preview.First().Keys.ToArray();
+                    lines.Add(string.Join("\t", columns));
+                    foreach (var row in preview)
+                    {
+                        lines.Add(string.Join("\t", columns.Select(c => row[c]?.ToString() ?? "(null)")));
+                    }
+
+                    return string.Join("\n", lines);
+                },
+                "preview_table_rows",
+                "Preview up to maxRows from a table in a configured database."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Configured database alias")] string alias,
+                    [Description("Table name; optionally schema.table for SQL Server")] string tableName,
+                    [Description("Optional WHERE clause without the WHERE keyword")] string? whereClause = null,
+                    [Description("Maximum number of rows to return, default 50")] int maxRows = 50) =>
+                {
+                    var rows = await genericDatabaseService.QueryTableAsync(alias, tableName, whereClause, maxRows);
+                    if (!rows.Any())
+                    {
+                        return $"No rows returned for {tableName} with alias {alias}.";
+                    }
+
+                    var columns = rows.First().Keys.ToArray();
+                    var lines = new List<string> { string.Join("\t", columns) };
+                    foreach (var row in rows)
+                    {
+                        lines.Add(string.Join("\t", columns.Select(c => row[c]?.ToString() ?? "(null)")));
+                    }
+
+                    return string.Join("\n", lines);
+                },
+                "query_table_rows",
+                "Run a read-only filtered SELECT query on a table (with optional WHERE clause)."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Configured database alias")] string alias,
+                    [Description("Read-only SQL statement (SELECT or WITH, no writes)")] string sql,
+                    [Description("Maximum number of rows to return, default 100")] int maxRows = 100) =>
+                {
+                    if (!SqlSecurityHelper.IsSelectQueryOnly(sql))
+                    {
+                        return "SQL rejected: only SELECT/with read-only queries are allowed.";
+                    }
+
+                    var rows = await genericDatabaseService.ExecuteReadOnlySqlAsync(alias, sql, maxRows);
+                    if (!rows.Any())
+                    {
+                        return "No rows returned (or alias/sql invalid).";
+                    }
+
+                    var columns = rows.First().Keys.ToArray();
+                    var lines = new List<string> { string.Join("\t", columns) };
+                    foreach (var row in rows)
+                    {
+                        lines.Add(string.Join("\t", columns.Select(c => row[c]?.ToString() ?? "(null)")));
+                    }
+
+                    return string.Join("\n", lines);
+                },
+                "execute_read_only_sql",
+                "Execute a read-only SQL statement against the selected database alias (SELECT-only)."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search in Talon Commands table")] string keyword,

@@ -21,6 +21,13 @@ else if (File.Exists(assemblyDirectoryEnvFilePath))
 var environmentPersonality = PersonalityProfile.FromEnvironment();
 var defaultPersonality = PersonalityProfile.LoadFromEnvironmentOrJson(environmentPersonality);
 
+if (args.Any(arg => string.Equals(arg, "--run-phase3-tests", StringComparison.OrdinalIgnoreCase)))
+{
+    Console.WriteLine("Running Phase 3 tests...");
+    PhaseThreeTestRunner.RunAll();
+    return;
+}
+
 var assistantTransport = ResolveAssistantTransport(args);
 var cliPrompt = ExtractCliPrompt(args);
 
@@ -32,6 +39,8 @@ var dadJokeService = new DadJokeService();
 var webBrowserService = WebBrowserAssistantService.FromEnvironment(clipboardService);
 var voiceAdminService = VoiceAdminService.FromEnvironment();
 var voiceAdminSearchService = VoiceAdminSearchService.FromEnvironment();
+var databaseRegistry = DatabaseRegistry.FromEnvironment();
+var genericDatabaseService = new GenericDatabaseService(databaseRegistry);
 var talonUserDirectoryService = TalonUserDirectoryService.FromEnvironment();
 var knownFolderExplorerService = KnownFolderExplorerService.FromEnvironment();
 var telegramAttachmentService = TelegramAttachmentService.FromEnvironment();
@@ -39,7 +48,10 @@ var podcastSubscriptionsService = PodcastSubscriptionsService.FromEnvironmentOrJ
 var clipboardHistoryService = ClipboardHistoryService.FromEnvironment();
 var telegramChatIdStore = TelegramChatIdStore.FromEnvironment();
 var textToSpeechService = TextToSpeechService.FromEnvironment();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
+Console.WriteLine(databaseRegistry.GetSetupStatusText());
+Console.WriteLine($"GenericDatabaseService has {genericDatabaseService.ListSources().Count} source(s) available.");
+
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;

@@ -88,6 +88,8 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `VOICE_ADMIN_MAX_RESULTS` (optional, default `20`, range `1-100`; maximum Voice Admin launcher and table-search results; legacy fallback reads `VOICE_LAUNCHER_MAX_RESULTS`)
 - `VOICE_LAUNCHER_DB_PATH` (optional legacy fallback for `VOICE_ADMIN_DB_PATH`)
 - `VOICE_LAUNCHER_MAX_RESULTS` (optional legacy fallback for `VOICE_ADMIN_MAX_RESULTS`)
+- `DATABASE_CONFIG_PATH` (optional; path to JSON file defining database sources for generic database tooling)
+- `DATABASE_CONFIG_JSON` (optional; inline JSON for database sources, alternative to `DATABASE_CONFIG_PATH`)
 - `ASSISTANT_TTS_ENABLED` (optional, default `false`; `true` to enable local preview speech)
 - `ASSISTANT_TTS_PREVIEW_MAX_WORDS` (optional, default `40`; maximum spoken words)
 - `ASSISTANT_TTS_PREFERRED_GENDER` (optional, default `male`; best-effort voice selection on Windows)
