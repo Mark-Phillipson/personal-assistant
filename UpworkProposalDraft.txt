@@ -1,31 +1,12 @@
-Dear Prospective Client.
 
-I am an experienced full stack developer based in the UK and available for remote work, specializing in Microsoft SQL Server, SQL Server Express, and user-friendly front-end solutions for Windows/Web. I have been developing data-centric desktop and web applications with Microsoft technologies since 1999, with on-the-job experience since 2012. My expertise includes C#, Microsoft SQL Server, T-SQL, ASP.NET MVC, Blazor, and GUI/UX design, making me well-suited to deliver a robust and intuitive interface for your SQL Server Express Database.
+Dear Prospective Client,
 
-While I am proficient with MAUI, I would also like to suggest Blazor Hybrid as a strong alternative worth considering. Blazor Hybrid combines a native application shell with Blazor web UI components, offering several practical advantages for your project: it runs natively on Windows, iOS, and Android using a single shared codebase; it gives you full access to native device APIs and local SQL Server Express connectivity without browser restrictions; the UI code is written in C# and Razor rather than JavaScript, which keeps the stack consistent with your existing SQL Server investment; and it makes future migration to a web-based Blazor application straightforward should your requirements evolve. I am equally comfortable delivering the project in MAUI if that remains your preference.
+I am excited to apply for the Manual QA Tester position for your Windows desktop app, SmartOnCall. With on-the-job experience since 2012 and a strong background in testing .NET/WinUI applications, I am confident in my ability to deliver thorough, actionable QA results. I am based in the UK, available for remote work, and seeking a long-term engagement.
 
-I am committed to long-term collaboration and ongoing support, and I am currently available for new projects. I have a valid GitHub Copilot subscription, which accelerates development considerably, especially for repetitive or boilerplate code, and I can integrate AI features such as Smart Paste, textarea suggestions, and semantic search to enhance your application.
+I have a Windows 11 PC (real hardware), high-speed broadband, and a working microphone and headset. I am comfortable with Teams, Zoom, and able to learn Google Meet, and I provide clear, detailed bug reports with steps to reproduce, expected vs actual results, and screenshots. My experience includes testing, including accessibility  testing (currently part time with Fable).
 
-I have high-speed broadband and use a microphone-driven workflow instead of a keyboard and mouse. During meetings, I may need to speak to my computer, so please bear this in mind to avoid confusion. This workflow is often more efficient, especially when combined with modern AI tools.
-
-To ensure your needs are met accurately and the project is delivered on time and within budget, I recommend providing a detailed application specification. Without one, it is more difficult to scope the work reliably and stay on budget.
+As an accessibility note: I use a microphone-driven workflow instead of a keyboard and mouse, so during meetings I may need to speak to my computer at times—this can be efficient and, with modern LLM tools, often faster. I have a valid GitHub Copilot subscription, which accelerates repetitive tasks and improves productivity. I have already installed SmartOnCall from the Microsoft Store to ensure compatibility.
 
 Best regards,
 Mark P.
-
-Answer 1:
-
-I use the built-in Upwork time tracker for all hourly work. It takes periodic screenshots during working sessions and gives me the opportunity to log what I was working on at each interval, giving you full transparency over how your time is being spent. I invoice through Upwork on a weekly basis and all payments are handled securely through the Upwork platform, which provides both parties with protection and a clear payment record.
-
-Answer 2:
-
-I treat all client data and corporate information as strictly confidential. I work within password-managed, encrypted environments and do not store sensitive data outside agreed systems. I am happy to sign an NDA before access is granted. For system access, I recommend using time-limited, least-privilege credentials rather than sharing master passwords, and I will follow whatever access control policy you have in place.
-
-Answer 3:
-
-I am an individual developer, not an agency, which means you always deal directly with the person doing the work. I am actively looking for long-term engagements and I plan to remain available on Upwork over the coming years. Smaller projects built up incrementally over time suit my preferred working style well.
-
-Answer 4:
-
-I have delivered several data-centric desktop and web applications built on Microsoft SQL Server and C#, including Blazor and ASP.NET MVC front ends that surface SQL Server data through Entity Framework Core. I have experience designing database schemas, writing T-SQL stored procedures and queries, and building clean, intuitive UIs for business users who need to interact with relational data on a daily basis. As a concrete example of Blazor Hybrid work I have completed previously, please take a look at https://www.fairieslittlehelper.online - this is a Blazor Hybrid application I built myself, which demonstrates the kind of cross-platform, native-feel experience that could be delivered for your project. I am happy to share further details or discuss specific examples during a call.
 

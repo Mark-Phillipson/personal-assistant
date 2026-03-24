@@ -1,17 +1,17 @@
 Subject: Give Your Blazor Frontend a .NET 10 Performance Boost
 
-Hi [Client Name],
+Hi Elliott,
 
-Hope you're doing well. I wanted to reach out because .NET 10 (ASP.NET Core 10) is now available, and it is a strong upgrade for Blazor apps that need to feel faster and more responsive.
+Hope you're doing well. I wanted to reach out because .NET 10 (ASP.NET Core 10) is now available, and it is a strong upgrade for ASP.NET/Blazor apps that need to feel faster and more responsive.
 
 Teams that move to .NET 10 often see:
 - 20-40% faster load times
 - Smoother UI interactions
 - A more responsive experience for end users
 
-If you'd like, I can handle the upgrade end-to-end while keeping disruption minimal. Most frontend upgrades are completed in 1-2 days, depending on project size and dependencies.
+If you'd like, I can handle the upgrade end-to-end while keeping disruption minimal. I would estimate between 6 and 8 hours to complete.
 
-Happy to take a quick look at your current setup and share a clear timeline before we start.
+Also I believe you have some issues with icons not showing up in the app. This is a common issue that can be resolved during the upgrade process.
 
 Best regards,
 Mark Phillipson

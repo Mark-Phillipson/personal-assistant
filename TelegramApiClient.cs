@@ -134,7 +134,8 @@ internal sealed class TelegramApiClient : IDisposable
         if (pipeLines < 3)
             return false;
 
-        return lines.Any(line => Regex.IsMatch(line, "^-{3,}(?:\\|[-: ]{2,})+$"));
+        // Accept both | and + as column dividers in the separator row (e.g. ---+--- or ---|---)
+        return lines.Any(line => Regex.IsMatch(line, "^-{3,}(?:[|+][-: ]{2,})+[-]*$"));
     }
 
     private static string EscapeHtml(string value)

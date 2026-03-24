@@ -443,7 +443,7 @@ internal static class TelegramMessageHandler
         if (string.IsNullOrWhiteSpace(text))
             return false;
 
-        var mentionsTodo = Regex.IsMatch(text, "\\b(todo|to\\s*do|task|tasks|pending|open items?)\\b", RegexOptions.IgnoreCase);
+        var mentionsTodo = Regex.IsMatch(text, "\\b(todos?|to\\s*do|task|tasks|pending|open items?)\\b", RegexOptions.IgnoreCase);
         var asksToList = Regex.IsMatch(text, "\\b(list|show|table|what|check|left|still|open)\\b", RegexOptions.IgnoreCase);
         return mentionsTodo && asksToList;
     }
@@ -454,7 +454,7 @@ internal static class TelegramMessageHandler
             return false;
 
         return Regex.IsMatch(content, "\\b(no|none|empty)\\b", RegexOptions.IgnoreCase)
-            && Regex.IsMatch(content, "\\b(todo|to\\s*do|task|tasks)\\b", RegexOptions.IgnoreCase);
+            && Regex.IsMatch(content, "\\b(todos?|to\\s*do|task|tasks)\\b", RegexOptions.IgnoreCase);
     }
 
     private static async Task<string> ReconcileTodoEmptyClaimAsync(string content, VoiceAdminService voiceAdminService)
