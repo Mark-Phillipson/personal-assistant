@@ -38,6 +38,7 @@ var telegramAttachmentService = TelegramAttachmentService.FromEnvironment();
 var podcastSubscriptionsService = PodcastSubscriptionsService.FromEnvironmentOrJson();
 var clipboardHistoryService = ClipboardHistoryService.FromEnvironment();
 var telegramChatIdStore = TelegramChatIdStore.FromEnvironment();
+var textToSpeechService = TextToSpeechService.FromEnvironment();
 var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
 
 await using var copilotClient = new CopilotClient();
@@ -70,6 +71,7 @@ try
                 defaultPersonality,
                 dadJokeService,
                 telegramChatIdStore,
+                textToSpeechService,
                 cliPrompt,
                 appCancellation.Token);
             break;
@@ -96,6 +98,7 @@ try
                 podcastSubscriptionsService,
                 clipboardHistoryService,
                 telegramChatIdStore,
+                textToSpeechService,
                 appCancellation.Token);
             break;
     }
@@ -148,6 +151,7 @@ static async Task RunCliAsync(
     PersonalityProfile defaultPersonality,
     DadJokeService dadJokeService,
     TelegramChatIdStore telegramChatIdStore,
+    TextToSpeechService textToSpeechService,
     string prompt,
     CancellationToken cancellationToken)
 {
@@ -170,7 +174,36 @@ static async Task RunCliAsync(
     {
         await telegram.SendMessageInChunksAsync(storedChatId.Value, $"🎤 <b>Voice command:</b> {System.Net.WebUtility.HtmlEncode(prompt)}", cancellationToken);
     }
+    // TTS-only CLI smoke test.
+    if (string.Equals(prompt.Trim(), "tts test", StringComparison.OrdinalIgnoreCase))
+    {
+        var testPhrase = "This is a text to speech test phrase. You should hear it on your default Windows audio device.";
+        Console.WriteLine("Running TTS test...");
 
+        try
+        {
+            Console.WriteLine("TTS test: calling TrySpeakPreviewAsync...");
+            await textToSpeechService.TrySpeakPreviewAsync(testPhrase, cancellationToken);
+            Console.WriteLine("TTS test completed: spoken phrase invoked.");
+            Console.WriteLine("TTS test: Completed internal TTS call.");
+
+            if (telegram is not null && storedChatId.HasValue)
+            {
+                await telegram.SendMessageInChunksAsync(storedChatId.Value, "🗣️ TTS test completed. Check your headphones.", cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"TTS test error: {ex.Message}");
+            Console.WriteLine(ex.ToString());
+            if (telegram is not null && storedChatId.HasValue)
+            {
+                await telegram.SendMessageInChunksAsync(storedChatId.Value, $"⚠️ TTS test failed: {ex.Message}", cancellationToken);
+            }
+        }
+
+        return;
+    }
     // Shortcut: handle dad joke requests locally without going through the Copilot toolchain.
     if (Regex.IsMatch(prompt, "\\bdad\\s*joke\\b", RegexOptions.IgnoreCase))
     {
@@ -241,6 +274,7 @@ static async Task RunTelegramAsync(
     PodcastSubscriptionsService podcastSubscriptionsService,
     ClipboardHistoryService clipboardHistoryService,
     TelegramChatIdStore telegramChatIdStore,
+    TextToSpeechService textToSpeechService,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -327,6 +361,7 @@ static async Task RunTelegramAsync(
                         voiceAdminService,
                         podcastSubscriptionsService,
                         clipboardHistoryService,
+                        textToSpeechService,
                         cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -363,10 +398,4 @@ static Task<CopilotSession> CreateConfiguredSessionAsync(
             Content = SystemPromptBuilder.Build(profile)
         }
     });
-}
-
-static string ExtractCommandPayload(string text)
-{
-    var parts = text.Split(' ', 2, StringSplitOptions.TrimEntries);
-    return parts.Length < 2 ? string.Empty : parts[1];
 }

@@ -26,14 +26,84 @@ internal static class TelegramMessageHandler
         VoiceAdminService voiceAdminService,
         PodcastSubscriptionsService podcastSubscriptionsService,
         ClipboardHistoryService clipboardHistoryService,
+        TextToSpeechService textToSpeechService,
         CancellationToken cancellationToken)
     {
         var chatId = message.Chat.Id;
         var profile = GetPersonalityForChat(chatId, personalityProfiles, defaultPersonality);
 
+        // TTS service isolate route
+        if (text.Equals("tts test", StringComparison.OrdinalIgnoreCase) || text.Equals("/tts-test", StringComparison.OrdinalIgnoreCase))
+        {
+            const string testPhrase = "This is a text to speech service test. If you hear this, Text To Speech is working.";
+            await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap("Running TTS test...", EmojiPalette.Rocket, profile.UseEmoji), cancellationToken);
+
+            try
+            {
+                await textToSpeechService.TrySpeakPreviewAsync(testPhrase, cancellationToken);
+                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap("TTS test completed; check your speaker output.", EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap($"TTS test failed: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+            }
+
+            return;
+        }
+
+        // Voice-friendly natural command syntax (no slash)
+        if (text.StartsWith("natural", StringComparison.OrdinalIgnoreCase))
+        {
+            var commandPayload = text.Length > "natural".Length ? text["natural".Length..].Trim() : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(commandPayload))
+            {
+                await telegram.SendMessageInChunksAsync(
+                    chatId,
+                    EmojiPalette.Wrap("Usage: natural <command>", EmojiPalette.Warning, profile.UseEmoji),
+                    cancellationToken);
+                return;
+            }
+
+            var naturalResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
+            var naturalContent = EmojiPalette.Wrap(naturalResult.Message, EmojiPalette.Rocket, profile.UseEmoji);
+            await telegram.SendMessageInChunksAsync(chatId, naturalContent, cancellationToken);
+            await textToSpeechService.TrySpeakPreviewAsync(naturalResult.Message, cancellationToken);
+            return;
+        }
+
+        if (text.StartsWith("nc", StringComparison.OrdinalIgnoreCase))
+        {
+            var commandPayload = text.Length > 2 ? text[2..].Trim() : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(commandPayload))
+            {
+                await telegram.SendMessageInChunksAsync(
+                    chatId,
+                    EmojiPalette.Wrap("Usage: nc <your question or command>", EmojiPalette.Warning, profile.UseEmoji),
+                    cancellationToken);
+                return;
+            }
+
+            await HandleAssistantVoiceCommandAsync(
+                chatId,
+                commandPayload,
+                telegram,
+                copilotClient,
+                sessions,
+                assistantTools,
+                profile,
+                voiceAdminService,
+                textToSpeechService,
+                cancellationToken);
+
+            return;
+        }
+
         if (text.StartsWith('/'))
         {
             var command = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0].ToLowerInvariant();
+            var commandPayload = string.Empty;
             switch (command)
             {
                 case "/start":
@@ -186,13 +256,47 @@ internal static class TelegramMessageHandler
                     return;
 
                 case "/natural":
+                    commandPayload = ExtractCommandPayload(text);
+
+                    if (string.IsNullOrWhiteSpace(commandPayload))
+                    {
+                        await telegram.SendMessageInChunksAsync(
+                            chatId,
+                            EmojiPalette.Wrap("Usage: /natural <command>", EmojiPalette.Warning, profile.UseEmoji),
+                            cancellationToken);
+                        return;
+                    }
+
+                    var naturalResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
+                    var naturalContent = EmojiPalette.Wrap(naturalResult.Message, EmojiPalette.Rocket, profile.UseEmoji);
+                    await telegram.SendMessageInChunksAsync(chatId, naturalContent, cancellationToken);
+                    await textToSpeechService.TrySpeakPreviewAsync(naturalResult.Message, cancellationToken);
+                    return;
+
                 case "/nc":
-                    var commandPayload = ExtractCommandPayload(text);
-                    var naturalCommandResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
-                    await telegram.SendMessageInChunksAsync(
+                    commandPayload = ExtractCommandPayload(text);
+
+                    if (string.IsNullOrWhiteSpace(commandPayload))
+                    {
+                        await telegram.SendMessageInChunksAsync(
+                            chatId,
+                            EmojiPalette.Wrap("Usage: /nc <your question or command>", EmojiPalette.Warning, profile.UseEmoji),
+                            cancellationToken);
+                        return;
+                    }
+
+                    await HandleAssistantVoiceCommandAsync(
                         chatId,
-                        EmojiPalette.Wrap(naturalCommandResult.Message, EmojiPalette.Rocket, profile.UseEmoji),
+                        commandPayload,
+                        telegram,
+                        copilotClient,
+                        sessions,
+                        assistantTools,
+                        profile,
+                        voiceAdminService,
+                        textToSpeechService,
                         cancellationToken);
+
                     return;
 
                 case "/podcasts":
@@ -330,6 +434,16 @@ internal static class TelegramMessageHandler
             content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
 
             await telegram.SendMessageInChunksAsync(chatId, content, cancellationToken);
+
+            try
+            {
+                Console.Error.WriteLine($"[tts.info] Main chat response will be spoken (if enabled).");
+                await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken);
+            }
+            catch (Exception ttsEx)
+            {
+                Console.Error.WriteLine($"[tts.error] Main chat speak failed: {ttsEx.Message}");
+            }
         }
         catch (Exception ex)
         {
@@ -436,6 +550,48 @@ internal static class TelegramMessageHandler
         }
 
         return false;
+    }
+
+    private static async Task HandleAssistantVoiceCommandAsync(
+        long chatId,
+        string commandPayload,
+        TelegramApiClient telegram,
+        CopilotClient copilotClient,
+        ConcurrentDictionary<long, CopilotSession> sessions,
+        ICollection<AIFunction> assistantTools,
+        PersonalityProfile profile,
+        VoiceAdminService voiceAdminService,
+        TextToSpeechService textToSpeechService,
+        CancellationToken cancellationToken)
+    {
+        var messageOptions = new MessageOptions { Prompt = commandPayload };
+
+        var content = await SendWithSessionRecoveryAsync(
+            chatId,
+            messageOptions,
+            copilotClient,
+            sessions,
+            assistantTools,
+            profile,
+            cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            content = "I could not generate a response. Please try again.";
+        }
+
+        content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
+
+        await telegram.SendMessageInChunksAsync(chatId, content, cancellationToken);
+
+        try
+        {
+            await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[tts.speak.error] chat={chatId} {ex}");
+        }
     }
 
     private static bool LooksLikeTodoListRequest(string text)
