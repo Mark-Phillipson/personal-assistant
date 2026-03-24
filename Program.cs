@@ -11,11 +11,25 @@ var assemblyDirectoryEnvFilePath = Path.Combine(AppContext.BaseDirectory, ".env"
 
 if (File.Exists(workingDirectoryEnvFilePath))
 {
-    Env.Load(workingDirectoryEnvFilePath);
+    try
+    {
+        Env.Load(workingDirectoryEnvFilePath);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[env.load] Failed to parse {workingDirectoryEnvFilePath}: {ex.Message}");
+    }
 }
 else if (File.Exists(assemblyDirectoryEnvFilePath))
 {
-    Env.Load(assemblyDirectoryEnvFilePath);
+    try
+    {
+        Env.Load(assemblyDirectoryEnvFilePath);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[env.load] Failed to parse {assemblyDirectoryEnvFilePath}: {ex.Message}");
+    }
 }
 
 var environmentPersonality = PersonalityProfile.FromEnvironment();
@@ -410,18 +424,6 @@ static async Task RunTelegramAsync(
 }
 
 var debugLogPath = Path.Combine(AppContext.BaseDirectory, "assistant-cli-debug.log");
-
-void WriteDebugLog(string message)
-{
-    try
-    {
-        File.AppendAllText(debugLogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}");
-    }
-    catch
-    {
-        // avoid crashing the app for logging failures
-    }
-}
 
 static Task<CopilotSession> CreateConfiguredSessionAsync(
     CopilotClient copilotClient,

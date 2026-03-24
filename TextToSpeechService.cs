@@ -40,6 +40,7 @@ internal sealed class TextToSpeechService
         return new TextToSpeechService(enabled, maxPreviewWords, preferredGender);
     }
 
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public async Task TrySpeakPreviewAsync(string text, CancellationToken cancellationToken, bool force = false)
     {
         Log($"[tts.debug] enabled={_enabled}, force={force}, isWindows={RuntimeInformation.IsOSPlatform(OSPlatform.Windows)}, textLength={text?.Length}, cancellationRequested={cancellationToken.IsCancellationRequested}");

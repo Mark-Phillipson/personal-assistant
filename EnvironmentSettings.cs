@@ -31,13 +31,34 @@ internal static class EnvironmentSettings
     public static string ReadString(string name, string fallback)
     {
         var raw = Environment.GetEnvironmentVariable(name);
-        return string.IsNullOrWhiteSpace(raw) ? fallback : raw.Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
+        return TrimQuotes(raw.Trim());
     }
 
     public static string? ReadOptionalString(string name)
     {
         var raw = Environment.GetEnvironmentVariable(name);
-        return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        var value = TrimQuotes(raw.Trim());
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string TrimQuotes(string value)
+    {
+        if (value.Length >= 2 && ((value.StartsWith("\"") && value.EndsWith("\"")) || (value.StartsWith("'") && value.EndsWith("'"))))
+        {
+            return value.Substring(1, value.Length - 2).Trim();
+        }
+
+        return value;
     }
 
     public static bool ReadBool(string name, bool fallback)

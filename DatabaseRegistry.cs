@@ -1,3 +1,5 @@
+using System.Data;
+using Microsoft.Data.SqlClient;
 using System.Text.Json;
 
 internal sealed class DatabaseRegistry
@@ -60,7 +62,137 @@ internal sealed class DatabaseRegistry
                 ReadOnly: true));
         }
 
+        // Add local SQL Server discovery sources if enabled by env var (defaults true).
+        var sqlDiscoveryEnabled = EnvironmentSettings.ReadBool("DATABASE_SQLSERVER_DISCOVERY", true);
+        if (sqlDiscoveryEnabled)
+        {
+            sources.AddRange(DiscoverSqlServerDatabases());
+        }
+
         return new DatabaseRegistry(sources);
+    }
+
+    internal static IEnumerable<DatabaseSource> DiscoverSqlServerDatabases()
+    {
+        var result = new List<DatabaseSource>();
+        try
+        {
+            static string SanitizeAlias(string value) => new string(value.ToLowerInvariant().Replace(" ", "_").Replace("\\", "_").Replace("/", "_").Replace(".", "_").Where(c => char.IsLetterOrDigit(c) || c == '_' || c == '-').ToArray());
+
+            var instanceCandidates = new List<string>();
+
+            var explicitInstances = EnvironmentSettings.ReadOptionalString("DATABASE_SQLSERVER_INSTANCES");
+            if (!string.IsNullOrWhiteSpace(explicitInstances))
+            {
+                instanceCandidates.AddRange(explicitInstances
+                    .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(s => !string.IsNullOrWhiteSpace(s)));
+            }
+
+            // Always try the local host default instance first.
+            instanceCandidates.AddRange(new[]
+            {
+                ".",
+                "localhost",
+                "127.0.0.1",
+                "(local)",
+                Environment.MachineName
+            });
+
+            var includeLocalDb = EnvironmentSettings.ReadBool("DATABASE_SQLSERVER_INCLUDE_LOCALDB", false);
+            if (includeLocalDb)
+            {
+                // Named localdb instances are rarely needed, only include when explicitly requested.
+                instanceCandidates.AddRange(new[]
+                {
+                    "(localdb)\\MSSQLLocalDB",
+                    "(localdb)\\ProjectsV13"
+                });
+            }
+
+
+            instanceCandidates = instanceCandidates
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var instance in instanceCandidates)
+            {
+                if (string.IsNullOrWhiteSpace(instance))
+                {
+                    continue;
+                }
+
+                var sqlBuilder = new SqlConnectionStringBuilder
+                {
+                    DataSource = instance,
+                    InitialCatalog = "master",
+                    IntegratedSecurity = true,
+                    ConnectTimeout = 3,
+                    Encrypt = false,
+                    TrustServerCertificate = true
+                };
+
+                var connectionString = sqlBuilder.ToString();
+
+                try
+                {
+                    using var conn = new SqlConnection(connectionString);
+                    conn.Open();
+
+                    using var cmd = conn.CreateCommand();
+                    var includeSystem = EnvironmentSettings.ReadBool("DATABASE_SQLSERVER_INCLUDE_SYSTEM", false);
+                    cmd.CommandText = includeSystem
+                        ? "SELECT name FROM sys.databases WHERE state = 0 ORDER BY name"
+                        : "SELECT name FROM sys.databases WHERE state = 0 AND name NOT IN('master','tempdb','model','msdb') ORDER BY name";
+
+                    using var reader = cmd.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        var dbName = reader.GetString(0);
+                        var alias = $"sqlserver_{SanitizeAlias(instance)}_{SanitizeAlias(dbName)}";
+                        if (string.IsNullOrWhiteSpace(alias))
+                        {
+                            continue;
+                        }
+
+                        // Optionally skip LocalDB-derived db sources in the UI.
+                        var showLocalDb = EnvironmentSettings.ReadBool("DATABASE_SQLSERVER_INCLUDE_LOCALDB", false);
+                        if (!showLocalDb && instance.StartsWith("(localdb)", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        result.Add(new DatabaseSource(
+                            Alias: alias,
+                            ProviderType: DatabaseProviderType.SqlServer,
+                            ConnectionString: new SqlConnectionStringBuilder
+                            {
+                                DataSource = instance,
+                                InitialCatalog = dbName,
+                                IntegratedSecurity = true,
+                                ConnectTimeout = 3,
+                                Encrypt = false,
+                                TrustServerCertificate = true
+                            }.ToString(),
+                            DisplayName: $"SQL Server {instance} ({dbName})",
+                            DefaultSchema: "dbo",
+                            ReadOnly: true));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[database.registry.discovery] Could not query SQL Server instance '{instance}': {ex.Message}");
+                }
+            }
+        }
+        catch
+        {
+            // overall discovery failure leads to empty list
+        }
+
+        return result;
     }
 
     private static IEnumerable<DatabaseSource> LoadFromJsonFile(string path)

@@ -12,6 +12,7 @@ internal static class PhaseThreeTestRunner
         Console.WriteLine("Phase 3 tests passed.");
     }
 
+#pragma warning disable CS8602
     private static void TestSqlSecurityHelper()
     {
         if (!SqlSecurityHelper.IsSelectQueryOnly("SELECT * FROM T")) throw new InvalidOperationException("SELECT should be allowed");
@@ -22,6 +23,7 @@ internal static class PhaseThreeTestRunner
         if (SqlSecurityHelper.IsSelectQueryOnly("SELECT * FROM T; DROP TABLE T;")) throw new InvalidOperationException("Batch with DROPs should be disallowed");
         if (SqlSecurityHelper.IsSelectQueryOnly(string.Empty)) throw new InvalidOperationException("Empty SQL should be disallowed");
     }
+#pragma warning restore CS8602
 
     private static void TestSqliteDatabaseProviderWithTempFile()
     {

@@ -245,19 +245,45 @@ internal static class AssistantToolsFactory
                 "select_database",
                 "Validate and select a configured database alias for future database queries."),
             AIFunctionFactory.Create(
-                () => string.Join(", ", genericDatabaseService.ListSources().Select(s => s.Alias + " (" + s.ProviderType + ")")),
-                "list_databases",
-                "List configured generic database sources with their aliases and provider types."),
-            AIFunctionFactory.Create(
-                async ([Description("Configured database alias")] string alias) =>
+                () =>
                 {
+                    var sources = genericDatabaseService.ListSources().ToList();
+                    if (!sources.Any())
+                    {
+                        return "No configured databases available.";
+                    }
+                    var lines = sources.Select((s, index) => $"{index + 1}. {s.Alias} ({s.ProviderType})").ToList();
+                    return "Available databases:\n" + string.Join("\n", lines);
+                },
+                "list_databases",
+                "List configured generic database sources with numbered aliases and provider types."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias or numeric index from list_databases")] string alias) =>
+                {
+                    if (string.IsNullOrWhiteSpace(alias))
+                    {
+                        return "No alias provided. Use list_databases to see available indexes and aliases.";
+                    }
+
+                    var source = genericDatabaseService.ListSources()
+                        .ToList();
+
+                    if (int.TryParse(alias.Trim(), out var index))
+                    {
+                        if (index < 1 || index > source.Count)
+                        {
+                            return $"Index {index} is out of range. Use list_databases to view valid indexes.";
+                        }
+                        alias = source[index - 1].Alias;
+                    }
+
                     var tables = await genericDatabaseService.ListTablesAsync(alias);
                     return tables.Any()
-                        ? string.Join("\n", tables)
+                        ? string.Join("\n", tables.Select((t, i) => $"{i + 1}. {t}"))
                         : $"No tables found for database alias '{alias}', or alias is invalid.";
                 },
                 "list_tables",
-                "List tables and views in a configured database alias."),
+                "List tables and views in a configured database alias (supports numeric index from list_databases)."),
             AIFunctionFactory.Create(
                 async ([Description("Configured database alias")] string alias,
                     [Description("Table name; optionally schema.table for SQL Server")] string tableName) =>

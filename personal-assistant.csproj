@@ -6,6 +6,7 @@
     <RootNamespace>personal_assistant</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <NoWarn>CA1416;CS8602</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
