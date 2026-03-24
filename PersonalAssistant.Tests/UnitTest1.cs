@@ -252,6 +252,52 @@ public class DatabasePhaseThreeTests
     }
 
     [Fact]
+    public async Task VoiceAdminService_GetIncompleteTodosRowsAsync_ReturnsOpenTodosAsync()
+    {
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            using (var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = tempFile }.ToString()))
+            {
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "CREATE TABLE Todos (Id INTEGER PRIMARY KEY, Title TEXT, Description TEXT, Project TEXT, Created TEXT, SortPriority INTEGER, Completed INTEGER, Archived INTEGER);";
+                cmd.ExecuteNonQuery();
+                cmd.CommandText = "CREATE TABLE Categories (ID INTEGER PRIMARY KEY, Category TEXT);";
+                cmd.ExecuteNonQuery();
+
+                cmd.CommandText = "INSERT INTO Todos (Title, Description, Project, Created, SortPriority, Completed, Archived) VALUES ('Task A', 'Desc A', 'Work', '2026-03-24', 10, 0, 0), ('Task B', 'Desc B', 'Home', '2026-03-23', 5, 1, 0), ('Task C', 'Desc C', 'Work', '2026-03-22', 1, 0, 0);";
+                cmd.ExecuteNonQuery();
+            }
+
+            Environment.SetEnvironmentVariable("VOICE_ADMIN_DB_PATH", tempFile);
+            var service = VoiceAdminService.FromEnvironment();
+
+            var result = await service.GetIncompleteTodosRowsAsync();
+            Assert.True(result.Success);
+            Assert.Equal(2, result.Rows.Count());
+            Assert.Contains(result.Rows, r => r.ContainsKey("Title") && r["Title"]?.ToString() == "Task A");
+            Assert.Contains(result.Rows, r => r.ContainsKey("Title") && r["Title"]?.ToString() == "Task C");
+
+            var filtered = await service.GetIncompleteTodosRowsAsync("Work");
+            Assert.True(filtered.Success);
+            Assert.Equal(2, filtered.Rows.Count());
+            Assert.DoesNotContain(filtered.Rows, r => r.ContainsKey("Title") && r["Title"]?.ToString() == "Task B");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("VOICE_ADMIN_DB_PATH", null);
+            try
+            {
+                File.Delete(tempFile);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    [Fact]
     public async Task SqlServerDatabaseProvider_RequiresReachableServerAsync()
     {
         var localDbName = "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=master;Integrated Security=True;";

@@ -42,6 +42,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
    - `complete_voice_admin_todo_by_text` — conversational shortcut to mark a todo complete by title/keyword (returns candidates when multiple match)
    - `assign_voice_admin_todo_project` — assign or clear project/category (stored in `Todos.Project`) for a todo by TodoId
    - `assign_voice_admin_todo_project_by_text` — conversational shortcut to assign/clear project/category by title/keyword (returns candidates when multiple match)
+   - `export_voice_admin_open_todos_to_csv` — export open, incomplete Voice Admin todos to a CSV in `db_exports/` and optionally open it in VS Code (default true).
 - Exposes read-only Voice Admin table search tools to Copilot (requires `VOICE_ADMIN_DB_PATH` or falls back to `VOICE_LAUNCHER_DB_PATH`):
    - `search_talon_commands` — keyword search in Talon Commands table
    - `get_talon_command_details` — fetch full Talon command details (including script) by RowId

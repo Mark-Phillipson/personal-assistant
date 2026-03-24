@@ -1,0 +1,20 @@
+ID,Language,Active,Colour,ImageLink
+1,"Not Applicable",1,#698dff,
+2,HTML,1,#4a2885,html_logo.webp
+3,"Visual Basic",1,#9b75ec,VisualBasicLogo.jpg
+8,"C sharp",1,#EE71A2,CSharpLogo.jpeg
+9,JavaScript,1,#dac544,JavascriptLogo.png
+13,"Transact SQL",1,#da8b4e,SQLServerLogo.jpeg
+14,CSS,1,#06d28e,CSS_logo.png
+18,Razor,1,#eb3806,RazorLogo.png
+19,Bootstrap,1,#5ba3d7,bootstrap-logo-shadow.png
+20,jQuery,1,#5e2fa4,jQueryLogo.png
+22,Entity,1,#4360c0,EntityFrameworkLogo.png
+28,Twitch,1,#5e2fa4,twitchlogo.png
+29,Blazor,1,#92007B,BlazorIcon.png
+30,Markdown,1,#0f41f2,MarkdownLogo.png
+3031,"Power Shell",1,#e43dcb,powershell-logo-blue-white-symbol-modern-design-1.png
+4033,Talon,1,#324588,Talon.png
+4035,Typescript,1,#ff00ff,typescript2034.jpg
+4037,Docker,1,#7FDBFF,DockerLogo.png
+4043,Git,1,#1E90FF,git-icon-logo-png-transparent.png

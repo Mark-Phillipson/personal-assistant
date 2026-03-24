@@ -189,6 +189,58 @@ internal static class AssistantToolsFactory
                 "List Voice Admin Todos that are not completed and not archived. Includes TodoId, title, project/category, priority, and created date. Use projectOrCategory to filter. Returns Telegram preformatted table output by default."),
             AIFunctionFactory.Create(
                 async (
+                    [Description("Optional project/category filter for open todos (matches the Todos.Project field)")] string? projectOrCategory = null,
+                    [Description("Maximum number of results to export (1-100, default 20)")] int? maxResults = null,
+                    [Description("Optional output filename (without folder, .csv is appended if absent)")] string? outputFileName = null,
+                    [Description("When true, open the generated CSV in VS Code (default true)")] bool openInVsCode = true) =>
+                {
+                    var queryResult = await voiceAdminService.GetIncompleteTodosRowsAsync(projectOrCategory, maxResults);
+                    if (!queryResult.Success)
+                        return queryResult.Message;
+
+                    if (!queryResult.Rows.Any())
+                        return string.IsNullOrWhiteSpace(queryResult.Message) ? "No incomplete Voice Admin todo items found." : queryResult.Message;
+
+                    string repoRoot;
+                    try
+                    {
+                        repoRoot = Path.GetFullPath(EnvironmentSettings.ReadString("ASSISTANT_REPO_DIRECTORY", Directory.GetCurrentDirectory()));
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Failed to resolve repository root for CSV export: {ex.Message}";
+                    }
+
+                    var exportFolder = Path.Combine(repoRoot, "db_exports");
+                    Directory.CreateDirectory(exportFolder);
+
+                    outputFileName = string.IsNullOrWhiteSpace(outputFileName)
+                        ? SanitizeFileName($"voice_admin_todos_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv")
+                        : SanitizeFileName(outputFileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? outputFileName : outputFileName + ".csv");
+
+                    var fullPath = Path.Combine(exportFolder, outputFileName);
+
+                    try
+                    {
+                        File.WriteAllText(fullPath, BuildCsvContent(queryResult.Rows), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Failed to write CSV file '{fullPath}': {ex.Message}";
+                    }
+
+                    if (openInVsCode)
+                    {
+                        var openResult = await knownFolderExplorerService.OpenFileInVsCodeAsync("repo", Path.Combine("db_exports", outputFileName));
+                        return $"Voice Admin CSV exported to {fullPath}. {openResult}";
+                    }
+
+                    return $"Voice Admin CSV exported to {fullPath}.";
+                },
+                "export_voice_admin_open_todos_to_csv",
+                "Export Voice Admin open/incomplete todo items to CSV and optionally open it in Visual Studio Code."),
+            AIFunctionFactory.Create(
+                async (
                     [Description("Todo title") ] string title,
                     [Description("Optional todo description") ] string? description = null,
                     [Description("Optional project/category label (stored in the Todos.Project field)")] string? projectOrCategory = null,

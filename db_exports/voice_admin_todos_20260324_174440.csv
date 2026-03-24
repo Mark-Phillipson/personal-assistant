@@ -1,0 +1,22 @@
+TodoId,Title,Description,Project,Created,SortPriority,Category
+19277,review Voice Admin tables for assistant integration,Go through all the tables in the Voice Admin system to see if any could be used in the assistant.,Assistant,2026-03-24 06:16:39,60,
+19230,SQL Recognized as Global,Single language command file does not get recognized as a language just shows as global for example SQL  also could add a specific filter for program languages,Visual Studio Code Extensions,2025-12-28 14:22:39,9,Visual Studio Code Extensions
+19229,Coding Video,"When its nearly finished, Create a video showing how to use the natural language commands And the Talon Voice command search extensions.  and the assistant etc.",Social,2025-12-28 14:22:39,5,
+19264,Migrate to Blazor,STARTED Webapp See how feasible it is to create a reverse proxy and Begin the migration from dotnet frame work to dotnet core @high,Chain of Custody,2025-12-28 14:22:39,1,
+19282,New Todo,New Description,,2026-03-24 12:26:34.8602835,0,
+19281,Make Voice Admin installable via GitHub (DB secrets removed),"Prepare Voice Admin for GitHub installation, including database setup with all secret information removed. Ensure documentation is clear for setup.",Voice Admin,2026-03-24 08:44:09,0,
+19238,Razor Language Support,(Started) Cursorless working with *.razor files (meeting?) https://talonvoice.slack.com/archives/C026KPTJE6T/p1745484816258269?thread_ts=1745484562.105319&cid=C026KPTJE6T @backburner,Talon,2025-12-28 14:22:39,0,Talon
+19237,Parrot Noises,Look into setting up the parrot noises for talon voice control @low,Talon,2025-12-28 14:22:39,0,Talon
+19236,Talon Camera,Experiment with camera expressions with talon voice control maybe have a lunch mode to launch stuff @low,Talon,2025-12-28 14:22:39,0,Talon
+19235,Identity Management,Building out an identity application Blazor to replace the ASP.NET one which is unsecure @low,Identity,2025-12-28 14:22:39,0,
+19234,Freelancing,Look into other sites similar to Upwork and apply for more jobs,Upwork,2025-12-28 14:22:39,0,Upwork
+19233,Create Snippets,Add the ability to create snippets in the browse snippets extension with a user interface,Visual Studio Code Extensions,2025-12-28 14:22:39,0,Visual Studio Code Extensions
+19232,Publish Google App,Publish words into Google Play store @low,Words,2025-12-28 14:22:39,0,Words
+19231,Idea,"New app idea: AI chatbot dedicated to learning, with the functionality to save the results for the user of quizzes and tests Follow forwardthat they've devised themselves.",Future Projects,2025-12-28 14:22:39,0,
+18208,Blazor Identity,"Create a Blazor Server application for editing the identity and roles to replace the asp.net version.
+Look at Boston Academic for an example of this
+This is now provided by default with dotnet 8",Identity,2023-08-15 13:43:52.9466667,0,
+5070,Phone app,Look into setting up the Words App as an android app using Blazor/MAUI,Words,2022-02-03 13:55:12.0466667,0,Words
+19263,Remove Link,Remove the register link on the login page might need to rescaffeled @low as an interim remove the ability to add new users. see the program file in boston academic. (The Register functionality will now redirect to the login page),Packtex,2025-12-28 14:22:39,-10,
+19262,Bootstrap Version,migrate bootstrap 4 to bootstrap 5 within the web application. @low (backburner),Packtex,2025-12-28 14:22:39,-10,
+19261,Quoting System,Make a start on the Quoting System @low (Client set to on hold),Packtex,2025-12-28 14:22:39,-10,
