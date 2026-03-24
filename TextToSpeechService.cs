@@ -8,6 +8,23 @@ internal sealed class TextToSpeechService
     private readonly int _maxPreviewWords;
     private readonly string _preferredGender;
 
+    private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "tts-debug.log");
+
+    private static void Log(string message)
+    {
+        var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}";
+        try
+        {
+            File.AppendAllText(LogPath, line + Environment.NewLine);
+        }
+        catch
+        {
+            // ignore file logging failures to avoid affecting TTS flow.
+        }
+
+        Console.Error.WriteLine(line);
+    }
+
     private TextToSpeechService(bool enabled, int maxPreviewWords, string preferredGender)
     {
         _enabled = enabled;
@@ -23,31 +40,42 @@ internal sealed class TextToSpeechService
         return new TextToSpeechService(enabled, maxPreviewWords, preferredGender);
     }
 
-    public async Task TrySpeakPreviewAsync(string text, CancellationToken cancellationToken)
+    public async Task TrySpeakPreviewAsync(string text, CancellationToken cancellationToken, bool force = false)
     {
-        Console.Error.WriteLine($"[tts.debug] enabled={_enabled}, isWindows={RuntimeInformation.IsOSPlatform(OSPlatform.Windows)}, textLength={text?.Length}, cancellationRequested={cancellationToken.IsCancellationRequested}");
+        Log($"[tts.debug] enabled={_enabled}, force={force}, isWindows={RuntimeInformation.IsOSPlatform(OSPlatform.Windows)}, textLength={text?.Length}, cancellationRequested={cancellationToken.IsCancellationRequested}");
 
-        if (!_enabled || string.IsNullOrWhiteSpace(text) || cancellationToken.IsCancellationRequested)
+        if ((!force && !_enabled) || string.IsNullOrWhiteSpace(text) || cancellationToken.IsCancellationRequested)
         {
-            Console.Error.WriteLine("[tts.debug] early return: disabled/empty/canceled");
+            var reason = !force && !_enabled ? "disabled" : "empty/canceled";
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                reason = "empty text";
+            }
+            if (cancellationToken.IsCancellationRequested)
+            {
+                reason = "cancellation requested";
+            }
+            Log($"[tts.debug] early return: {reason}");
             return;
         }
 
         if (IsLikelyTableContent(text))
         {
-            Console.Error.WriteLine("[tts.debug] early return: table content");
+            Log("[tts.debug] early return: table content");
             return;
         }
 
         var snippet = ExtractPreviewText(text, _maxPreviewWords);
+        Log($"[tts.debug] extracted snippet ({snippet?.Length} chars): '{snippet}'");
         if (string.IsNullOrWhiteSpace(snippet))
         {
+            Log("[tts.debug] early return: snippet empty after extraction");
             return;
         }
 
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            Console.Error.WriteLine("[tts.info] TTS is only supported on Windows; skipping.");
+            Log("[tts.info] TTS is only supported on Windows; skipping.");
             return;
         }
 
@@ -55,18 +83,18 @@ internal sealed class TextToSpeechService
         {
             using var synthesizer = new SpeechSynthesizer();
             synthesizer.SetOutputToDefaultAudioDevice();
-            Console.Error.WriteLine("[tts.info] Output set to default audio device.");
+            Log("[tts.info] Output set to default audio device.");
 
             var installedVoices = synthesizer.GetInstalledVoices()
                 .Where(v => v.Enabled)
                 .Select(v => v.VoiceInfo)
                 .ToArray();
 
-            Console.Error.WriteLine($"[tts.info] Installed voices: {string.Join(", ", installedVoices.Select(v => v.Name + "(" + v.Gender + ")"))}");
+            Log($"[tts.info] Installed voices: {string.Join(", ", installedVoices.Select(v => v.Name + "(" + v.Gender + ")"))}");
 
             if (!installedVoices.Any())
             {
-                Console.Error.WriteLine("[tts.error] No installed voices available.");
+                Log("[tts.error] No installed voices available.");
                 return;
             }
 
@@ -75,7 +103,7 @@ internal sealed class TextToSpeechService
             if (zira is not null)
             {
                 selected = zira;
-                Console.Error.WriteLine($"[tts.info] Forcing Zira voice: {selected.Name} ({selected.Gender}).");
+                Log($"[tts.info] Forcing Zira voice: {selected.Name} ({selected.Gender}).");
             }
             else
             {
@@ -84,17 +112,17 @@ internal sealed class TextToSpeechService
                 if (selected is null)
                 {
                     selected = installedVoices.First();
-                    Console.Error.WriteLine($"[tts.info] Preferred gender '{_preferredGender}' not found; fallback voice: {selected.Name} ({selected.Gender}).");
+                    Log($"[tts.info] Preferred gender '{_preferredGender}' not found; fallback voice: {selected.Name} ({selected.Gender}).");
                 }
                 else
                 {
-                    Console.Error.WriteLine($"[tts.info] Selected voice: {selected.Name} ({selected.Gender}).");
+                    Log($"[tts.info] Selected voice: {selected.Name} ({selected.Gender}).");
                 }
             }
 
             synthesizer.SelectVoice(selected.Name);
             synthesizer.Rate = -1;
-            Console.Error.WriteLine($"[tts.info] Speaking preview ({snippet.Length} chars).");
+            Log($"[tts.info] Speaking preview ({snippet.Length} chars).");
 
             // Always also create a fallback WAV file so we can verify output independent of session audio routing.
             var outputFile = Path.Combine(AppContext.BaseDirectory, "tts-output.wav");
@@ -102,11 +130,11 @@ internal sealed class TextToSpeechService
             {
                 synthesizer.SetOutputToWaveFile(outputFile);
                 synthesizer.Speak(snippet);
-                Console.Error.WriteLine($"[tts.info] Fallback WAV file written: {outputFile}");
+                Log($"[tts.info] Fallback WAV file written: {outputFile}");
             }
             catch (Exception waveEx)
             {
-                Console.Error.WriteLine($"[tts.error] Fallback WAV creation failed: {waveEx.Message}");
+                Log($"[tts.error] Fallback WAV creation failed: {waveEx.Message}");
             }
 
             synthesizer.SetOutputToDefaultAudioDevice();
@@ -116,12 +144,12 @@ internal sealed class TextToSpeechService
             }
             catch (Exception speakEx)
             {
-                Console.Error.WriteLine($"[tts.error] Direct speak failed: {speakEx.Message}.");
+                Log($"[tts.error] Direct speak failed: {speakEx.Message}.");
             }
         }
         catch (Exception updateException)
         {
-            Console.Error.WriteLine($"[tts.error] Speak failed: {updateException.Message}");
+            Log($"[tts.error] Speak failed: {updateException.Message}");
         }
     }
 

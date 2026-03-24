@@ -237,6 +237,19 @@ static async Task RunCliAsync(
         {
             await telegram.SendMessageInChunksAsync(storedChatId.Value, content, cancellationToken);
         }
+
+        try
+        {
+            // CLI mode is typically triggered by voice commands (Talon/bob flow), so always run TTS.
+            // If you want to make this optional, use an env var or explicit command.
+            const bool forceTts = true;
+            Console.Error.WriteLine($"[tts.info] CLI chat response will be spoken (if TTS enabled or forced={forceTts}).");
+            await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken, forceTts);
+        }
+        catch (Exception ttsEx)
+        {
+            Console.Error.WriteLine($"[tts.error] CLI speak failed: {ttsEx.Message}");
+        }
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
@@ -381,6 +394,20 @@ static async Task RunTelegramAsync(
         {
             await session.DisposeAsync();
         }
+    }
+}
+
+var debugLogPath = Path.Combine(AppContext.BaseDirectory, "assistant-cli-debug.log");
+
+void WriteDebugLog(string message)
+{
+    try
+    {
+        File.AppendAllText(debugLogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}");
+    }
+    catch
+    {
+        // avoid crashing the app for logging failures
     }
 }
 
