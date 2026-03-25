@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text;
 using System.Text.RegularExpressions;
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
@@ -26,14 +27,84 @@ internal static class TelegramMessageHandler
         VoiceAdminService voiceAdminService,
         PodcastSubscriptionsService podcastSubscriptionsService,
         ClipboardHistoryService clipboardHistoryService,
+        TextToSpeechService textToSpeechService,
         CancellationToken cancellationToken)
     {
         var chatId = message.Chat.Id;
         var profile = GetPersonalityForChat(chatId, personalityProfiles, defaultPersonality);
 
+        // TTS service isolate route
+        if (text.Equals("tts test", StringComparison.OrdinalIgnoreCase) || text.Equals("/tts-test", StringComparison.OrdinalIgnoreCase))
+        {
+            const string testPhrase = "This is a text to speech service test. If you hear this, Text To Speech is working.";
+            await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap("Running TTS test...", EmojiPalette.Rocket, profile.UseEmoji), cancellationToken);
+
+            try
+            {
+                await textToSpeechService.TrySpeakPreviewAsync(testPhrase, cancellationToken);
+                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap("TTS test completed; check your speaker output.", EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap($"TTS test failed: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+            }
+
+            return;
+        }
+
+        // Voice-friendly natural command syntax (no slash)
+        if (text.StartsWith("natural", StringComparison.OrdinalIgnoreCase))
+        {
+            var commandPayload = text.Length > "natural".Length ? text["natural".Length..].Trim() : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(commandPayload))
+            {
+                await telegram.SendMessageInChunksAsync(
+                    chatId,
+                    EmojiPalette.Wrap("Usage: natural <command>", EmojiPalette.Warning, profile.UseEmoji),
+                    cancellationToken);
+                return;
+            }
+
+            var naturalResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
+            var naturalContent = EmojiPalette.Wrap(naturalResult.Message, EmojiPalette.Rocket, profile.UseEmoji);
+            await telegram.SendMessageInChunksAsync(chatId, naturalContent, cancellationToken);
+            await textToSpeechService.TrySpeakPreviewAsync(naturalResult.Message, cancellationToken);
+            return;
+        }
+
+        if (text.StartsWith("nc", StringComparison.OrdinalIgnoreCase))
+        {
+            var commandPayload = text.Length > 2 ? text[2..].Trim() : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(commandPayload))
+            {
+                await telegram.SendMessageInChunksAsync(
+                    chatId,
+                    EmojiPalette.Wrap("Usage: nc <your question or command>", EmojiPalette.Warning, profile.UseEmoji),
+                    cancellationToken);
+                return;
+            }
+
+            await HandleAssistantVoiceCommandAsync(
+                chatId,
+                commandPayload,
+                telegram,
+                copilotClient,
+                sessions,
+                assistantTools,
+                profile,
+                voiceAdminService,
+                textToSpeechService,
+                cancellationToken);
+
+            return;
+        }
+
         if (text.StartsWith('/'))
         {
             var command = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0].ToLowerInvariant();
+            var commandPayload = string.Empty;
             switch (command)
             {
                 case "/start":
@@ -186,13 +257,47 @@ internal static class TelegramMessageHandler
                     return;
 
                 case "/natural":
+                    commandPayload = ExtractCommandPayload(text);
+
+                    if (string.IsNullOrWhiteSpace(commandPayload))
+                    {
+                        await telegram.SendMessageInChunksAsync(
+                            chatId,
+                            EmojiPalette.Wrap("Usage: /natural <command>", EmojiPalette.Warning, profile.UseEmoji),
+                            cancellationToken);
+                        return;
+                    }
+
+                    var naturalResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
+                    var naturalContent = EmojiPalette.Wrap(naturalResult.Message, EmojiPalette.Rocket, profile.UseEmoji);
+                    await telegram.SendMessageInChunksAsync(chatId, naturalContent, cancellationToken);
+                    await textToSpeechService.TrySpeakPreviewAsync(naturalResult.Message, cancellationToken);
+                    return;
+
                 case "/nc":
-                    var commandPayload = ExtractCommandPayload(text);
-                    var naturalCommandResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
-                    await telegram.SendMessageInChunksAsync(
+                    commandPayload = ExtractCommandPayload(text);
+
+                    if (string.IsNullOrWhiteSpace(commandPayload))
+                    {
+                        await telegram.SendMessageInChunksAsync(
+                            chatId,
+                            EmojiPalette.Wrap("Usage: /nc <your question or command>", EmojiPalette.Warning, profile.UseEmoji),
+                            cancellationToken);
+                        return;
+                    }
+
+                    await HandleAssistantVoiceCommandAsync(
                         chatId,
-                        EmojiPalette.Wrap(naturalCommandResult.Message, EmojiPalette.Rocket, profile.UseEmoji),
+                        commandPayload,
+                        telegram,
+                        copilotClient,
+                        sessions,
+                        assistantTools,
+                        profile,
+                        voiceAdminService,
+                        textToSpeechService,
                         cancellationToken);
+
                     return;
 
                 case "/podcasts":
@@ -305,6 +410,13 @@ internal static class TelegramMessageHandler
         // Deterministic path for conversational todo-list requests to avoid model hallucinations.
         if (storedAttachment is null && LooksLikeTodoListRequest(text) && voiceAdminService.IsConfigured)
         {
+            if (LooksLikeTodoCsvExportRequest(text))
+            {
+                var exportResult = await ExportVoiceAdminTodosToCsvAsync(text, voiceAdminService);
+                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(exportResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
+                return;
+            }
+
             var todoTable = await voiceAdminService.ListIncompleteTodosAsync(asHtmlTable: true);
             await telegram.SendMessageInChunksAsync(chatId, todoTable, cancellationToken);
             return;
@@ -330,6 +442,16 @@ internal static class TelegramMessageHandler
             content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
 
             await telegram.SendMessageInChunksAsync(chatId, content, cancellationToken);
+
+            try
+            {
+                Console.Error.WriteLine($"[tts.info] Main chat response will be spoken (if enabled).");
+                await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken);
+            }
+            catch (Exception ttsEx)
+            {
+                Console.Error.WriteLine($"[tts.error] Main chat speak failed: {ttsEx.Message}");
+            }
         }
         catch (Exception ex)
         {
@@ -438,6 +560,48 @@ internal static class TelegramMessageHandler
         return false;
     }
 
+    private static async Task HandleAssistantVoiceCommandAsync(
+        long chatId,
+        string commandPayload,
+        TelegramApiClient telegram,
+        CopilotClient copilotClient,
+        ConcurrentDictionary<long, CopilotSession> sessions,
+        ICollection<AIFunction> assistantTools,
+        PersonalityProfile profile,
+        VoiceAdminService voiceAdminService,
+        TextToSpeechService textToSpeechService,
+        CancellationToken cancellationToken)
+    {
+        var messageOptions = new MessageOptions { Prompt = commandPayload };
+
+        var content = await SendWithSessionRecoveryAsync(
+            chatId,
+            messageOptions,
+            copilotClient,
+            sessions,
+            assistantTools,
+            profile,
+            cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            content = "I could not generate a response. Please try again.";
+        }
+
+        content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
+
+        await telegram.SendMessageInChunksAsync(chatId, content, cancellationToken);
+
+        try
+        {
+            await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[tts.speak.error] chat={chatId} {ex}");
+        }
+    }
+
     private static bool LooksLikeTodoListRequest(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -455,6 +619,105 @@ internal static class TelegramMessageHandler
 
         return Regex.IsMatch(content, "\\b(no|none|empty)\\b", RegexOptions.IgnoreCase)
             && Regex.IsMatch(content, "\\b(todos?|to\\s*do|task|tasks)\\b", RegexOptions.IgnoreCase);
+    }
+
+    private static bool LooksLikeTodoCsvExportRequest(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var exportWords = "\\b(csv|comma[- ]?separated|spreadsheet|excel|export|download|save to file)\\b";
+        return LooksLikeTodoListRequest(text) && Regex.IsMatch(text, exportWords, RegexOptions.IgnoreCase);
+    }
+
+    private static async Task<string> ExportVoiceAdminTodosToCsvAsync(string text, VoiceAdminService voiceAdminService)
+    {
+        var projectOrCategoryMatch = Regex.Match(text, "\\b(project|category)\\s*(?:=|is|:)?\\s*([\\w\\s-]+)\\b", RegexOptions.IgnoreCase);
+        var projectOrCategory = projectOrCategoryMatch.Success ? projectOrCategoryMatch.Groups[2].Value.Trim() : null;
+
+        var maxResultMatch = Regex.Match(text, "\\b(top|first|latest)\\s+(\\d{1,3})\\b", RegexOptions.IgnoreCase);
+        var maxResults = maxResultMatch.Success ? int.Parse(maxResultMatch.Groups[2].Value) : (int?)null;
+
+        var rowsResult = await voiceAdminService.GetIncompleteTodosRowsAsync(projectOrCategory, maxResults);
+        if (!rowsResult.Success)
+            return rowsResult.Message;
+
+        if (!rowsResult.Rows.Any())
+            return "No incomplete Voice Admin todo items found.";
+
+        var repoRoot = Path.GetFullPath(EnvironmentSettings.ReadString("ASSISTANT_REPO_DIRECTORY", Directory.GetCurrentDirectory()));
+        var exportFolder = Path.Combine(repoRoot, "db_exports");
+        Directory.CreateDirectory(exportFolder);
+
+        var outputFileName = SanitizeFileName($"voice_admin_todos_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv");
+        var fullPath = Path.Combine(exportFolder, outputFileName);
+
+        try
+        {
+            File.WriteAllText(fullPath, BuildCsvContent(rowsResult.Rows), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to write CSV file '{fullPath}': {ex.Message}";
+        }
+
+        try
+        {
+            var codeProcess = new ProcessStartInfo
+            {
+                FileName = "code",
+                Arguments = $"\"{fullPath}\"",
+                UseShellExecute = true,
+                WorkingDirectory = exportFolder
+            };
+
+            Process.Start(codeProcess);
+            return $"Voice Admin CSV exported to {fullPath}. Opened in Visual Studio Code.";
+        }
+        catch (Exception ex)
+        {
+            return $"Voice Admin CSV exported to {fullPath}. Could not open in VS Code automatically: {ex.Message}";
+        }
+    }
+
+    private static string BuildCsvContent(IEnumerable<IDictionary<string, object?>> rows)
+    {
+        var first = rows.FirstOrDefault();
+        if (first == null)
+            return string.Empty;
+
+        var columns = first.Keys.ToArray();
+        var sb = new StringBuilder();
+
+        sb.AppendLine(string.Join(",", columns.Select(EscapeCsvValue)));
+
+        foreach (var row in rows)
+        {
+            sb.AppendLine(string.Join(",", columns.Select(col => EscapeCsvValue(row.ContainsKey(col) ? row[col] : null))));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string EscapeCsvValue(object? value)
+    {
+        if (value == null)
+            return string.Empty;
+
+        var asString = value.ToString() ?? string.Empty;
+        var needsQuotes = asString.Contains(',') || asString.Contains('"') || asString.Contains('\n') || asString.Contains('\r');
+        var escaped = asString.Replace("\"", "\"\"");
+        return needsQuotes ? $"\"{escaped}\"" : escaped;
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        foreach (var c in Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(c.ToString(), "_");
+        }
+
+        return fileName;
     }
 
     private static async Task<string> ReconcileTodoEmptyClaimAsync(string content, VoiceAdminService voiceAdminService)

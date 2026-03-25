@@ -1,4 +1,8 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Text;
 using Microsoft.Extensions.AI;
 
 internal static class AssistantToolsFactory
@@ -12,6 +16,7 @@ internal static class AssistantToolsFactory
         WebBrowserAssistantService webBrowserService,
         VoiceAdminService voiceAdminService,
         VoiceAdminSearchService voiceAdminSearchService,
+        GenericDatabaseService genericDatabaseService,
         TalonUserDirectoryService talonUserDirectoryService,
         KnownFolderExplorerService knownFolderExplorerService,
         PodcastSubscriptionsService podcastSubscriptionsService,
@@ -184,6 +189,58 @@ internal static class AssistantToolsFactory
                 "List Voice Admin Todos that are not completed and not archived. Includes TodoId, title, project/category, priority, and created date. Use projectOrCategory to filter. Returns Telegram preformatted table output by default."),
             AIFunctionFactory.Create(
                 async (
+                    [Description("Optional project/category filter for open todos (matches the Todos.Project field)")] string? projectOrCategory = null,
+                    [Description("Maximum number of results to export (1-100, default 20)")] int? maxResults = null,
+                    [Description("Optional output filename (without folder, .csv is appended if absent)")] string? outputFileName = null,
+                    [Description("When true, open the generated CSV in VS Code (default true)")] bool openInVsCode = true) =>
+                {
+                    var queryResult = await voiceAdminService.GetIncompleteTodosRowsAsync(projectOrCategory, maxResults);
+                    if (!queryResult.Success)
+                        return queryResult.Message;
+
+                    if (!queryResult.Rows.Any())
+                        return string.IsNullOrWhiteSpace(queryResult.Message) ? "No incomplete Voice Admin todo items found." : queryResult.Message;
+
+                    string repoRoot;
+                    try
+                    {
+                        repoRoot = Path.GetFullPath(EnvironmentSettings.ReadString("ASSISTANT_REPO_DIRECTORY", Directory.GetCurrentDirectory()));
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Failed to resolve repository root for CSV export: {ex.Message}";
+                    }
+
+                    var exportFolder = Path.Combine(repoRoot, "db_exports");
+                    Directory.CreateDirectory(exportFolder);
+
+                    outputFileName = string.IsNullOrWhiteSpace(outputFileName)
+                        ? SanitizeFileName($"voice_admin_todos_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv")
+                        : SanitizeFileName(outputFileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? outputFileName : outputFileName + ".csv");
+
+                    var fullPath = Path.Combine(exportFolder, outputFileName);
+
+                    try
+                    {
+                        File.WriteAllText(fullPath, BuildCsvContent(queryResult.Rows), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Failed to write CSV file '{fullPath}': {ex.Message}";
+                    }
+
+                    if (openInVsCode)
+                    {
+                        var openResult = await knownFolderExplorerService.OpenFileInVsCodeAsync("repo", Path.Combine("db_exports", outputFileName));
+                        return $"Voice Admin CSV exported to {fullPath}. {openResult}";
+                    }
+
+                    return $"Voice Admin CSV exported to {fullPath}.";
+                },
+                "export_voice_admin_open_todos_to_csv",
+                "Export Voice Admin open/incomplete todo items to CSV and optionally open it in Visual Studio Code."),
+            AIFunctionFactory.Create(
+                async (
                     [Description("Todo title") ] string title,
                     [Description("Optional todo description") ] string? description = null,
                     [Description("Optional project/category label (stored in the Todos.Project field)")] string? projectOrCategory = null,
@@ -218,6 +275,261 @@ internal static class AssistantToolsFactory
                     await voiceAdminService.AssignTodoProjectByTextAsync(titleOrKeyword, projectOrCategory, exactMatch),
                 "assign_voice_admin_todo_project_by_text",
                 "Conversational shortcut: assign or clear project/category for an open Voice Admin todo by title or keyword. If multiple matches are found, it returns candidate TodoIds so you can confirm."),
+            AIFunctionFactory.Create(
+                () => genericDatabaseService.ListSources().Count > 0 ? "configured" : "no sources configured",
+                "database_registry_status",
+                "Check whether any generic database sources are configured and report status."),
+            AIFunctionFactory.Create(
+                async ([Description("Optional database alias to select")] string? alias = null) =>
+                {
+                    if (string.IsNullOrWhiteSpace(alias))
+                    {
+                        var available = genericDatabaseService.ListSources().Select(s => s.Alias).ToList();
+                        return available.Any()
+                            ? "Please choose a database alias from: " + string.Join(", ", available)
+                            : "No configured databases available.";
+                    }
+
+                    var normalized = alias.Trim();
+                    if (genericDatabaseService.TryGetSource(normalized, out var source))
+                    {
+                        return $"Database '{source.Alias}' selected (provider={source.ProviderType}, readOnly={source.ReadOnly}). Use this alias in subsequent commands.";
+                    }
+
+                    return $"Alias '{normalized}' is not configured. Current aliases: {string.Join(", ", genericDatabaseService.ListSources().Select(s => s.Alias))}";
+                },
+                "select_database",
+                "Validate and select a configured database alias for future database queries."),
+            AIFunctionFactory.Create(
+                () =>
+                {
+                    var sources = genericDatabaseService.ListSources().ToList();
+                    if (!sources.Any())
+                    {
+                        return "No configured databases available.";
+                    }
+                    var lines = sources.Select((s, index) => $"{index + 1}. {s.Alias} ({s.ProviderType})").ToList();
+                    return "Available databases:\n" + string.Join("\n", lines);
+                },
+                "list_databases",
+                "List configured generic database sources with numbered aliases and provider types."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias or numeric index from list_databases")] string alias) =>
+                {
+                    if (string.IsNullOrWhiteSpace(alias))
+                    {
+                        return "No alias provided. Use list_databases to see available indexes and aliases.";
+                    }
+
+                    var source = genericDatabaseService.ListSources()
+                        .ToList();
+
+                    if (int.TryParse(alias.Trim(), out var index))
+                    {
+                        if (index < 1 || index > source.Count)
+                        {
+                            return $"Index {index} is out of range. Use list_databases to view valid indexes.";
+                        }
+                        alias = source[index - 1].Alias;
+                    }
+
+                    var tables = await genericDatabaseService.ListTablesAsync(alias);
+                    return tables.Any()
+                        ? string.Join("\n", tables.Select((t, i) => $"{i + 1}. {t}"))
+                        : $"No tables found for database alias '{alias}', or alias is invalid.";
+                },
+                "list_tables",
+                "List tables and views in a configured database alias (supports numeric index from list_databases)."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias")] string alias,
+                    [Description("Table name; optionally schema.table for SQL Server")] string tableName) =>
+                {
+                    var columns = await genericDatabaseService.GetTableSchemaAsync(alias, tableName);
+                    return columns.Any()
+                        ? string.Join("\n", columns.Select(c => $"{c.Name} ({c.DataType}) nullable={c.IsNullable} pk={c.IsPrimaryKey}"))
+                        : $"No schema information found for table '{tableName}' in alias '{alias}'.";
+                },
+                "describe_table_schema",
+                "Get table schema including column names, data types, nullability and primary key."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias")] string alias,
+                    [Description("Table name; optionally schema.table for SQL Server")] string tableName) =>
+                {
+                    var count = await genericDatabaseService.CountRowsAsync(alias, tableName);
+                    return $"{count} row(s) in {tableName} (alias {alias}).";
+                },
+                "count_table_rows",
+                "Return number of rows in the named table."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias")] string alias,
+                    [Description("Object name hint (partial or full table name)")] string nameHint) =>
+                {
+                    var resolved = await genericDatabaseService.ResolveObjectNameAsync(alias, nameHint);
+                    return !string.IsNullOrWhiteSpace(resolved)
+                        ? $"Resolved table/view name: {resolved} (alias {alias})."
+                        : $"Could not resolve table/view name for hint '{nameHint}' in alias '{alias}'.";
+                },
+                "resolve_table_object",
+                "Resolve a requested table or view name to a configured canonical object name for the database alias."),
+            AIFunctionFactory.Create(
+                async ([Description("Configured database alias")] string alias,
+                    [Description("Table name; optionally schema.table for SQL Server")] string tableName,
+                    [Description("Maximum number of rows to preview, default 10")] int maxRows = 10) =>
+                {
+                    var preview = await genericDatabaseService.PreviewRowsAsync(alias, tableName, maxRows);
+                    if (!preview.Any())
+                    {
+                        return $"No preview rows found for table '{tableName}' using alias '{alias}'.";
+                    }
+
+                    var lines = new List<string>();
+                    var columns = preview.First().Keys.ToArray();
+                    lines.Add(string.Join("\t", columns));
+                    foreach (var row in preview)
+                    {
+                        lines.Add(string.Join("\t", columns.Select(c => row[c]?.ToString() ?? "(null)")));
+                    }
+
+                    return string.Join("\n", lines);
+                },
+                "preview_table_rows",
+                "Preview up to maxRows from a table in a configured database."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Configured database alias")] string alias,
+                    [Description("Table name; optionally schema.table for SQL Server")] string tableName,
+                    [Description("Optional WHERE clause without the WHERE keyword")] string? whereClause = null,
+                    [Description("Maximum number of rows to return, default 50")] int maxRows = 50) =>
+                {
+                    try
+                    {
+                        var rows = await genericDatabaseService.QueryTableAsync(alias, tableName, whereClause, maxRows);
+                        if (!rows.Any())
+                        {
+                            return $"No rows returned for {tableName} with alias {alias}.";
+                        }
+
+                        var columns = rows.First().Keys.ToArray();
+                        var lines = new List<string> { string.Join("\t", columns) };
+                        foreach (var row in rows)
+                        {
+                            lines.Add(string.Join("\t", columns.Select(c => row[c]?.ToString() ?? "(null)")));
+                        }
+
+                        return string.Join("\n", lines);
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Error in query_table_rows: {ex.Message}. Stack: {ex.StackTrace}";
+                    }
+                },
+                "query_table_rows",
+                "Run a read-only filtered SELECT query on a table (with optional WHERE clause)."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Configured database alias")] string alias,
+                    [Description("Read-only SQL statement (SELECT or WITH, no writes)")] string sql,
+                    [Description("Maximum number of rows to return, default 100")] int maxRows = 100) =>
+                {
+                    try
+                    {
+                        if (!SqlSecurityHelper.IsSelectQueryOnly(sql))
+                        {
+                            return "SQL rejected: only SELECT/with read-only queries are allowed.";
+                        }
+
+                        var rows = await genericDatabaseService.ExecuteReadOnlySqlAsync(alias, sql, maxRows);
+                        if (!rows.Any())
+                        {
+                            return "No rows returned (or alias/sql invalid).";
+                        }
+
+                        var columns = rows.First().Keys.ToArray();
+                        var lines = new List<string> { string.Join("\t", columns) };
+                        foreach (var row in rows)
+                        {
+                            lines.Add(string.Join("\t", columns.Select(c => row[c]?.ToString() ?? "(null)")));
+                        }
+
+                        return string.Join("\n", lines);
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Error in execute_read_only_sql: {ex.Message}. Stack: {ex.StackTrace}";
+                    }
+                },
+                "execute_read_only_sql",
+                "Execute a read-only SQL statement against the selected database alias (SELECT-only)."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Configured database alias")] string alias,
+                    [Description("Table name; optionally schema.table for SQL Server")] string tableName,
+                    [Description("Optional WHERE clause without the WHERE keyword")] string? whereClause = null,
+                    [Description("Maximum number of rows to export (default 100)")] int maxRows = 100,
+                    [Description("Optional output filename (without folder, fallback used if missing)")] string? outputFileName = null,
+                    [Description("When true, open the generated CSV in VS Code (default true)")] bool openInVsCode = true) =>
+                {
+                    try
+                    {
+                        if (string.IsNullOrWhiteSpace(alias))
+                        {
+                            return "No database alias provided. Use list_databases to see available aliases.";
+                        }
+
+                        if (string.IsNullOrWhiteSpace(tableName))
+                        {
+                            return "No table name provided. Use list_tables to identify a table name.";
+                        }
+
+                        var rows = await genericDatabaseService.QueryTableAsync(alias, tableName, whereClause, maxRows);
+                        if (!rows.Any())
+                        {
+                            return $"No rows returned from '{tableName}' in alias '{alias}'.";
+                        }
+
+                        string repoRoot;
+                        try
+                        {
+                            repoRoot = Path.GetFullPath(EnvironmentSettings.ReadString("ASSISTANT_REPO_DIRECTORY", Directory.GetCurrentDirectory()));
+                        }
+                        catch (Exception ex)
+                        {
+                            return $"Failed to resolve repository root for CSV export: {ex.Message}";
+                        }
+
+                        var exportFolder = Path.Combine(repoRoot, "db_exports");
+                        Directory.CreateDirectory(exportFolder);
+
+                        outputFileName = string.IsNullOrWhiteSpace(outputFileName)
+                            ? SanitizeFileName($"{alias}_{tableName}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv")
+                            : SanitizeFileName(outputFileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? outputFileName : outputFileName + ".csv");
+
+                        var fullPath = Path.Combine(exportFolder, outputFileName);
+
+                        try
+                        {
+                            File.WriteAllText(fullPath, BuildCsvContent(rows), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                        }
+                        catch (Exception ex)
+                        {
+                            return $"Failed to write CSV file '{fullPath}': {ex.Message}";
+                        }
+
+                        if (openInVsCode)
+                        {
+                            var openResult = await knownFolderExplorerService.OpenFileInVsCodeAsync("repo", Path.Combine("db_exports", outputFileName));
+                            return $"CSV exported to {fullPath}. {openResult}";
+                        }
+
+                        return $"CSV exported to {fullPath}.";
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Unexpected error exporting CSV: {ex.Message} {Environment.NewLine}{ex.StackTrace}";
+                    }
+                },
+                "export_table_rows_to_csv",
+                "Export table query results to CSV and optionally open it in Visual Studio Code."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Keyword to search in Talon Commands table")] string keyword,
@@ -350,6 +662,46 @@ internal static class AssistantToolsFactory
                 "get_clipboard_history_today",
                 "Get all clipboard history entries recorded today. Shows timestamps and content snippets. Includes both assistant-copied and manually-monitored entries. Set htmlFormat=true for Telegram preformatted table-style output.")
         ];
+    }
+
+    private static string BuildCsvContent(IEnumerable<IDictionary<string, object?>> rows)
+    {
+        var first = rows.FirstOrDefault();
+        if (first == null)
+            return string.Empty;
+
+        var columns = first.Keys.ToArray();
+        var sb = new StringBuilder();
+
+        sb.AppendLine(string.Join(",", columns.Select(EscapeCsvValue)));
+
+        foreach (var row in rows)
+        {
+            sb.AppendLine(string.Join(",", columns.Select(col => EscapeCsvValue(row.ContainsKey(col) ? row[col] : null))));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string EscapeCsvValue(object? value)
+    {
+        if (value == null)
+            return string.Empty;
+
+        var asString = value.ToString() ?? string.Empty;
+        var needsQuotes = asString.Contains(',') || asString.Contains('"') || asString.Contains('\n') || asString.Contains('\r');
+        var escaped = asString.Replace("\"", "\"\"");
+        return needsQuotes ? $"\"{escaped}\"" : escaped;
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        foreach (var c in Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(c.ToString(), "_");
+        }
+
+        return fileName;
     }
 
     private static async Task<string> PlayPodcastEpisodeAsync(

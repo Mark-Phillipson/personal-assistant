@@ -343,6 +343,79 @@ internal sealed class VoiceAdminService
         }
     }
 
+    public async Task<(bool Success, string Message, IEnumerable<IDictionary<string, object?>> Rows)> GetIncompleteTodosRowsAsync(string? projectOrCategory = null, int? maxResults = null)
+    {
+        if (!IsConfigured)
+            return (false, GetSetupStatusText(), Array.Empty<IDictionary<string, object?>>());
+
+        var limit = Math.Clamp(maxResults ?? _maxResults, 1, _maxResults);
+        var filter = string.IsNullOrWhiteSpace(projectOrCategory) ? null : projectOrCategory.Trim();
+
+        try
+        {
+            await using var conn = CreateReadOnlyConnection();
+            await conn.OpenAsync();
+
+            const string sql = """
+                SELECT t.Id,
+                       t.Title,
+                       t.Description,
+                       t.Project,
+                       t.Created,
+                       t.SortPriority,
+                       c.Category
+                FROM Todos t
+                LEFT JOIN Categories c
+                    ON lower(trim(c.Category)) = lower(trim(COALESCE(t.Project, '')))
+                WHERE COALESCE(t.Completed, 0) = 0
+                  AND COALESCE(t.Archived, 0) = 0
+                  AND (
+                        @projectLike IS NULL
+                        OR COALESCE(t.Project, '') LIKE @projectLike
+                        OR COALESCE(c.Category, '') LIKE @projectLike
+                      )
+                ORDER BY COALESCE(t.SortPriority, 0) DESC,
+                         COALESCE(t.Created, '') DESC,
+                         t.Id DESC
+                LIMIT @limit
+                """;
+
+            await using var cmd = new SqliteCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@projectLike", filter is null ? DBNull.Value : $"%{filter}%");
+            cmd.Parameters.AddWithValue("@limit", limit);
+
+            var rows = new List<IDictionary<string, object?>>();
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                rows.Add(new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["TodoId"] = reader.GetInt32(0),
+                    ["Title"] = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                    ["Description"] = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                    ["Project"] = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                    ["Created"] = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                    ["SortPriority"] = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+                    ["Category"] = reader.IsDBNull(6) ? string.Empty : reader.GetString(6)
+                });
+            }
+
+            if (rows.Count == 0)
+            {
+                if (!string.IsNullOrWhiteSpace(filter))
+                    return (true, $"No incomplete Voice Admin todo items found for project/category matching '{filter}'.", rows);
+
+                return (true, "No incomplete Voice Admin todo items found.", rows);
+            }
+
+            return (true, $"Found {rows.Count} incomplete Voice Admin todo item(s).", rows);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Error listing incomplete Voice Admin todo items: {ex.Message}", Array.Empty<IDictionary<string, object?>>());
+        }
+    }
+
     /// <summary>Search launcher entries by keyword across Name, CommandLine, and CategoryName.</summary>
     public async Task<string> SearchLauncherEntriesAsync(string keyword, int? maxResults = null, bool asHtmlTable = false)
     {

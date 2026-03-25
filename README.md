@@ -42,6 +42,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
    - `complete_voice_admin_todo_by_text` — conversational shortcut to mark a todo complete by title/keyword (returns candidates when multiple match)
    - `assign_voice_admin_todo_project` — assign or clear project/category (stored in `Todos.Project`) for a todo by TodoId
    - `assign_voice_admin_todo_project_by_text` — conversational shortcut to assign/clear project/category by title/keyword (returns candidates when multiple match)
+   - `export_voice_admin_open_todos_to_csv` — export open, incomplete Voice Admin todos to a CSV in `db_exports/` and optionally open it in VS Code (default true).
 - Exposes read-only Voice Admin table search tools to Copilot (requires `VOICE_ADMIN_DB_PATH` or falls back to `VOICE_LAUNCHER_DB_PATH`):
    - `search_talon_commands` — keyword search in Talon Commands table
    - `get_talon_command_details` — fetch full Talon command details (including script) by RowId
@@ -88,6 +89,14 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `VOICE_ADMIN_MAX_RESULTS` (optional, default `20`, range `1-100`; maximum Voice Admin launcher and table-search results; legacy fallback reads `VOICE_LAUNCHER_MAX_RESULTS`)
 - `VOICE_LAUNCHER_DB_PATH` (optional legacy fallback for `VOICE_ADMIN_DB_PATH`)
 - `VOICE_LAUNCHER_MAX_RESULTS` (optional legacy fallback for `VOICE_ADMIN_MAX_RESULTS`)
+- `DATABASE_CONFIG_PATH` (optional; path to JSON file defining database sources for generic database tooling)
+- `DATABASE_CONFIG_JSON` (optional; inline JSON for database sources, alternative to `DATABASE_CONFIG_PATH`)
+- `DATABASE_SQLSERVER_DISCOVERY` (optional; default `true`; when true, attempts to discover local SQL Server instances and add non-system databases automatically)
+- `DATABASE_SQLSERVER_INCLUDE_SYSTEM` (optional; default `false`; when true, includes system databases like master/tempdb/model/msdb in discovery)
+- `DATABASE_SQLSERVER_INCLUDE_LOCALDB` (optional; default `false`; when true, includes localdb resident databases in discovery results)
+- `ASSISTANT_TTS_ENABLED` (optional, default `false`; `true` to enable local preview speech)
+- `ASSISTANT_TTS_PREVIEW_MAX_WORDS` (optional, default `40`; maximum spoken words)
+- `ASSISTANT_TTS_PREFERRED_GENDER` (optional, default `male`; best-effort voice selection on Windows)
 - `TALON_USER_DIRECTORY` (optional, default `%USERPROFILE%\AppData\Roaming\talon\user`; root path for read-only Talon file tools)
 - `ASSISTANT_REPO_DIRECTORY` (optional, default current working directory when app starts; root path for the `repo` alias in `open_known_folder_in_explorer`)
 - `UPWORK_CHROME_CDP_URL` (optional, default `http://127.0.0.1:9222`; when Chrome is started with remote debugging, Upwork tools can attach to your existing logged-in Chrome profile/session)

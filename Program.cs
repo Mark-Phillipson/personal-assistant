@@ -11,15 +11,36 @@ var assemblyDirectoryEnvFilePath = Path.Combine(AppContext.BaseDirectory, ".env"
 
 if (File.Exists(workingDirectoryEnvFilePath))
 {
-    Env.Load(workingDirectoryEnvFilePath);
+    try
+    {
+        Env.Load(workingDirectoryEnvFilePath);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[env.load] Failed to parse {workingDirectoryEnvFilePath}: {ex.Message}");
+    }
 }
 else if (File.Exists(assemblyDirectoryEnvFilePath))
 {
-    Env.Load(assemblyDirectoryEnvFilePath);
+    try
+    {
+        Env.Load(assemblyDirectoryEnvFilePath);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[env.load] Failed to parse {assemblyDirectoryEnvFilePath}: {ex.Message}");
+    }
 }
 
 var environmentPersonality = PersonalityProfile.FromEnvironment();
 var defaultPersonality = PersonalityProfile.LoadFromEnvironmentOrJson(environmentPersonality);
+
+if (args.Any(arg => string.Equals(arg, "--run-phase3-tests", StringComparison.OrdinalIgnoreCase)))
+{
+    Console.WriteLine("Running Phase 3 tests...");
+    PhaseThreeTestRunner.RunAll();
+    return;
+}
 
 var assistantTransport = ResolveAssistantTransport(args);
 var cliPrompt = ExtractCliPrompt(args);
@@ -32,13 +53,19 @@ var dadJokeService = new DadJokeService();
 var webBrowserService = WebBrowserAssistantService.FromEnvironment(clipboardService);
 var voiceAdminService = VoiceAdminService.FromEnvironment();
 var voiceAdminSearchService = VoiceAdminSearchService.FromEnvironment();
+var databaseRegistry = DatabaseRegistry.FromEnvironment();
+var genericDatabaseService = new GenericDatabaseService(databaseRegistry);
 var talonUserDirectoryService = TalonUserDirectoryService.FromEnvironment();
 var knownFolderExplorerService = KnownFolderExplorerService.FromEnvironment();
 var telegramAttachmentService = TelegramAttachmentService.FromEnvironment();
 var podcastSubscriptionsService = PodcastSubscriptionsService.FromEnvironmentOrJson();
 var clipboardHistoryService = ClipboardHistoryService.FromEnvironment();
 var telegramChatIdStore = TelegramChatIdStore.FromEnvironment();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
+var textToSpeechService = TextToSpeechService.FromEnvironment();
+Console.WriteLine(databaseRegistry.GetSetupStatusText());
+Console.WriteLine($"GenericDatabaseService has {genericDatabaseService.ListSources().Count} source(s) available.");
+
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
@@ -70,6 +97,7 @@ try
                 defaultPersonality,
                 dadJokeService,
                 telegramChatIdStore,
+                textToSpeechService,
                 cliPrompt,
                 appCancellation.Token);
             break;
@@ -96,6 +124,7 @@ try
                 podcastSubscriptionsService,
                 clipboardHistoryService,
                 telegramChatIdStore,
+                textToSpeechService,
                 appCancellation.Token);
             break;
     }
@@ -148,6 +177,7 @@ static async Task RunCliAsync(
     PersonalityProfile defaultPersonality,
     DadJokeService dadJokeService,
     TelegramChatIdStore telegramChatIdStore,
+    TextToSpeechService textToSpeechService,
     string prompt,
     CancellationToken cancellationToken)
 {
@@ -170,7 +200,36 @@ static async Task RunCliAsync(
     {
         await telegram.SendMessageInChunksAsync(storedChatId.Value, $"🎤 <b>Voice command:</b> {System.Net.WebUtility.HtmlEncode(prompt)}", cancellationToken);
     }
+    // TTS-only CLI smoke test.
+    if (string.Equals(prompt.Trim(), "tts test", StringComparison.OrdinalIgnoreCase))
+    {
+        var testPhrase = "This is a text to speech test phrase. You should hear it on your default Windows audio device.";
+        Console.WriteLine("Running TTS test...");
 
+        try
+        {
+            Console.WriteLine("TTS test: calling TrySpeakPreviewAsync...");
+            await textToSpeechService.TrySpeakPreviewAsync(testPhrase, cancellationToken);
+            Console.WriteLine("TTS test completed: spoken phrase invoked.");
+            Console.WriteLine("TTS test: Completed internal TTS call.");
+
+            if (telegram is not null && storedChatId.HasValue)
+            {
+                await telegram.SendMessageInChunksAsync(storedChatId.Value, "🗣️ TTS test completed. Check your headphones.", cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"TTS test error: {ex.Message}");
+            Console.WriteLine(ex.ToString());
+            if (telegram is not null && storedChatId.HasValue)
+            {
+                await telegram.SendMessageInChunksAsync(storedChatId.Value, $"⚠️ TTS test failed: {ex.Message}", cancellationToken);
+            }
+        }
+
+        return;
+    }
     // Shortcut: handle dad joke requests locally without going through the Copilot toolchain.
     if (Regex.IsMatch(prompt, "\\bdad\\s*joke\\b", RegexOptions.IgnoreCase))
     {
@@ -203,6 +262,19 @@ static async Task RunCliAsync(
         if (telegram is not null && storedChatId.HasValue)
         {
             await telegram.SendMessageInChunksAsync(storedChatId.Value, content, cancellationToken);
+        }
+
+        try
+        {
+            // CLI mode is typically triggered by voice commands (Talon/bob flow), so always run TTS.
+            // If you want to make this optional, use an env var or explicit command.
+            const bool forceTts = true;
+            Console.Error.WriteLine($"[tts.info] CLI chat response will be spoken (if TTS enabled or forced={forceTts}).");
+            await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken, forceTts);
+        }
+        catch (Exception ttsEx)
+        {
+            Console.Error.WriteLine($"[tts.error] CLI speak failed: {ttsEx.Message}");
         }
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -241,6 +313,7 @@ static async Task RunTelegramAsync(
     PodcastSubscriptionsService podcastSubscriptionsService,
     ClipboardHistoryService clipboardHistoryService,
     TelegramChatIdStore telegramChatIdStore,
+    TextToSpeechService textToSpeechService,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -327,6 +400,7 @@ static async Task RunTelegramAsync(
                         voiceAdminService,
                         podcastSubscriptionsService,
                         clipboardHistoryService,
+                        textToSpeechService,
                         cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -349,6 +423,8 @@ static async Task RunTelegramAsync(
     }
 }
 
+var debugLogPath = Path.Combine(AppContext.BaseDirectory, "assistant-cli-debug.log");
+
 static Task<CopilotSession> CreateConfiguredSessionAsync(
     CopilotClient copilotClient,
     ICollection<AIFunction> assistantTools,
@@ -363,10 +439,4 @@ static Task<CopilotSession> CreateConfiguredSessionAsync(
             Content = SystemPromptBuilder.Build(profile)
         }
     });
-}
-
-static string ExtractCommandPayload(string text)
-{
-    var parts = text.Split(' ', 2, StringSplitOptions.TrimEntries);
-    return parts.Length < 2 ? string.Empty : parts[1];
 }
