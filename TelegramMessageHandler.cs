@@ -139,6 +139,16 @@ internal static class TelegramMessageHandler
                             chatId,
                             EmojiPalette.Wrap(joke, EmojiPalette.Happy, profile.UseEmoji),
                             cancellationToken);
+
+                        try
+                        {
+                            await textToSpeechService.TrySpeakPreviewAsync(joke, cancellationToken);
+                        }
+                        catch (Exception ttsEx)
+                        {
+                            Console.Error.WriteLine($"[tts.error] Dad joke speak failed: {ttsEx.Message}");
+                        }
+
                         return;
                     }
 
@@ -375,6 +385,16 @@ internal static class TelegramMessageHandler
             chatId,
             EmojiPalette.Wrap(dadJoke, EmojiPalette.Happy, profile.UseEmoji),
             cancellationToken);
+
+        try
+        {
+            await textToSpeechService.TrySpeakPreviewAsync(dadJoke, cancellationToken);
+        }
+        catch (Exception ttsEx)
+        {
+            Console.Error.WriteLine($"[tts.error] Dad joke speak failed: {ttsEx.Message}");
+        }
+
         return;
     }
 

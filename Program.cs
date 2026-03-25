@@ -241,6 +241,14 @@ static async Task RunCliAsync(
         {
             await telegram.SendMessageInChunksAsync(storedChatId.Value, joke, cancellationToken);
         }
+        try
+        {
+            await textToSpeechService.TrySpeakPreviewAsync(joke, cancellationToken, true);
+        }
+        catch (Exception ttsEx)
+        {
+            Console.Error.WriteLine($"[tts.error] CLI dad joke speak failed: {ttsEx.Message}");
+        }
         return;
     }
 
