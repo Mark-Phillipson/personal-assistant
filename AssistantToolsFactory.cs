@@ -16,6 +16,7 @@ internal static class AssistantToolsFactory
         WebBrowserAssistantService webBrowserService,
         VoiceAdminService voiceAdminService,
         VoiceAdminSearchService voiceAdminSearchService,
+        WindowsFocusAssistService windowsFocusAssistService,
         GenericDatabaseService genericDatabaseService,
         TalonUserDirectoryService talonUserDirectoryService,
         KnownFolderExplorerService knownFolderExplorerService,
@@ -131,6 +132,11 @@ internal static class AssistantToolsFactory
                     await webBrowserService.PlayFocusMusicAsync(activity, preferredService),
                 "play_focus_music",
                 "Open focus music on your preferred service (Spotify by default, falling back to YouTube Music). Use this for requests like play music to code by, study music, or contemplation music."),
+            AIFunctionFactory.Create(
+                async ([Description("Focus assist mode: on, off, priority, alarms") ] string mode) =>
+                    await windowsFocusAssistService.SetFocusAssistModeAsync(mode),
+                "set_focus_assist_mode",
+                "Enable or disable Windows Focus Assist (Windows 11). Mode should be 'on', 'off', 'priority', or 'alarms'."),
             AIFunctionFactory.Create(
                 async ([Description("Search query (e.g. Blazor developer jobs Upwork)")] string query) =>
                     await webBrowserService.SearchWebAsync(query),

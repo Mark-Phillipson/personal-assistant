@@ -53,6 +53,7 @@ var dadJokeService = new DadJokeService();
 var webBrowserService = WebBrowserAssistantService.FromEnvironment(clipboardService);
 var voiceAdminService = VoiceAdminService.FromEnvironment();
 var voiceAdminSearchService = VoiceAdminSearchService.FromEnvironment();
+var windowsFocusAssistService = WindowsFocusAssistService.FromEnvironment();
 var databaseRegistry = DatabaseRegistry.FromEnvironment();
 var genericDatabaseService = new GenericDatabaseService(databaseRegistry);
 var talonUserDirectoryService = TalonUserDirectoryService.FromEnvironment();
@@ -65,7 +66,7 @@ var textToSpeechService = TextToSpeechService.FromEnvironment();
 Console.WriteLine(databaseRegistry.GetSetupStatusText());
 Console.WriteLine($"GenericDatabaseService has {genericDatabaseService.ListSources().Count} source(s) available.");
 
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;

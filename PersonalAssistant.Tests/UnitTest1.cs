@@ -9,6 +9,29 @@ namespace PersonalAssistant.Tests;
 public class DatabasePhaseThreeTests
 {
     [Fact]
+    public async Task WindowsFocusAssistService_ToggleOnOff_WorksWhenWindowsAsync()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var service = WindowsFocusAssistService.FromEnvironment();
+
+        var onResult = await service.SetFocusAssistModeAsync("on");
+        Assert.Contains("Focus mode command accepted", onResult);
+
+        var dndResult = await service.SetFocusAssistModeAsync("do not disturb");
+        Assert.Contains("Focus mode command accepted", dndResult);
+
+        var offResult = await service.SetFocusAssistModeAsync("off");
+        Assert.Contains("Focus mode command accepted", offResult);
+
+        var disableDndResult = await service.SetFocusAssistModeAsync("disable do not disturb");
+        Assert.Contains("Focus mode command accepted", disableDndResult);
+    }
+
+    [Fact]
     public void SqlSecurityHelper_AllowsSelectAndRejectsWrites()
     {
         Assert.True(SqlSecurityHelper.IsSelectQueryOnly("SELECT * FROM T"));
