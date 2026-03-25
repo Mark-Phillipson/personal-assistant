@@ -1,12 +1,15 @@
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
-using System.Speech.Synthesis;
+using Microsoft.CognitiveServices.Speech;
+using Microsoft.CognitiveServices.Speech.Audio;
 
 internal sealed class TextToSpeechService
 {
     private readonly bool _enabled;
     private readonly int _maxPreviewWords;
     private readonly string _preferredGender;
+    private readonly string? _azureSpeechKey;
+    private readonly string? _azureSpeechRegion;
+    private readonly string _azureSpeechVoice;
 
     private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "tts-debug.log");
 
@@ -21,15 +24,17 @@ internal sealed class TextToSpeechService
         {
             // ignore file logging failures to avoid affecting TTS flow.
         }
-
         Console.Error.WriteLine(line);
     }
 
-    private TextToSpeechService(bool enabled, int maxPreviewWords, string preferredGender)
+    private TextToSpeechService(bool enabled, int maxPreviewWords, string preferredGender, string? azureSpeechKey, string? azureSpeechRegion, string azureSpeechVoice)
     {
         _enabled = enabled;
         _maxPreviewWords = maxPreviewWords;
         _preferredGender = preferredGender?.Trim().ToLowerInvariant() ?? "male";
+        _azureSpeechKey = azureSpeechKey;
+        _azureSpeechRegion = azureSpeechRegion;
+        _azureSpeechVoice = azureSpeechVoice;
     }
 
     public static TextToSpeechService FromEnvironment()
@@ -37,25 +42,22 @@ internal sealed class TextToSpeechService
         var enabled = EnvironmentSettings.ReadBool("ASSISTANT_TTS_ENABLED", false);
         var maxPreviewWords = EnvironmentSettings.ReadInt("ASSISTANT_TTS_PREVIEW_MAX_WORDS", 40, 1, 200);
         var preferredGender = EnvironmentSettings.ReadString("ASSISTANT_TTS_PREFERRED_GENDER", "male");
-        return new TextToSpeechService(enabled, maxPreviewWords, preferredGender);
+        var azureSpeechKey = EnvironmentSettings.ReadOptionalString("AZURE_SPEECH_KEY");
+        var azureSpeechRegion = EnvironmentSettings.ReadOptionalString("AZURE_SPEECH_REGION");
+        var azureSpeechVoice = EnvironmentSettings.ReadString("AZURE_SPEECH_VOICE", "en-GB-RyanNeural");
+
+        return new TextToSpeechService(enabled, maxPreviewWords, preferredGender, azureSpeechKey, azureSpeechRegion, azureSpeechVoice);
     }
 
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public async Task TrySpeakPreviewAsync(string text, CancellationToken cancellationToken, bool force = false)
     {
-        Log($"[tts.debug] enabled={_enabled}, force={force}, isWindows={RuntimeInformation.IsOSPlatform(OSPlatform.Windows)}, textLength={text?.Length}, cancellationRequested={cancellationToken.IsCancellationRequested}");
+        Log($"[tts.debug] enabled={_enabled}, force={force}, textLength={text?.Length}, cancellationRequested={cancellationToken.IsCancellationRequested}, region={_azureSpeechRegion}, voice={_azureSpeechVoice}");
 
         if ((!force && !_enabled) || string.IsNullOrWhiteSpace(text) || cancellationToken.IsCancellationRequested)
         {
             var reason = !force && !_enabled ? "disabled" : "empty/canceled";
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                reason = "empty text";
-            }
-            if (cancellationToken.IsCancellationRequested)
-            {
-                reason = "cancellation requested";
-            }
+            if (string.IsNullOrWhiteSpace(text)) reason = "empty text";
+            if (cancellationToken.IsCancellationRequested) reason = "cancellation requested";
             Log($"[tts.debug] early return: {reason}");
             return;
         }
@@ -74,83 +76,47 @@ internal sealed class TextToSpeechService
             return;
         }
 
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        if (string.IsNullOrWhiteSpace(_azureSpeechKey))
         {
-            Log("[tts.info] TTS is only supported on Windows; skipping.");
+            Log("[tts.warn] AZURE_SPEECH_KEY is missing; skipping TTS.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_azureSpeechRegion))
+        {
+            Log("[tts.warn] AZURE_SPEECH_REGION is missing; skipping TTS.");
             return;
         }
 
         try
         {
-            using var synthesizer = new SpeechSynthesizer();
-            synthesizer.SetOutputToDefaultAudioDevice();
-            Log("[tts.info] Output set to default audio device.");
+            var speechConfig = SpeechConfig.FromSubscription(_azureSpeechKey, _azureSpeechRegion);
+            speechConfig.SpeechSynthesisVoiceName = _azureSpeechVoice;
 
-            var installedVoices = synthesizer.GetInstalledVoices()
-                .Where(v => v.Enabled)
-                .Select(v => v.VoiceInfo)
-                .ToArray();
+            using var audioConfig = AudioConfig.FromDefaultSpeakerOutput();
+            using var synthesizer = new SpeechSynthesizer(speechConfig, audioConfig);
 
-            Log($"[tts.info] Installed voices: {string.Join(", ", installedVoices.Select(v => v.Name + "(" + v.Gender + ")"))}");
+            Log($"[tts.info] Synthesizing text ({snippet.Length} chars) with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
 
-            if (!installedVoices.Any())
+            using var result = await synthesizer.SpeakTextAsync(snippet).ConfigureAwait(false);
+
+            if (result.Reason == ResultReason.SynthesizingAudioCompleted)
             {
-                Log("[tts.error] No installed voices available.");
-                return;
+                Log($"[tts.info] Azure TTS success.");
             }
-
-            var selected = (System.Speech.Synthesis.VoiceInfo?)null;
-            var zira = installedVoices.FirstOrDefault(v => v.Name.Contains("Zira", StringComparison.OrdinalIgnoreCase));
-            if (zira is not null)
+            else if (result.Reason == ResultReason.Canceled)
             {
-                selected = zira;
-                Log($"[tts.info] Forcing Zira voice: {selected.Name} ({selected.Gender}).");
+                var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+                Log($"[tts.error] Azure TTS canceled: Code={cancellation.ErrorCode}, Details={cancellation.ErrorDetails}");
             }
             else
             {
-                selected = installedVoices.FirstOrDefault(v => string.Equals(v.Gender.ToString(), _preferredGender, StringComparison.OrdinalIgnoreCase));
-
-                if (selected is null)
-                {
-                    selected = installedVoices.First();
-                    Log($"[tts.info] Preferred gender '{_preferredGender}' not found; fallback voice: {selected.Name} ({selected.Gender}).");
-                }
-                else
-                {
-                    Log($"[tts.info] Selected voice: {selected.Name} ({selected.Gender}).");
-                }
-            }
-
-            synthesizer.SelectVoice(selected.Name);
-            synthesizer.Rate = -1;
-            Log($"[tts.info] Speaking preview ({snippet.Length} chars).");
-
-            // Always also create a fallback WAV file so we can verify output independent of session audio routing.
-            var outputFile = Path.Combine(AppContext.BaseDirectory, "tts-output.wav");
-            try
-            {
-                synthesizer.SetOutputToWaveFile(outputFile);
-                synthesizer.Speak(snippet);
-                Log($"[tts.info] Fallback WAV file written: {outputFile}");
-            }
-            catch (Exception waveEx)
-            {
-                Log($"[tts.error] Fallback WAV creation failed: {waveEx.Message}");
-            }
-
-            synthesizer.SetOutputToDefaultAudioDevice();
-            try
-            {
-                synthesizer.Speak(snippet);
-            }
-            catch (Exception speakEx)
-            {
-                Log($"[tts.error] Direct speak failed: {speakEx.Message}.");
+                Log($"[tts.error] Azure TTS failed with reason {result.Reason}");
             }
         }
-        catch (Exception updateException)
+        catch (Exception ex)
         {
-            Log($"[tts.error] Speak failed: {updateException.Message}");
+            Log($"[tts.error] Azure TTS failed: {ex.GetType().Name} - {ex.Message}");
         }
     }
 
