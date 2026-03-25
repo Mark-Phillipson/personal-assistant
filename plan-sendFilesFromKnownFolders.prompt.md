@@ -82,6 +82,8 @@ Enable the assistant to list files in known folders (Documents, Desktop, Downloa
     - Can send any file to Telegram via `send_file_to_telegram` with folder alias + relative path
     - Allowed aliases: documents, desktop, downloads, pictures, videos, repo, repos
 
+✅ Phase 6 completed: System prompt updated with knowledge about list_files_in_folder and send_file_to_telegram.
+
 ---
 
 ## Verification

@@ -91,6 +91,8 @@ internal static class SystemPromptBuilder
             "When the user asks to browse Talon files or folders, call list_talon_user_files.",
             "When the user asks to open the Talon user folder (or a subfolder) in File Explorer, call open_talon_user_directory_in_explorer instead of NaturalCommands.",
             "When the user asks to open Documents, Desktop, Downloads, Pictures, Videos, or the repo folder in File Explorer, call open_known_folder_in_explorer with the correct folder alias.",
+            "When the user asks to list files in a known folder (documents, desktop, downloads, pictures, videos, repo, repos), call list_files_in_folder with folderAlias, optional subPath, optional fileFilter, and maxResults.",
+            "When the user asks to send a local file from a known folder to Telegram, call send_file_to_telegram with folderAlias and relativeFilePath after verifying the path is safe.",
             "When the user asks to read a Talon file, call read_talon_user_file with a path relative to the Talon user root.",
             "When the user asks to find text in Talon files, call search_talon_user_files_text.",
             "Never write, modify, or delete Talon files. Talon file tools are strictly read-only.",
