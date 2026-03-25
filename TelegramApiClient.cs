@@ -175,6 +175,63 @@ internal sealed class TelegramApiClient : IDisposable
         }
     }
 
+    public async Task SendDocumentAsync(long chatId, string filePath, CancellationToken cancellationToken)
+    {
+        var fileInfo = new FileInfo(filePath);
+        if (!fileInfo.Exists)
+        {
+            throw new FileNotFoundException("Document not found", filePath);
+        }
+
+        const long maxFileSize = 50L * 1024 * 1024;
+        if (fileInfo.Length > maxFileSize)
+        {
+            throw new InvalidOperationException($"File '{filePath}' exceeds Telegram limit of {maxFileSize} bytes.");
+        }
+
+        using var response = await PostMultipartAsyncWithRetry("sendDocument", () =>
+        {
+            var form = new MultipartFormDataContent();
+            form.Add(new StringContent(chatId.ToString()), "chat_id");
+            var streamContent = new StreamContent(File.OpenRead(filePath));
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            form.Add(streamContent, "document", fileInfo.Name);
+            return form;
+        }, cancellationToken);
+
+        var parsed = await response.Content.ReadFromJsonAsync<TelegramApiResponse<JsonElement>>(cancellationToken: cancellationToken);
+        if (!response.IsSuccessStatusCode || parsed is null || !parsed.Ok)
+        {
+            var description = parsed?.Description ?? $"HTTP {(int)response.StatusCode}";
+            throw new InvalidOperationException($"Telegram sendDocument failed: {description}");
+        }
+    }
+
+    private async Task<HttpResponseMessage> PostMultipartAsyncWithRetry(
+        string endpoint,
+        Func<MultipartFormDataContent> contentFactory,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                using var content = contentFactory();
+                return await _httpClient.PostAsync(endpoint, content, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (HttpRequestException ex) when (attempt < MaxTransportAttempts && IsTransientTransportFailure(ex))
+            {
+                var delay = TimeSpan.FromMilliseconds(500 * attempt);
+                Console.Error.WriteLine($"[telegram.transport.retry] endpoint={endpoint} attempt={attempt}/{MaxTransportAttempts} delayMs={(int)delay.TotalMilliseconds} error={FormatExceptionChain(ex)}");
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+    }
+
     private async Task<HttpResponseMessage> PostAsyncWithRetry(
         string endpoint,
         IReadOnlyCollection<KeyValuePair<string, string>> formValues,
