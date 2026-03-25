@@ -15,6 +15,13 @@ internal sealed class KnownFolderExplorerService
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var repoRoot = EnvironmentSettings.ReadString("ASSISTANT_REPO_DIRECTORY", Directory.GetCurrentDirectory());
 
+        var reposRoot = EnvironmentSettings.ReadString("ASSISTANT_REPOS_DIRECTORY", null);
+        if (string.IsNullOrWhiteSpace(reposRoot))
+        {
+            var repoDirectory = Path.GetFullPath(repoRoot);
+            reposRoot = Path.GetFullPath(Path.Combine(repoDirectory, ".."));
+        }
+
         var roots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["documents"] = Path.GetFullPath(Fallback(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), Path.Combine(userProfile, "Documents"))),
@@ -22,7 +29,8 @@ internal sealed class KnownFolderExplorerService
             ["downloads"] = Path.GetFullPath(Path.Combine(userProfile, "Downloads")),
             ["pictures"] = Path.GetFullPath(Fallback(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), Path.Combine(userProfile, "Pictures"))),
             ["videos"] = Path.GetFullPath(Fallback(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), Path.Combine(userProfile, "Videos"))),
-            ["repo"] = Path.GetFullPath(repoRoot)
+            ["repo"] = Path.GetFullPath(repoRoot),
+            ["repos"] = Path.GetFullPath(reposRoot)
         };
 
         return new KnownFolderExplorerService(roots);
@@ -46,12 +54,12 @@ internal sealed class KnownFolderExplorerService
 
         if (string.IsNullOrWhiteSpace(folderAlias))
         {
-            return Task.FromResult("No folder alias was provided. Allowed aliases: documents, desktop, downloads, pictures, videos, repo.");
+            return Task.FromResult("No folder alias was provided. Allowed aliases: documents, desktop, downloads, pictures, videos, repo, repos.");
         }
 
         if (!TryResolveAlias(folderAlias, out var canonicalAlias))
         {
-            return Task.FromResult($"Unknown folder alias '{folderAlias}'. Allowed aliases: documents, desktop, downloads, pictures, videos, repo.");
+            return Task.FromResult($"Unknown folder alias '{folderAlias}'. Allowed aliases: documents, desktop, downloads, pictures, videos, repo, repos.");
         }
 
         var root = _rootByAlias[canonicalAlias];
@@ -88,7 +96,7 @@ internal sealed class KnownFolderExplorerService
 
         if (string.IsNullOrWhiteSpace(folderAlias))
         {
-            return Task.FromResult("No folder alias was provided. Allowed aliases: documents, desktop, downloads, pictures, videos, repo.");
+            return Task.FromResult("No folder alias was provided. Allowed aliases: documents, desktop, downloads, pictures, videos, repo, repos.");
         }
 
         if (string.IsNullOrWhiteSpace(relativeFilePath))
@@ -98,7 +106,7 @@ internal sealed class KnownFolderExplorerService
 
         if (!TryResolveAlias(folderAlias, out var canonicalAlias))
         {
-            return Task.FromResult($"Unknown folder alias '{folderAlias}'. Allowed aliases: documents, desktop, downloads, pictures, videos, repo.");
+            return Task.FromResult($"Unknown folder alias '{folderAlias}'. Allowed aliases: documents, desktop, downloads, pictures, videos, repo, repos.");
         }
 
         var root = _rootByAlias[canonicalAlias];
@@ -136,6 +144,94 @@ internal sealed class KnownFolderExplorerService
         }
     }
 
+    public Task<string> ListFilesAsync(string folderAlias, string? subPath = null, string? fileFilter = null, int maxResults = 50)
+    {
+        if (string.IsNullOrWhiteSpace(folderAlias))
+        {
+            return Task.FromResult("No folder alias was provided. Allowed aliases: documents, desktop, downloads, pictures, videos, repo, repos.");
+        }
+
+        if (!TryResolveAlias(folderAlias, out var canonicalAlias))
+        {
+            return Task.FromResult($"Unknown folder alias '{folderAlias}'. Allowed aliases: documents, desktop, downloads, pictures, videos, repo, repos.");
+        }
+
+        var root = _rootByAlias[canonicalAlias];
+        if (!Directory.Exists(root))
+        {
+            return Task.FromResult($"Folder root is not available for alias '{canonicalAlias}': {root}");
+        }
+
+        try
+        {
+            var folder = ResolveDirectoryPath(root, subPath);
+            var pattern = string.IsNullOrWhiteSpace(fileFilter) ? "*" : fileFilter.Trim();
+            var filePaths = Directory.EnumerateFiles(folder, pattern, SearchOption.TopDirectoryOnly)
+                .OrderBy(x => x)
+                .Take(Math.Max(1, maxResults));
+
+            var builder = new StringBuilder();
+            var count = 0;
+            foreach (var path in filePaths)
+            {
+                count++;
+                var info = new FileInfo(path);
+                var relative = Path.GetRelativePath(root, path);
+                builder.AppendLine($"{count}. {info.Name} | {relative} | {info.Length} bytes | {info.LastWriteTime:yyyy-MM-dd HH:mm:ss}");
+            }
+
+            if (count == 0)
+            {
+                return Task.FromResult($"No files found in '{canonicalAlias}'{(string.IsNullOrWhiteSpace(subPath) ? "" : $"/{subPath}")}.\n");
+            }
+
+            return Task.FromResult(builder.ToString());
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult($"Failed to list files: {ex.Message}");
+        }
+    }
+
+    public bool TryResolveFilePath(string folderAlias, string relativeFilePath, out string fullPath)
+    {
+        fullPath = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(folderAlias) || string.IsNullOrWhiteSpace(relativeFilePath))
+        {
+            return false;
+        }
+
+        if (!TryResolveAlias(folderAlias, out var canonicalAlias))
+        {
+            return false;
+        }
+
+        if (!_rootByAlias.TryGetValue(canonicalAlias, out var root))
+        {
+            return false;
+        }
+
+        try
+        {
+            var candidate = Path.Combine(root, relativeFilePath.Trim());
+            fullPath = Path.GetFullPath(candidate);
+
+            if (!IsUnderRoot(root, fullPath) || !File.Exists(fullPath))
+            {
+                fullPath = string.Empty;
+                return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            fullPath = string.Empty;
+            return false;
+        }
+    }
+
     private static string Fallback(string value, string fallback)
     {
         return string.IsNullOrWhiteSpace(value) ? fallback : value;
@@ -152,6 +248,7 @@ internal sealed class KnownFolderExplorerService
             "pictures" or "picture" or "photos" or "photo" => "pictures",
             "videos" or "video" => "videos",
             "repo" or "repository" or "project" or "projectroot" or "root" => "repo",
+            "repos" or "source" or "allrepos" => "repos",
             _ => string.Empty
         };
 

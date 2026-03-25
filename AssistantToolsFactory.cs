@@ -622,14 +622,23 @@ internal static class AssistantToolsFactory
             AIFunctionFactory.Create(
                 () => knownFolderExplorerService.GetSetupStatusText(),
                 "known_folder_explorer_status",
-                "Show the configured allowlisted folders for Explorer open actions, including Documents, Desktop, Downloads, Pictures, Videos, and repo."),
+                "Show the configured allowlisted folders for Explorer open actions, including Documents, Desktop, Downloads, Pictures, Videos, repo, and repos."),
             AIFunctionFactory.Create(
                 async (
-                    [Description("Folder alias to open. Allowed values: documents, desktop, downloads, pictures, videos, repo")] string folderAlias,
+                    [Description("Folder alias to open. Allowed values: documents, desktop, downloads, pictures, videos, repo, repos")] string folderAlias,
                     [Description("Optional relative subdirectory inside the selected folder root")] string? relativePath = null) =>
                     await knownFolderExplorerService.OpenInExplorerAsync(folderAlias, relativePath),
                 "open_known_folder_in_explorer",
-                "Open Windows File Explorer at an allowlisted folder root (documents, desktop, downloads, pictures, videos, repo) or an optional relative subdirectory inside that root."),
+                "Open Windows File Explorer at an allowlisted folder root (documents, desktop, downloads, pictures, videos, repo, repos) or an optional relative subdirectory inside that root."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Folder alias to list. Allowed values: documents, desktop, downloads, pictures, videos, repo, repos")] string folderAlias,
+                    [Description("Optional relative subdirectory inside the selected folder root")] string? subPath = null,
+                    [Description("Optional file search filter (e.g. *.pdf, *.txt). Default is *.")] string? fileFilter = null,
+                    [Description("Maximum number of files to return (1-500). Default 50.")] int maxResults = 50) =>
+                    await knownFolderExplorerService.ListFilesAsync(folderAlias, subPath, fileFilter, maxResults),
+                "list_files_in_folder",
+                "List files in a known folder (documents, desktop, downloads, pictures, videos, repo, repos) with relative paths, size, and last modified date."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Folder alias containing the file. Allowed values: documents, desktop, downloads, pictures, videos, repo")] string folderAlias,

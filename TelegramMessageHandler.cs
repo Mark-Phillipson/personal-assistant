@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -28,6 +29,7 @@ internal static class TelegramMessageHandler
         PodcastSubscriptionsService podcastSubscriptionsService,
         ClipboardHistoryService clipboardHistoryService,
         TextToSpeechService textToSpeechService,
+        KnownFolderExplorerService knownFolderExplorerService,
         CancellationToken cancellationToken)
     {
         var chatId = message.Chat.Id;
@@ -94,6 +96,7 @@ internal static class TelegramMessageHandler
                 sessions,
                 assistantTools,
                 profile,
+                knownFolderExplorerService,
                 voiceAdminService,
                 textToSpeechService,
                 cancellationToken);
@@ -294,6 +297,7 @@ internal static class TelegramMessageHandler
                         sessions,
                         assistantTools,
                         profile,
+                        knownFolderExplorerService,
                         voiceAdminService,
                         textToSpeechService,
                         cancellationToken);
@@ -429,6 +433,8 @@ internal static class TelegramMessageHandler
             var content = await SendWithSessionRecoveryAsync(
                 chatId,
                 messageOptions,
+                telegram,
+                knownFolderExplorerService,
                 copilotClient,
                 sessions,
                 assistantTools,
@@ -483,6 +489,8 @@ internal static class TelegramMessageHandler
 
     private static async Task<CopilotSession> GetOrCreateSessionAsync(
         long chatId,
+        TelegramApiClient telegramClient,
+        KnownFolderExplorerService folderService,
         CopilotClient copilotClient,
         ConcurrentDictionary<long, CopilotSession> sessions,
         ICollection<AIFunction> assistantTools,
@@ -493,10 +501,35 @@ internal static class TelegramMessageHandler
             return existingSession;
         }
 
+        var sendFileTool = AIFunctionFactory.Create(
+            async (
+                [Description("Folder alias: documents, desktop, downloads, pictures, videos, repo, repos")] string folderAlias,
+                [Description("Relative file path inside the selected folder root")] string relativeFilePath) =>
+            {
+                try
+                {
+                    if (!folderService.TryResolveFilePath(folderAlias, relativeFilePath, out var resolvedPath))
+                    {
+                        return $"File not found or path not allowed: {relativeFilePath} (alias {folderAlias}).";
+                    }
+
+                    await telegramClient.SendDocumentAsync(chatId, resolvedPath, CancellationToken.None);
+                    return $"Sent file '{relativeFilePath}' from '{folderAlias}' to Telegram chat.";
+                }
+                catch (Exception ex)
+                {
+                    return $"Failed to send file: {ex.Message}";
+                }
+            },
+            "send_file_to_telegram",
+            "Send a file from a known folder to the current Telegram chat. Provide folder alias and relative file path.");
+
+        var sessionTools = assistantTools.Append(sendFileTool).ToList();
+
         var createdSession = await copilotClient.CreateSessionAsync(new SessionConfig
         {
             OnPermissionRequest = PermissionHandler.ApproveAll,
-            Tools = assistantTools,
+            Tools = sessionTools,
             SystemMessage = new SystemMessageConfig
             {
                 Content = SystemPromptBuilder.Build(profile)
@@ -515,13 +548,15 @@ internal static class TelegramMessageHandler
     private static async Task<string?> SendWithSessionRecoveryAsync(
         long chatId,
         MessageOptions messageOptions,
+        TelegramApiClient telegram,
+        KnownFolderExplorerService knownFolderExplorerService,
         CopilotClient copilotClient,
         ConcurrentDictionary<long, CopilotSession> sessions,
         ICollection<AIFunction> assistantTools,
         PersonalityProfile profile,
         CancellationToken cancellationToken)
     {
-        var session = await GetOrCreateSessionAsync(chatId, copilotClient, sessions, assistantTools, profile);
+        var session = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile);
 
         try
         {
@@ -537,7 +572,7 @@ internal static class TelegramMessageHandler
                 await staleSession.DisposeAsync();
             }
 
-            var recreatedSession = await GetOrCreateSessionAsync(chatId, copilotClient, sessions, assistantTools, profile);
+            var recreatedSession = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile);
             var assistantReply = await recreatedSession.SendAndWaitAsync(messageOptions, null, cancellationToken);
             return assistantReply?.Data.Content?.Trim();
         }
@@ -568,6 +603,7 @@ internal static class TelegramMessageHandler
         ConcurrentDictionary<long, CopilotSession> sessions,
         ICollection<AIFunction> assistantTools,
         PersonalityProfile profile,
+        KnownFolderExplorerService knownFolderExplorerService,
         VoiceAdminService voiceAdminService,
         TextToSpeechService textToSpeechService,
         CancellationToken cancellationToken)
@@ -577,6 +613,8 @@ internal static class TelegramMessageHandler
         var content = await SendWithSessionRecoveryAsync(
             chatId,
             messageOptions,
+            telegram,
+            knownFolderExplorerService,
             copilotClient,
             sessions,
             assistantTools,

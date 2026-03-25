@@ -401,6 +401,7 @@ static async Task RunTelegramAsync(
                         podcastSubscriptionsService,
                         clipboardHistoryService,
                         textToSpeechService,
+                        knownFolderExplorerService,
                         cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
