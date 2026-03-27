@@ -10,6 +10,7 @@ internal sealed class TextToSpeechService
     private readonly string? _azureSpeechKey;
     private readonly string? _azureSpeechRegion;
     private readonly string _azureSpeechVoice;
+    private readonly PronunciationDictionaryService? _pronunciationService;
 
     private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "tts-debug.log");
 
@@ -27,7 +28,7 @@ internal sealed class TextToSpeechService
         Console.Error.WriteLine(line);
     }
 
-    private TextToSpeechService(bool enabled, int maxPreviewWords, string preferredGender, string? azureSpeechKey, string? azureSpeechRegion, string azureSpeechVoice)
+    private TextToSpeechService(bool enabled, int maxPreviewWords, string preferredGender, string? azureSpeechKey, string? azureSpeechRegion, string azureSpeechVoice, PronunciationDictionaryService? pronunciationService = null)
     {
         _enabled = enabled;
         _maxPreviewWords = maxPreviewWords;
@@ -35,9 +36,10 @@ internal sealed class TextToSpeechService
         _azureSpeechKey = azureSpeechKey;
         _azureSpeechRegion = azureSpeechRegion;
         _azureSpeechVoice = azureSpeechVoice;
+        _pronunciationService = pronunciationService;
     }
 
-    public static TextToSpeechService FromEnvironment()
+    public static TextToSpeechService FromEnvironment(PronunciationDictionaryService? pronunciationService = null)
     {
         var enabled = EnvironmentSettings.ReadBool("ASSISTANT_TTS_ENABLED", false);
         var maxPreviewWords = EnvironmentSettings.ReadInt("ASSISTANT_TTS_PREVIEW_MAX_WORDS", 40, 1, 200);
@@ -46,7 +48,7 @@ internal sealed class TextToSpeechService
         var azureSpeechRegion = EnvironmentSettings.ReadOptionalString("AZURE_SPEECH_REGION");
         var azureSpeechVoice = EnvironmentSettings.ReadString("AZURE_SPEECH_VOICE", "en-GB-RyanNeural");
 
-        return new TextToSpeechService(enabled, maxPreviewWords, preferredGender, azureSpeechKey, azureSpeechRegion, azureSpeechVoice);
+        return new TextToSpeechService(enabled, maxPreviewWords, preferredGender, azureSpeechKey, azureSpeechRegion, azureSpeechVoice, pronunciationService);
     }
 
     public async Task TrySpeakPreviewAsync(string text, CancellationToken cancellationToken, bool force = false)
@@ -74,6 +76,17 @@ internal sealed class TextToSpeechService
         {
             Log("[tts.debug] early return: snippet empty after extraction");
             return;
+        }
+
+        // Apply pronunciation corrections if service is available.
+        if (_pronunciationService != null)
+        {
+            var (correctedSnippet, appliedCorrections) = _pronunciationService.ApplyCorrections(snippet);
+            if (appliedCorrections.Any())
+            {
+                Log($"[tts.info] Applied {appliedCorrections.Count} pronunciation correction(s): {string.Join(", ", appliedCorrections.Keys)}");
+                snippet = correctedSnippet;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(_azureSpeechKey))

@@ -431,19 +431,30 @@ internal static class TelegramMessageHandler
             return;
         }
 
-        // Deterministic path for conversational todo-list requests to avoid model hallucinations.
-        if (storedAttachment is null && LooksLikeTodoListRequest(text) && voiceAdminService.IsConfigured)
+        // Deterministic path for conversational todo add/list requests to avoid model hallucinations.
+        if (storedAttachment is null && voiceAdminService.IsConfigured)
         {
-            if (LooksLikeTodoCsvExportRequest(text))
+            if (LooksLikeTodoAddRequest(text))
             {
-                var exportResult = await ExportVoiceAdminTodosToCsvAsync(text, voiceAdminService);
-                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(exportResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
+                var todoTitle = ExtractTodoTitleFromText(text);
+                var addResult = await voiceAdminService.AddTodoAsync(todoTitle);
+                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(addResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
                 return;
             }
 
-            var todoTable = await voiceAdminService.ListIncompleteTodosAsync(asHtmlTable: true);
-            await telegram.SendMessageInChunksAsync(chatId, todoTable, cancellationToken);
-            return;
+            if (LooksLikeTodoListRequest(text))
+            {
+                if (LooksLikeTodoCsvExportRequest(text))
+                {
+                    var exportResult = await ExportVoiceAdminTodosToCsvAsync(text, voiceAdminService);
+                    await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(exportResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
+                    return;
+                }
+
+                var todoTable = await voiceAdminService.ListIncompleteTodosAsync(asHtmlTable: true);
+                await telegram.SendMessageInChunksAsync(chatId, todoTable, cancellationToken);
+                return;
+            }
         }
 
         var messageOptions = BuildMessageOptions(text, storedAttachment);
@@ -460,6 +471,7 @@ internal static class TelegramMessageHandler
                 assistantTools,
                 profile,
                 cancellationToken);
+
             if (string.IsNullOrWhiteSpace(content))
             {
                 content = "I could not generate a response. Please try again.";
@@ -493,7 +505,7 @@ internal static class TelegramMessageHandler
             {
                 await telegram.SendMessageInChunksAsync(
                     chatId,
-                    EmojiPalette.Wrap("I hit an error while generating a reply. Please try again.", EmojiPalette.Warning, profile.UseEmoji),
+                    EmojiPalette.Wrap($"I hit an error while generating a reply: {ex.Message}. Please try again.", EmojiPalette.Warning, profile.UseEmoji),
                     cancellationToken);
             }
             catch (Exception sendEx)
@@ -666,7 +678,19 @@ internal static class TelegramMessageHandler
             return false;
 
         var mentionsTodo = Regex.IsMatch(text, "\\b(todos?|to\\s*do|task|tasks|pending|open items?)\\b", RegexOptions.IgnoreCase);
-        var asksToList = Regex.IsMatch(text, "\\b(list|show|table|what|check|left|still|open)\\b", RegexOptions.IgnoreCase);
+
+        // Avoid matching non-list sentences in conversational content, e.g. "what they are" or "add a todo".
+        var mentionsAdd = Regex.IsMatch(text, "\\b(add|create|remind|note|new)\\b", RegexOptions.IgnoreCase);
+        if (mentionsAdd && mentionsTodo)
+            return false;
+
+        var asksToList = Regex.IsMatch(text,
+            "\\b(" +
+            "todo list|list (todos?|tasks?)|show (todos?|tasks?)|check (todos?|tasks?)|" +
+            "open (todos?|tasks?)|what.*(left|pending|open|todos?|tasks?)|still (todos?|tasks?)" +
+            ")\\b",
+            RegexOptions.IgnoreCase);
+
         return mentionsTodo && asksToList;
     }
 
@@ -677,6 +701,40 @@ internal static class TelegramMessageHandler
 
         return Regex.IsMatch(content, "\\b(no|none|empty)\\b", RegexOptions.IgnoreCase)
             && Regex.IsMatch(content, "\\b(todos?|to\\s*do|task|tasks)\\b", RegexOptions.IgnoreCase);
+    }
+
+    private static bool LooksLikeTodoAddRequest(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var mentionsTodo = Regex.IsMatch(text, "\\b(todos?|to\\s*do|task|tasks?)\\b", RegexOptions.IgnoreCase);
+        var mentionsAdd = Regex.IsMatch(text, "\\b(add|create|remind|note|new)\\b", RegexOptions.IgnoreCase);
+        return mentionsTodo && mentionsAdd;
+    }
+
+    private static string ExtractTodoTitleFromText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "New todo";
+
+        var match = Regex.Match(text,
+            "\\b(?:remind me to|add (?:a )?new (?:todo|task)|add (?:todo|task)|create (?:todo|task))\\s+(.+?)($|\\.|\\?|!|\\bas that\\b|\\bso that\\b|\\bbecause\\b|\\bplease\\b)",
+            RegexOptions.IgnoreCase);
+
+        if (match.Success && !string.IsNullOrWhiteSpace(match.Groups[1].Value))
+        {
+            var title = match.Groups[1].Value.Trim();
+            if (title.Length > 180)
+                title = title.Substring(0, 180).Trim() + "...";
+            return title;
+        }
+
+        var sanitized = text.Trim();
+        if (sanitized.Length > 180)
+            sanitized = sanitized.Substring(0, 180).Trim() + "...";
+
+        return sanitized;
     }
 
     private static bool LooksLikeTodoCsvExportRequest(string text)

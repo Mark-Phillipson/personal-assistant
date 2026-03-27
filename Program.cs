@@ -62,7 +62,13 @@ var telegramAttachmentService = TelegramAttachmentService.FromEnvironment();
 var podcastSubscriptionsService = PodcastSubscriptionsService.FromEnvironmentOrJson();
 var clipboardHistoryService = ClipboardHistoryService.FromEnvironment();
 var telegramChatIdStore = TelegramChatIdStore.FromEnvironment();
-var textToSpeechService = TextToSpeechService.FromEnvironment();
+
+// Initialize pronunciation dictionary service for TTS corrections.
+var pronunciationDictionaryPath = EnvironmentSettings.ReadOptionalString("TTS_PRONUNCIATION_DICT_PATH") 
+    ?? Path.Combine(Environment.CurrentDirectory, "pronunciation-corrections.json");
+var pronunciationService = new PronunciationDictionaryService(pronunciationDictionaryPath);
+
+var textToSpeechService = TextToSpeechService.FromEnvironment(pronunciationService);
 Console.WriteLine(databaseRegistry.GetSetupStatusText());
 Console.WriteLine($"GenericDatabaseService has {genericDatabaseService.ListSources().Count} source(s) available.");
 
@@ -70,6 +76,9 @@ var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, 
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
+
+// Load pronunciation corrections from dictionary file on startup.
+await pronunciationService.LoadFromFileAsync(default);
 
 // Remove duplicate clipboard history entries on startup
 await clipboardHistoryService.RemoveDuplicateEntriesAsync(default);

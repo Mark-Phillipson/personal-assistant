@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -41,6 +42,23 @@ public class DatabasePhaseThreeTests
         Assert.False(SqlSecurityHelper.IsSelectQueryOnly("DROP TABLE T"));
         Assert.False(SqlSecurityHelper.IsSelectQueryOnly("SELECT * FROM T; DROP TABLE T;"));
         Assert.False(SqlSecurityHelper.IsSelectQueryOnly(""));
+    }
+
+    [Fact]
+    public void TelegramMessageHandler_DetectsTodoAddRequestAndIgnoresListIntent()
+    {
+        var type = typeof(TelegramMessageHandler);
+        var addMethod = type.GetMethod("LooksLikeTodoAddRequest", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(addMethod);
+
+        var listMethod = type.GetMethod("LooksLikeTodoListRequest", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(listMethod);
+
+        Assert.True((bool)addMethod!.Invoke(null, new object[] { "add a todo remind me to drink water" })!);
+        Assert.False((bool)listMethod!.Invoke(null, new object[] { "add a todo remind me to drink water" })!);
+
+        Assert.True((bool)listMethod!.Invoke(null, new object[] { "show my open todo list" })!);
+        Assert.False((bool)addMethod!.Invoke(null, new object[] { "show my open todo list" })!);
     }
 
     [Fact]

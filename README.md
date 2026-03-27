@@ -97,6 +97,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `ASSISTANT_TTS_ENABLED` (optional, default `false`; `true` to enable local preview speech)
 - `ASSISTANT_TTS_PREVIEW_MAX_WORDS` (optional, default `40`; maximum spoken words)
 - `ASSISTANT_TTS_PREFERRED_GENDER` (optional, default `male`; best-effort voice selection on Windows)
+- `TTS_PRONUNCIATION_DICT_PATH` (optional, default `pronunciation-corrections.json` in current directory; path to JSON file with pronunciation corrections for TTS output)
 - `TALON_USER_DIRECTORY` (optional, default `%USERPROFILE%\AppData\Roaming\talon\user`; root path for read-only Talon file tools)
 - `ASSISTANT_REPO_DIRECTORY` (optional, default current working directory when app starts; root path for the `repo` alias in `open_known_folder_in_explorer`)
 - `UPWORK_CHROME_CDP_URL` (optional, default `http://127.0.0.1:9222`; when Chrome is started with remote debugging, Upwork tools can attach to your existing logged-in Chrome profile/session)
@@ -154,6 +155,97 @@ The app uses `gmail.readonly` scope only.
 8. Start the assistant and use `/calendar-status` or `/calendar-events`. The first Calendar call opens a browser for OAuth consent.
 
 The app uses `calendar` scope only.
+
+## Text-to-Speech (TTS) Pronunciation Corrections
+
+When TTS is enabled (`ASSISTANT_TTS_ENABLED=true`), the app can apply pronunciation corrections to improve speech quality for words that are commonly mispronounced.
+
+### Pronunciation Corrections File
+
+Corrections are stored in a JSON file (default: `pronunciation-corrections.json` in the current directory). Customize the path with `TTS_PRONUNCIATION_DICT_PATH`.
+
+**Format:**
+
+```json
+{
+  "corrections": [
+    {
+      "originalWord": "todo",
+      "replacement": "to-do",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˈtuː.duː'>todo</phoneme>",
+      "context": "Homophone disambiguation; use as two words or hyphenated.",
+      "dateAdded": "2026-03-27T10:30:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
+    }
+  ]
+}
+```
+
+**Fields:**
+- `originalWord` — the word to match (case-insensitive)
+- `replacement` — the text to replace with (simpler approach) or alternative spelling
+- `ssmlPhoneme` — optional SSML markup for precise pronunciation (uses IPA phoneme alphabet)
+- `context` — optional explanation of why this correction exists
+- `dateAdded` — timestamp when the correction was added
+- `lastModified` — timestamp of last update (can be null)
+- `usageCount` — counter to track how often this correction has been applied
+- `enabled` — boolean to enable/disable without deleting
+
+### Using the Pronunciation Skill
+
+If you want assistance with pronunciation guidance or IPA phoneme generation, use the **pronunciation skill** in GitHub Copilot by asking questions like:
+
+- "How should 'todo' be pronounced in this context?"
+- "Give me the IPA for Kubernetes."
+- "Fix the pronunciation of this word in TTS output."
+
+The skill automatically triggers when pronunciation intent is detected and provides IPA guidance and SSML recommendations that can be added to the corrections file.
+
+### Adding New Corrections
+
+1. **Identify the problem:** Report a mispronounced word to the assistant (e.g., "The bot says 'todo' wrong").
+2. **Get guidance:** The pronunciation skill will provide IPA and SSML recommendations.
+3. **Update the file:** Manually add the correction to `pronunciation-corrections.json` or use an admin tool if available.
+4. **Restart:** Corrections are loaded at startup, so restart the assistant to apply changes.
+
+### Examples
+
+**Example 1: Homophone (too many pronunciations)**
+
+```json
+{
+  "originalWord": "Read",
+  "replacement": "Read",
+  "ssmlPhoneme": "<phoneme alphabet='ipa' ph='rɛd'>Read</phoneme>",
+  "context": "Past tense (red); distinction from present tense read (reed).",
+  "enabled": true
+}
+```
+
+**Example 2: Technical term with regional pronunciation**
+
+```json
+{
+  "originalWord": "Kubernetes",
+  "replacement": "Kubernetes",
+  "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˌkuːbərˈnɛtiːz'>Kubernetes</phoneme>",
+  "context": "Greek origin; stress on second half.",
+  "enabled": true
+}
+```
+
+**Example 3: Spelling correction (simple approach, no phoneme)**
+
+```json
+{
+  "originalWord": "OAuth",
+  "replacement": "O Auth",
+  "context": "Two separate syllables: O-Auth (not O-A-U-T).",
+  "enabled": true
+}
+```
 
 ## Run
 

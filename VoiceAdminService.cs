@@ -739,29 +739,8 @@ internal sealed class VoiceAdminService
         }
 
         builder.AppendLine("</pre>")
-            .AppendLine("<b>Details (full titles)</b>")
-            .AppendLine("<pre>");
+            .AppendLine("<b>Tip:</b> To view more details for a specific item, use complete_voice_admin_todo_by_text or the TodoId from the table.");
 
-        foreach (var row in rows.Take(10))
-        {
-            builder.Append('[')
-                .Append(row.id)
-                .Append("] ")
-                .AppendLine(EscapeHtml(SanitizeTableCell(row.title)));
-
-            if (!string.IsNullOrWhiteSpace(row.description))
-            {
-                builder.Append("    ")
-                    .AppendLine(EscapeHtml(TrimToWidth(SanitizeTableCell(row.description), 180)));
-            }
-        }
-
-        if (rows.Count > 10)
-        {
-            builder.AppendLine(EscapeHtml($"...and {rows.Count - 10} more. Ask for details by TodoId."));
-        }
-
-        builder.Append("</pre>");
         return builder.ToString();
     }
 

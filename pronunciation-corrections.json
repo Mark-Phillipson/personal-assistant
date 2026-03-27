@@ -1,0 +1,54 @@
+{
+  "corrections": [
+    {
+      "originalWord": "todo",
+      "replacement": "to-do",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˈtuː.duː'>todo</phoneme>",
+      "context": "Homophone disambiguation; singular task-list item. Use 'to-do' as two words or hyphenated.",
+      "dateAdded": "2026-03-27T10:30:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
+    },
+    {
+      "originalWord": "todos",
+      "replacement": "to-dos",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˈtuː.duːz'>todos</phoneme>",
+      "context": "Plural form of to-do item.",
+      "dateAdded": "2026-03-27T10:30:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
+    },
+    {
+      "originalWord": "Kubernetes",
+      "replacement": "Kubernetes",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˌkuːbərˈnɛtiːz'>Kubernetes</phoneme>",
+      "context": "Container orchestration platform. Greek origin; stress on second half (nee-tees).",
+      "dateAdded": "2026-03-27T10:30:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
+    },
+    {
+      "originalWord": "OAuth",
+      "replacement": "OAuth",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˈoʊ.ɔːθ'>OAuth</phoneme>",
+      "context": "Open Authentication. Two syllables: Oh-Auth (not O-A-U-T).",
+      "dateAdded": "2026-03-27T10:30:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
+    },
+    {
+      "originalWord": "SQL",
+      "replacement": "SQL",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˌɛskjuːˈɛl'>SQL</phoneme>",
+      "context": "Structured Query Language. Often pronounced as 'sequel' in casual speech.",
+      "dateAdded": "2026-03-27T10:30:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
+    }
+  ]
+}
