@@ -133,6 +133,96 @@ internal sealed class TextToSpeechService
         }
     }
 
+    public async Task<string?> SynthesizePreviewToWavFileAsync(string text, CancellationToken cancellationToken, bool force = false)
+    {
+        Log($"[tts.debug] synth-to-file enabled={_enabled}, force={force}, textLength={text?.Length}, cancellationRequested={cancellationToken.IsCancellationRequested}");
+
+        if ((!force && !_enabled) || string.IsNullOrWhiteSpace(text) || cancellationToken.IsCancellationRequested)
+        {
+            var reason = !force && !_enabled ? "disabled" : "empty/canceled";
+            if (string.IsNullOrWhiteSpace(text)) reason = "empty text";
+            if (cancellationToken.IsCancellationRequested) reason = "cancellation requested";
+            Log($"[tts.debug] synth-to-file early return: {reason}");
+            return null;
+        }
+
+        if (IsLikelyTableContent(text))
+        {
+            Log("[tts.debug] synth-to-file early return: table content");
+            return null;
+        }
+
+        var snippet = ExtractPreviewText(text, _maxPreviewWords);
+        Log($"[tts.debug] synth-to-file extracted snippet ({snippet?.Length} chars): '{snippet}'");
+        if (string.IsNullOrWhiteSpace(snippet))
+        {
+            Log("[tts.debug] synth-to-file early return: snippet empty after extraction");
+            return null;
+        }
+
+        // Apply pronunciation corrections if service is available.
+        if (_pronunciationService != null)
+        {
+            var (correctedSnippet, appliedCorrections) = _pronunciationService.ApplyCorrections(snippet);
+            if (appliedCorrections.Any())
+            {
+                Log($"[tts.info] Applied {appliedCorrections.Count} pronunciation correction(s): {string.Join(", ", appliedCorrections.Keys)}");
+                snippet = correctedSnippet;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(_azureSpeechKey))
+        {
+            Log("[tts.warn] AZURE_SPEECH_KEY is missing; skipping TTS to file.");
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(_azureSpeechRegion))
+        {
+            Log("[tts.warn] AZURE_SPEECH_REGION is missing; skipping TTS to file.");
+            return null;
+        }
+
+        try
+        {
+            var speechConfig = SpeechConfig.FromSubscription(_azureSpeechKey, _azureSpeechRegion);
+            speechConfig.SpeechSynthesisVoiceName = _azureSpeechVoice;
+
+            var tempFile = Path.Combine(Path.GetTempPath(), $"assistant_tts_{Guid.NewGuid()}.wav");
+
+            using var audioConfig = AudioConfig.FromWavFileOutput(tempFile);
+            using var synthesizer = new SpeechSynthesizer(speechConfig, audioConfig);
+
+            Log($"[tts.info] Synthesizing to file '{tempFile}' with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
+
+            using var result = await synthesizer.SpeakTextAsync(snippet).ConfigureAwait(false);
+
+            if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+            {
+                Log($"[tts.info] Azure TTS file synthesis success: {tempFile}");
+                return tempFile;
+            }
+            else if (result.Reason == ResultReason.Canceled)
+            {
+                var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+                Log($"[tts.error] Azure TTS canceled: Code={cancellation.ErrorCode}, Details={cancellation.ErrorDetails}");
+            }
+            else
+            {
+                Log($"[tts.error] Azure TTS failed with reason {result.Reason}");
+            }
+
+            // If synthesis didn't complete, ensure no orphan file remains.
+            try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Log($"[tts.error] Azure TTS file synthesis failed: {ex.GetType().Name} - {ex.Message}");
+            return null;
+        }
+    }
+
     private static bool IsLikelyTableContent(string text)
     {
         if (string.IsNullOrWhiteSpace(text))

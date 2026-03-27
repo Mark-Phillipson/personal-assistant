@@ -49,6 +49,16 @@
       "lastModified": null,
       "usageCount": 0,
       "enabled": true
+    },
+    {
+      "originalWord": "Phillipson",
+      "replacement": "Phillipson",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˈfɪl.ɪp.sən'>Phillipson</phoneme>",
+      "context": "Surname of the assistant owner. Three syllables: FILL-ip-sun. Stress on first syllable.",
+      "dateAdded": "2026-03-27T10:30:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
     }
   ]
 }

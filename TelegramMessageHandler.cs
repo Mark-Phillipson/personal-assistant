@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using GitHub.Copilot.SDK;
@@ -71,7 +72,16 @@ internal static class TelegramMessageHandler
             var naturalResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
             var naturalContent = EmojiPalette.Wrap(naturalResult.Message, EmojiPalette.Rocket, profile.UseEmoji);
             await telegram.SendMessageInChunksAsync(chatId, naturalContent, cancellationToken);
-            await textToSpeechService.TrySpeakPreviewAsync(naturalResult.Message, cancellationToken);
+
+            try
+            {
+                await SpeakOrSendAudioAsync(chatId, naturalResult.Message, textToSpeechService, telegram, cancellationToken);
+            }
+            catch (Exception ttsEx)
+            {
+                Console.Error.WriteLine($"[tts.error] natural command audio failed: {ttsEx.Message}");
+            }
+
             return;
         }
 
@@ -142,7 +152,7 @@ internal static class TelegramMessageHandler
 
                         try
                         {
-                            await textToSpeechService.TrySpeakPreviewAsync(joke, cancellationToken);
+                            await SpeakOrSendAudioAsync(chatId, joke, textToSpeechService, telegram, cancellationToken);
                         }
                         catch (Exception ttsEx)
                         {
@@ -284,7 +294,14 @@ internal static class TelegramMessageHandler
                     var naturalResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
                     var naturalContent = EmojiPalette.Wrap(naturalResult.Message, EmojiPalette.Rocket, profile.UseEmoji);
                     await telegram.SendMessageInChunksAsync(chatId, naturalContent, cancellationToken);
-                    await textToSpeechService.TrySpeakPreviewAsync(naturalResult.Message, cancellationToken);
+                    try
+                    {
+                        await SpeakOrSendAudioAsync(chatId, naturalResult.Message, textToSpeechService, telegram, cancellationToken);
+                    }
+                    catch (Exception ttsEx)
+                    {
+                        Console.Error.WriteLine($"[tts.error] /natural audio failed: {ttsEx.Message}");
+                    }
                     return;
 
                 case "/nc":
@@ -388,7 +405,7 @@ internal static class TelegramMessageHandler
 
         try
         {
-            await textToSpeechService.TrySpeakPreviewAsync(dadJoke, cancellationToken);
+            await SpeakOrSendAudioAsync(chatId, dadJoke, textToSpeechService, telegram, cancellationToken);
         }
         catch (Exception ttsEx)
         {
@@ -483,8 +500,8 @@ internal static class TelegramMessageHandler
 
             try
             {
-                Console.Error.WriteLine($"[tts.info] Main chat response will be spoken (if enabled).");
-                await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken);
+                Console.Error.WriteLine($"[tts.info] Main chat response will be spoken or sent as audio (if enabled).");
+                await SpeakOrSendAudioAsync(chatId, content, textToSpeechService, telegram, cancellationToken, userRequestText: text);
             }
             catch (Exception ttsEx)
             {
@@ -664,7 +681,7 @@ internal static class TelegramMessageHandler
 
         try
         {
-            await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken);
+            await SpeakOrSendAudioAsync(chatId, content, textToSpeechService, telegram, cancellationToken, userRequestText: commandPayload);
         }
         catch (Exception ex)
         {
@@ -846,6 +863,76 @@ internal static class TelegramMessageHandler
             || verified.StartsWith("No incomplete Voice Admin todo items found for project/category matching", StringComparison.OrdinalIgnoreCase);
 
         return isActuallyEmpty ? content : verified;
+    }
+
+    private static bool IsAudioReplyRequested(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        return Regex.IsMatch(text,
+            @"\b(reply|respond|send|give|answer)\b.{0,30}\b(audio|voice|speech|wav|spoken|out\s*loud|read\s*out)\b" +
+            @"|\b(audio|voice|speech)\b.{0,20}\b(reply|response|message|file)\b",
+            RegexOptions.IgnoreCase);
+    }
+
+    private static bool IsTelegramDesktopFocused()
+    {
+        if (!OperatingSystem.IsWindows())
+            return false;
+
+        try
+        {
+            var foregroundWindow = NativeMethods.GetForegroundWindow();
+            if (foregroundWindow == IntPtr.Zero)
+                return false;
+
+            NativeMethods.GetWindowThreadProcessId(foregroundWindow, out var foregroundPid);
+            if (foregroundPid == 0)
+                return false;
+
+            var telegramProcesses = Process.GetProcessesByName("Telegram");
+            return telegramProcesses.Any(p => (uint)p.Id == foregroundPid);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // Speaks the text locally if Telegram Desktop is focused (user is at the PC),
+    // otherwise synthesizes to a WAV file and sends it to Telegram for remote listening.
+    // Always sends audio if the user explicitly requested it in their message.
+    private static async Task SpeakOrSendAudioAsync(
+        long chatId,
+        string text,
+        TextToSpeechService textToSpeechService,
+        TelegramApiClient telegram,
+        CancellationToken cancellationToken,
+        string? userRequestText = null)
+    {
+        var userWantsAudio = userRequestText != null && IsAudioReplyRequested(userRequestText);
+
+        if (!userWantsAudio && IsTelegramDesktopFocused())
+        {
+            await textToSpeechService.TrySpeakPreviewAsync(text, cancellationToken);
+        }
+        else
+        {
+            // Force synthesis: user explicitly requested audio, or they're away from the PC.
+            var tmpFile = await textToSpeechService.SynthesizePreviewToWavFileAsync(text, cancellationToken, force: true);
+            if (!string.IsNullOrWhiteSpace(tmpFile))
+            {
+                try
+                {
+                    await telegram.SendDocumentAsync(chatId, tmpFile, cancellationToken);
+                }
+                finally
+                {
+                    try { if (File.Exists(tmpFile)) File.Delete(tmpFile); } catch { }
+                }
+            }
+        }
     }
 
     private static string ExtractCommandPayload(string text)
@@ -1304,4 +1391,13 @@ internal static class TelegramMessageHandler
     {
         return useEmoji ? $"{emoji} " : "- ";
     }
+}
+
+internal static class NativeMethods
+{
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    internal static extern IntPtr GetForegroundWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 }
