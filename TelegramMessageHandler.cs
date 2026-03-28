@@ -30,6 +30,7 @@ internal static class TelegramMessageHandler
         PodcastSubscriptionsService podcastSubscriptionsService,
         ClipboardHistoryService clipboardHistoryService,
         TextToSpeechService textToSpeechService,
+        PronunciationDictionaryService pronunciationService,
         KnownFolderExplorerService knownFolderExplorerService,
         CancellationToken cancellationToken)
     {
@@ -52,6 +53,30 @@ internal static class TelegramMessageHandler
                 await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap($"TTS test failed: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
             }
 
+            return;
+        }
+
+        if (TryParsePronunciationAddRequest(text, out var originalWord, out var replacementWord, out var ipa))
+        {
+            var ssmlPhoneme = BuildSsmlPhoneme(originalWord, ipa);
+            var context = ipa is null
+                ? "Added from Telegram conversational pronunciation request."
+                : $"Added from Telegram conversational pronunciation request. IPA: {ipa}";
+
+            await pronunciationService.AddCorrectionAsync(
+                originalWord,
+                replacementWord,
+                ssmlPhoneme,
+                context,
+                cancellationToken);
+
+            await telegram.SendMessageInChunksAsync(
+                chatId,
+                EmojiPalette.Wrap(
+                    $"Pronunciation saved: '{originalWord}' -> '{replacementWord}'{(ipa is null ? string.Empty : $" (IPA {ipa})")}. I will use this in future TTS replies.",
+                    EmojiPalette.Confirm,
+                    profile.UseEmoji),
+                cancellationToken);
             return;
         }
 
@@ -359,6 +384,61 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
+                case "/pron-add":
+                    commandPayload = ExtractCommandPayload(text);
+                    if (!TryParsePronunciationPayload(commandPayload, out var addWord, out var addReplacement, out var addIpa))
+                    {
+                        await telegram.SendMessageInChunksAsync(
+                            chatId,
+                            EmojiPalette.Wrap("Usage: /pron-add <word> as <replacement> [ipa <ipa>]  (or /pron-add <word>=<replacement> [ipa <ipa>])", EmojiPalette.Warning, profile.UseEmoji),
+                            cancellationToken);
+                        return;
+                    }
+
+                    var addSsmlPhoneme = BuildSsmlPhoneme(addWord, addIpa);
+                    var addContext = addIpa is null
+                        ? "Added from Telegram /pron-add command."
+                        : $"Added from Telegram /pron-add command. IPA: {addIpa}";
+
+                    await pronunciationService.AddCorrectionAsync(
+                        addWord,
+                        addReplacement,
+                        addSsmlPhoneme,
+                        addContext,
+                        cancellationToken);
+
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        EmojiPalette.Wrap($"Saved pronunciation: '{addWord}' -> '{addReplacement}'{(addIpa is null ? string.Empty : $" (IPA {addIpa})") }.", EmojiPalette.Confirm, profile.UseEmoji),
+                        cancellationToken);
+                    return;
+
+                case "/pron-remove":
+                    commandPayload = ExtractCommandPayload(text);
+                    if (string.IsNullOrWhiteSpace(commandPayload))
+                    {
+                        await telegram.SendMessageInChunksAsync(
+                            chatId,
+                            EmojiPalette.Wrap("Usage: /pron-remove <word>", EmojiPalette.Warning, profile.UseEmoji),
+                            cancellationToken);
+                        return;
+                    }
+
+                    await pronunciationService.RemoveCorrectionAsync(commandPayload.Trim(), cancellationToken);
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        EmojiPalette.Wrap($"Removed pronunciation correction for '{commandPayload.Trim()}'.", EmojiPalette.Confirm, profile.UseEmoji),
+                        cancellationToken);
+                    return;
+
+                case "/pron-list":
+                    var pronunciationList = await BuildPronunciationListAsync(pronunciationService, 40);
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        pronunciationList,
+                        cancellationToken);
+                    return;
+
                 case "/clipboard-search":
                     var keyword = ExtractCommandPayload(text);
                     if (string.IsNullOrWhiteSpace(keyword))
@@ -612,6 +692,19 @@ internal static class TelegramMessageHandler
             var assistantReply = await session.SendAndWaitAsync(messageOptions, null, cancellationToken);
             return assistantReply?.Data.Content?.Trim();
         }
+        catch (Exception ex) when (IsSendTimeoutError(ex))
+        {
+            Console.Error.WriteLine($"[copilot.session.retry] chat={chatId} SendAndWaitAsync timed out; retrying once with a fresh session.");
+
+            if (sessions.TryRemove(chatId, out var timedOutSession))
+            {
+                await timedOutSession.DisposeAsync();
+            }
+
+            var recreatedSession = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile);
+            var assistantReply = await recreatedSession.SendAndWaitAsync(messageOptions, null, cancellationToken);
+            return assistantReply?.Data.Content?.Trim();
+        }
         catch (Exception ex) when (IsSessionNotFoundError(ex))
         {
             Console.Error.WriteLine($"[copilot.session.recover] chat={chatId} Session not found; recreating session and retrying once.");
@@ -634,6 +727,23 @@ internal static class TelegramMessageHandler
         {
             if (!string.IsNullOrWhiteSpace(current.Message)
                 && current.Message.Contains("session not found", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            current = current.InnerException;
+        }
+
+        return false;
+    }
+
+    private static bool IsSendTimeoutError(Exception exception)
+    {
+        var current = exception;
+        while (current is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(current.Message)
+                && current.Message.Contains("SendAndWaitAsync timed out", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -1030,6 +1140,9 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/podcasts", "list subscribed podcasts", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/play-podcast <name> [N]", "play Nth latest episode (default 1)", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/add-podcast <name> <search>", "add podcast subscription", EmojiPalette.Music, profile.UseEmoji),
+            FormatCommandLine("/pron-add <word> as <replacement> [ipa <ipa>]", "add pronunciation correction for TTS", EmojiPalette.Confirm, profile.UseEmoji),
+            FormatCommandLine("/pron-remove <word>", "remove pronunciation correction", EmojiPalette.Confirm, profile.UseEmoji),
+            FormatCommandLine("/pron-list", "list pronunciation corrections", EmojiPalette.Commands, profile.UseEmoji),
             FormatCommandLine("/weather", "open BBC Weather for Maidstone, Kent", EmojiPalette.Search, profile.UseEmoji),
             FormatCommandLine("/dadjoke [keyword]", "get a random dad joke (optional keyword)", EmojiPalette.Happy, profile.UseEmoji),
             FormatCommandLine("/natural <command>", "run a NaturalCommands command locally", EmojiPalette.Rocket, profile.UseEmoji),
@@ -1054,6 +1167,171 @@ internal static class TelegramMessageHandler
             "/personality tone friendly|professional|witty|calm|irreverent",
             "/personality reset"
         });
+    }
+
+    private static bool TryParsePronunciationPayload(string payload, out string originalWord, out string replacementWord, out string? ipa)
+    {
+        originalWord = string.Empty;
+        replacementWord = string.Empty;
+        ipa = null;
+
+        if (string.IsNullOrWhiteSpace(payload))
+            return false;
+
+        var normalized = payload.Trim();
+
+        var ipaMatch = Regex.Match(
+            normalized,
+            "\\s+(?:ipa|phoneme)\\s*[=:]?\\s*(?<ipa>.+)$",
+            RegexOptions.IgnoreCase);
+
+        if (ipaMatch.Success)
+        {
+            ipa = NormalizeIpaToken(ipaMatch.Groups["ipa"].Value);
+            normalized = normalized[..ipaMatch.Index].Trim();
+            if (string.IsNullOrWhiteSpace(ipa))
+            {
+                ipa = null;
+            }
+        }
+
+        var equalsParts = normalized.Split('=', 2, StringSplitOptions.TrimEntries);
+        if (equalsParts.Length == 2)
+        {
+            originalWord = NormalizePronunciationToken(equalsParts[0]);
+            replacementWord = NormalizePronunciationToken(equalsParts[1]);
+            return !string.IsNullOrWhiteSpace(originalWord) && !string.IsNullOrWhiteSpace(replacementWord);
+        }
+
+        var asMatch = Regex.Match(
+            normalized,
+            "^(?<word>.+?)\\s+(?:as|to|like)\\s+(?<replacement>.+)$",
+            RegexOptions.IgnoreCase);
+
+        if (!asMatch.Success)
+            return false;
+
+        originalWord = NormalizePronunciationToken(asMatch.Groups["word"].Value);
+        replacementWord = NormalizePronunciationToken(asMatch.Groups["replacement"].Value);
+        return !string.IsNullOrWhiteSpace(originalWord) && !string.IsNullOrWhiteSpace(replacementWord);
+    }
+
+    private static bool TryParsePronunciationAddRequest(string text, out string originalWord, out string replacementWord, out string? ipa)
+    {
+        originalWord = string.Empty;
+        replacementWord = string.Empty;
+        ipa = null;
+
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var normalized = text.Trim();
+
+        var directAddMatch = Regex.Match(
+            normalized,
+            "^(?:please\\s+)?(?:add|set|save|create)\\s+(?:a\\s+)?pronunciation(?:\\s+for)?\\s+(?<payload>.+)$",
+            RegexOptions.IgnoreCase);
+
+        if (directAddMatch.Success)
+        {
+            return TryParsePronunciationPayload(directAddMatch.Groups["payload"].Value, out originalWord, out replacementWord, out ipa);
+        }
+
+        var pronounceMatch = Regex.Match(
+            normalized,
+            "^(?:please\\s+)?(?:pronounce|say)\\s+(?<payload>.+)$",
+            RegexOptions.IgnoreCase);
+
+        if (pronounceMatch.Success)
+        {
+            return TryParsePronunciationPayload(pronounceMatch.Groups["payload"].Value, out originalWord, out replacementWord, out ipa);
+        }
+
+        return false;
+    }
+
+    private static string? BuildSsmlPhoneme(string originalWord, string? ipa)
+    {
+        if (string.IsNullOrWhiteSpace(originalWord) || string.IsNullOrWhiteSpace(ipa))
+            return null;
+
+        var safeWord = EscapeXml(originalWord.Trim());
+        var safeIpa = EscapeXmlAttribute(ipa.Trim());
+        return $"<phoneme alphabet='ipa' ph='{safeIpa}'>{safeWord}</phoneme>";
+    }
+
+    private static string NormalizeIpaToken(string value)
+    {
+        var token = value
+            .Trim()
+            .Trim('"')
+            .Trim('\'')
+            .Trim();
+
+        if (token.Length >= 2 && token.StartsWith('/') && token.EndsWith('/'))
+        {
+            token = token[1..^1].Trim();
+        }
+
+        return token;
+    }
+
+    private static string EscapeXml(string input)
+    {
+        return input
+            .Replace("&", "&amp;", StringComparison.Ordinal)
+            .Replace("<", "&lt;", StringComparison.Ordinal)
+            .Replace(">", "&gt;", StringComparison.Ordinal)
+            .Replace("\"", "&quot;", StringComparison.Ordinal)
+            .Replace("'", "&apos;", StringComparison.Ordinal);
+    }
+
+    private static string EscapeXmlAttribute(string input)
+    {
+        return EscapeXml(input);
+    }
+
+    private static string? TryExtractIpaFromSsml(string? ssmlPhoneme)
+    {
+        if (string.IsNullOrWhiteSpace(ssmlPhoneme))
+            return null;
+
+        var match = Regex.Match(ssmlPhoneme, "ph=['\"](?<ipa>[^'\"]+)['\"]", RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return null;
+
+        return match.Groups["ipa"].Value.Trim();
+    }
+
+    private static string NormalizePronunciationToken(string value)
+    {
+        return value
+            .Trim()
+            .Trim('"')
+            .Trim('\'')
+            .Trim();
+    }
+
+    private static async Task<string> BuildPronunciationListAsync(PronunciationDictionaryService pronunciationService, int maxItems)
+    {
+        var lines = new List<string>();
+        await foreach (var entry in pronunciationService.ListAllAsync())
+        {
+            var ipa = TryExtractIpaFromSsml(entry.SsmlPhoneme);
+            var ipaSuffix = string.IsNullOrWhiteSpace(ipa) ? string.Empty : $" (IPA {ipa})";
+            lines.Add($"- {entry.OriginalWord} -> {entry.Replacement}{ipaSuffix}");
+            if (lines.Count >= maxItems)
+            {
+                break;
+            }
+        }
+
+        if (lines.Count == 0)
+        {
+            return "No pronunciation corrections are configured.";
+        }
+
+        return "Pronunciation corrections:\n" + string.Join("\n", lines);
     }
 
     private static async Task HandlePersonalityCommandAsync(

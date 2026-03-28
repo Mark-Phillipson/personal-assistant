@@ -59,6 +59,36 @@
       "lastModified": null,
       "usageCount": 0,
       "enabled": true
+    },
+    {
+      "originalWord": "Malling",
+      "replacement": "Mawling",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˈmɔːlɪŋ'>Malling</phoneme>",
+      "context": "Kent place name (West Malling/East Malling). Local pronunciation rhymes with 'calling'.",
+      "dateAdded": "2026-03-28T00:00:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
+    },
+    {
+      "originalWord": "Ightham",
+      "replacement": "Eyetum",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˈaɪtəm'>Ightham</phoneme>",
+      "context": "Kent village pronunciation. Silent 'gh'; said like 'EYE-tum'.",
+      "dateAdded": "2026-03-28T00:00:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
+    },
+    {
+      "originalWord": "Tonbridge",
+      "replacement": "Tunbridge",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='ˈtʌnbrɪdʒ'>Tonbridge</phoneme>",
+      "context": "Kent town pronunciation commonly said as 'Tun-bridge'.",
+      "dateAdded": "2026-03-28T00:00:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
     }
   ]
 }

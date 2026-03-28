@@ -485,6 +485,63 @@ public class DatabasePhaseThreeTests
         Assert.Contains("web address", result, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void TelegramMessageHandler_TryParsePronunciationPayload_SupportsAsAndEquals()
+    {
+        var parseMethod = typeof(TelegramMessageHandler).GetMethod("TryParsePronunciationPayload", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(parseMethod);
+
+        var argsAs = new object[] { "Tonbridge as Tunbridge", string.Empty, string.Empty, null! };
+        var successAs = (bool)parseMethod!.Invoke(null, argsAs)!;
+        Assert.True(successAs);
+        Assert.Equal("Tonbridge", argsAs[1]);
+        Assert.Equal("Tunbridge", argsAs[2]);
+        Assert.Null(argsAs[3]);
+
+        var argsEquals = new object[] { "Malling=Mawling", string.Empty, string.Empty, null! };
+        var successEquals = (bool)parseMethod!.Invoke(null, argsEquals)!;
+        Assert.True(successEquals);
+        Assert.Equal("Malling", argsEquals[1]);
+        Assert.Equal("Mawling", argsEquals[2]);
+        Assert.Null(argsEquals[3]);
+
+        var argsWithIpa = new object[] { "Ightham as Eyetum ipa /ˈaɪtəm/", string.Empty, string.Empty, null! };
+        var successWithIpa = (bool)parseMethod!.Invoke(null, argsWithIpa)!;
+        Assert.True(successWithIpa);
+        Assert.Equal("Ightham", argsWithIpa[1]);
+        Assert.Equal("Eyetum", argsWithIpa[2]);
+        Assert.Equal("ˈaɪtəm", argsWithIpa[3]);
+    }
+
+    [Fact]
+    public void TelegramMessageHandler_TryParsePronunciationAddRequest_SupportsVoicePhrasing()
+    {
+        var parseMethod = typeof(TelegramMessageHandler).GetMethod("TryParsePronunciationAddRequest", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(parseMethod);
+
+        var args = new object[] { "add pronunciation for Ightham as Eyetum ipa ˈaɪtəm", string.Empty, string.Empty, null! };
+        var success = (bool)parseMethod!.Invoke(null, args)!;
+        Assert.True(success);
+        Assert.Equal("Ightham", args[1]);
+        Assert.Equal("Eyetum", args[2]);
+        Assert.Equal("ˈaɪtəm", args[3]);
+    }
+
+    [Fact]
+    public void TelegramMessageHandler_IsSendTimeoutError_DetectsTimeoutMessage()
+    {
+        var method = typeof(TelegramMessageHandler).GetMethod("IsSendTimeoutError", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var timeoutException = new Exception("SendAndWaitAsync timed out after 00:01:00");
+        var isTimeout = (bool)method!.Invoke(null, new object[] { timeoutException })!;
+        Assert.True(isTimeout);
+
+        var differentException = new Exception("some other failure");
+        var isDifferentTimeout = (bool)method.Invoke(null, new object[] { differentException })!;
+        Assert.False(isDifferentTimeout);
+    }
+
     private static void LoadDotEnvIfPresent()
     {
         // Try repo root (developer running from workspace), then test binary base dir.

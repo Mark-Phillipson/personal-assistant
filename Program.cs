@@ -135,6 +135,7 @@ try
                 clipboardHistoryService,
                 telegramChatIdStore,
                 textToSpeechService,
+                pronunciationService,
                 appCancellation.Token);
             break;
     }
@@ -332,6 +333,7 @@ static async Task RunTelegramAsync(
     ClipboardHistoryService clipboardHistoryService,
     TelegramChatIdStore telegramChatIdStore,
     TextToSpeechService textToSpeechService,
+    PronunciationDictionaryService pronunciationService,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -419,6 +421,7 @@ static async Task RunTelegramAsync(
                         podcastSubscriptionsService,
                         clipboardHistoryService,
                         textToSpeechService,
+                        pronunciationService,
                         knownFolderExplorerService,
                         cancellationToken);
                 }

@@ -207,8 +207,15 @@ The skill automatically triggers when pronunciation intent is detected and provi
 
 1. **Identify the problem:** Report a mispronounced word to the assistant (e.g., "The bot says 'todo' wrong").
 2. **Get guidance:** The pronunciation skill will provide IPA and SSML recommendations.
-3. **Update the file:** Manually add the correction to `pronunciation-corrections.json` or use an admin tool if available.
-4. **Restart:** Corrections are loaded at startup, so restart the assistant to apply changes.
+3. **Add correction directly in Telegram (no restart required):**
+   - `/pron-add <word> as <replacement>`
+   - `/pron-add <word> as <replacement> ipa <ipa>`
+   - `/pron-add <word>=<replacement>`
+   - conversational voice/text examples: `add pronunciation Tonbridge as Tunbridge` or `pronounce Ightham as Eyetum ipa ˈaɪtəm`
+4. **Review/maintain corrections:**
+   - `/pron-list`
+   - `/pron-remove <word>`
+5. **Optional file editing:** You can still edit `pronunciation-corrections.json` directly for bulk changes.
 
 ### Examples
 
