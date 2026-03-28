@@ -96,16 +96,15 @@ internal static class TelegramMessageHandler
 
             var naturalResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
             var naturalContent = EmojiPalette.Wrap(naturalResult.Message, EmojiPalette.Rocket, profile.UseEmoji);
-            await telegram.SendMessageInChunksAsync(chatId, naturalContent, cancellationToken);
-
-            try
-            {
-                await SpeakOrSendAudioAsync(chatId, naturalResult.Message, textToSpeechService, telegram, cancellationToken);
-            }
-            catch (Exception ttsEx)
-            {
-                Console.Error.WriteLine($"[tts.error] natural command audio failed: {ttsEx.Message}");
-            }
+            await SendReplyWithOptionalTelegramAudioAsync(
+                chatId,
+                naturalContent,
+                naturalResult.Message,
+                text,
+                telegram,
+                textToSpeechService,
+                cancellationToken,
+                "natural command audio failed");
 
             return;
         }
@@ -170,19 +169,15 @@ internal static class TelegramMessageHandler
                         var joke = await dadJokeService.GetJokeAsync(
                             string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm,
                             cancellationToken);
-                        await telegram.SendMessageInChunksAsync(
+                        await SendReplyWithOptionalTelegramAudioAsync(
                             chatId,
                             EmojiPalette.Wrap(joke, EmojiPalette.Happy, profile.UseEmoji),
-                            cancellationToken);
-
-                        try
-                        {
-                            await SpeakOrSendAudioAsync(chatId, joke, textToSpeechService, telegram, cancellationToken);
-                        }
-                        catch (Exception ttsEx)
-                        {
-                            Console.Error.WriteLine($"[tts.error] Dad joke speak failed: {ttsEx.Message}");
-                        }
+                            joke,
+                            text,
+                            telegram,
+                            textToSpeechService,
+                            cancellationToken,
+                            "Dad joke speak failed");
 
                         return;
                     }
@@ -318,15 +313,15 @@ internal static class TelegramMessageHandler
 
                     var naturalResult = await naturalCommandsService.ExecuteAsync(commandPayload, cancellationToken);
                     var naturalContent = EmojiPalette.Wrap(naturalResult.Message, EmojiPalette.Rocket, profile.UseEmoji);
-                    await telegram.SendMessageInChunksAsync(chatId, naturalContent, cancellationToken);
-                    try
-                    {
-                        await SpeakOrSendAudioAsync(chatId, naturalResult.Message, textToSpeechService, telegram, cancellationToken);
-                    }
-                    catch (Exception ttsEx)
-                    {
-                        Console.Error.WriteLine($"[tts.error] /natural audio failed: {ttsEx.Message}");
-                    }
+                    await SendReplyWithOptionalTelegramAudioAsync(
+                        chatId,
+                        naturalContent,
+                        naturalResult.Message,
+                        text,
+                        telegram,
+                        textToSpeechService,
+                        cancellationToken,
+                        "/natural audio failed");
                     return;
 
                 case "/nc":
@@ -478,19 +473,15 @@ internal static class TelegramMessageHandler
     var dadJoke = await TryGetDadJokeAsync(text, dadJokeService, cancellationToken);
     if (!string.IsNullOrWhiteSpace(dadJoke))
     {
-        await telegram.SendMessageInChunksAsync(
+        await SendReplyWithOptionalTelegramAudioAsync(
             chatId,
             EmojiPalette.Wrap(dadJoke, EmojiPalette.Happy, profile.UseEmoji),
-            cancellationToken);
-
-        try
-        {
-            await SpeakOrSendAudioAsync(chatId, dadJoke, textToSpeechService, telegram, cancellationToken);
-        }
-        catch (Exception ttsEx)
-        {
-            Console.Error.WriteLine($"[tts.error] Dad joke speak failed: {ttsEx.Message}");
-        }
+            dadJoke,
+            text,
+            telegram,
+            textToSpeechService,
+            cancellationToken,
+            "Dad joke speak failed");
 
         return;
     }
@@ -576,17 +567,16 @@ internal static class TelegramMessageHandler
 
             content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
 
-            await telegram.SendMessageInChunksAsync(chatId, content, cancellationToken);
-
-            try
-            {
-                Console.Error.WriteLine($"[tts.info] Main chat response will be spoken or sent as audio (if enabled).");
-                await SpeakOrSendAudioAsync(chatId, content, textToSpeechService, telegram, cancellationToken, userRequestText: text);
-            }
-            catch (Exception ttsEx)
-            {
-                Console.Error.WriteLine($"[tts.error] Main chat speak failed: {ttsEx.Message}");
-            }
+            Console.Error.WriteLine($"[tts.info] Main chat response will be spoken or sent as audio (if enabled).");
+            await SendReplyWithOptionalTelegramAudioAsync(
+                chatId,
+                content,
+                content,
+                text,
+                telegram,
+                textToSpeechService,
+                cancellationToken,
+                "Main chat speak failed");
         }
         catch (Exception ex)
         {
@@ -787,16 +777,15 @@ internal static class TelegramMessageHandler
 
         content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
 
-        await telegram.SendMessageInChunksAsync(chatId, content, cancellationToken);
-
-        try
-        {
-            await SpeakOrSendAudioAsync(chatId, content, textToSpeechService, telegram, cancellationToken, userRequestText: commandPayload);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[tts.speak.error] chat={chatId} {ex}");
-        }
+        await SendReplyWithOptionalTelegramAudioAsync(
+            chatId,
+            content,
+            content,
+            commandPayload,
+            telegram,
+            textToSpeechService,
+            cancellationToken,
+            $"[tts.speak.error] chat={chatId}");
     }
 
     private static bool LooksLikeTodoListRequest(string text)
@@ -986,6 +975,45 @@ internal static class TelegramMessageHandler
             RegexOptions.IgnoreCase);
     }
 
+    private static bool ShouldSendTelegramAudio(string? userRequestText)
+    {
+        var userWantsAudio = userRequestText is not null && IsAudioReplyRequested(userRequestText);
+        return userWantsAudio || !IsTelegramDesktopFocused();
+    }
+
+    private static async Task SendReplyWithOptionalTelegramAudioAsync(
+        long chatId,
+        string telegramText,
+        string speechText,
+        string? userRequestText,
+        TelegramApiClient telegram,
+        TextToSpeechService textToSpeechService,
+        CancellationToken cancellationToken,
+        string ttsErrorContext)
+    {
+        var sendTelegramAudio = ShouldSendTelegramAudio(userRequestText);
+
+        if (!sendTelegramAudio)
+        {
+            await telegram.SendMessageInChunksAsync(chatId, telegramText, cancellationToken);
+        }
+
+        try
+        {
+            await SpeakOrSendAudioAsync(chatId, speechText, textToSpeechService, telegram, cancellationToken, userRequestText);
+        }
+        catch (Exception ttsEx)
+        {
+            Console.Error.WriteLine($"[tts.error] {ttsErrorContext}: {ttsEx.Message}");
+
+            // Audio-only mode should still deliver a response if synthesis/upload fails.
+            if (sendTelegramAudio)
+            {
+                await telegram.SendMessageInChunksAsync(chatId, telegramText, cancellationToken);
+            }
+        }
+    }
+
     private static bool IsTelegramDesktopFocused()
     {
         if (!OperatingSystem.IsWindows())
@@ -1021,9 +1049,7 @@ internal static class TelegramMessageHandler
         CancellationToken cancellationToken,
         string? userRequestText = null)
     {
-        var userWantsAudio = userRequestText != null && IsAudioReplyRequested(userRequestText);
-
-        if (!userWantsAudio && IsTelegramDesktopFocused())
+        if (!ShouldSendTelegramAudio(userRequestText))
         {
             await textToSpeechService.TrySpeakPreviewAsync(text, cancellationToken);
         }
