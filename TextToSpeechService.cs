@@ -11,6 +11,7 @@ internal sealed class TextToSpeechService
     private readonly string? _azureSpeechRegion;
     private readonly string _azureSpeechVoice;
     private readonly PronunciationDictionaryService? _pronunciationService;
+    private static readonly Regex MarkdownBoldRegex = new(@"\*\*(.+?)\*\*", RegexOptions.Singleline | RegexOptions.Compiled);
 
     private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "tts-debug.log");
 
@@ -108,10 +109,13 @@ internal sealed class TextToSpeechService
 
             using var audioConfig = AudioConfig.FromDefaultSpeakerOutput();
             using var synthesizer = new SpeechSynthesizer(speechConfig, audioConfig);
+            var speechInput = BuildSpeechInput(snippet, _azureSpeechVoice);
 
-            Log($"[tts.info] Synthesizing text ({snippet.Length} chars) with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
+            Log($"[tts.info] Synthesizing {(speechInput.IsSsml ? "ssml" : "text")} ({speechInput.Content.Length} chars) with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
 
-            using var result = await synthesizer.SpeakTextAsync(snippet).ConfigureAwait(false);
+            using var result = speechInput.IsSsml
+                ? await synthesizer.SpeakSsmlAsync(speechInput.Content).ConfigureAwait(false)
+                : await synthesizer.SpeakTextAsync(speechInput.Content).ConfigureAwait(false);
 
             if (result.Reason == ResultReason.SynthesizingAudioCompleted)
             {
@@ -192,10 +196,13 @@ internal sealed class TextToSpeechService
 
             using var audioConfig = AudioConfig.FromWavFileOutput(tempFile);
             using var synthesizer = new SpeechSynthesizer(speechConfig, audioConfig);
+            var speechInput = BuildSpeechInput(snippet, _azureSpeechVoice);
 
             Log($"[tts.info] Synthesizing to file '{tempFile}' with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
 
-            using var result = await synthesizer.SpeakTextAsync(snippet).ConfigureAwait(false);
+            using var result = speechInput.IsSsml
+                ? await synthesizer.SpeakSsmlAsync(speechInput.Content).ConfigureAwait(false)
+                : await synthesizer.SpeakTextAsync(speechInput.Content).ConfigureAwait(false);
 
             if (result.Reason == ResultReason.SynthesizingAudioCompleted)
             {
@@ -283,4 +290,64 @@ internal sealed class TextToSpeechService
 
         return Regex.Replace(input, "<.*?>", string.Empty);
     }
+
+    private static SpeechInput BuildSpeechInput(string text, string voiceName)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new SpeechInput(string.Empty, IsSsml: false);
+        }
+
+        // If no markdown bold is present, still strip any stray '**' markers so asterisks are never spoken.
+        if (!MarkdownBoldRegex.IsMatch(text))
+        {
+            return new SpeechInput(text.Replace("**", string.Empty), IsSsml: false);
+        }
+
+        var sb = new System.Text.StringBuilder();
+        var lastIndex = 0;
+
+        foreach (Match match in MarkdownBoldRegex.Matches(text))
+        {
+            var prefix = text[lastIndex..match.Index].Replace("**", string.Empty);
+            sb.Append(EscapeXml(prefix));
+
+            var emphasizedText = match.Groups[1].Value.Replace("**", string.Empty);
+            if (!string.IsNullOrWhiteSpace(emphasizedText))
+            {
+                sb.Append("<emphasis level=\"moderate\">");
+                sb.Append(EscapeXml(emphasizedText));
+                sb.Append("</emphasis>");
+            }
+
+            lastIndex = match.Index + match.Length;
+        }
+
+        if (lastIndex < text.Length)
+        {
+            var suffix = text[lastIndex..].Replace("**", string.Empty);
+            sb.Append(EscapeXml(suffix));
+        }
+
+        var safeVoiceName = EscapeXml(string.IsNullOrWhiteSpace(voiceName) ? "en-GB-RyanNeural" : voiceName);
+        var ssml = $"<speak version=\"1.0\" xml:lang=\"en-GB\"><voice name=\"{safeVoiceName}\">{sb}</voice></speak>";
+        return new SpeechInput(ssml, IsSsml: true);
+    }
+
+    private static string EscapeXml(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+        {
+            return string.Empty;
+        }
+
+        return input
+            .Replace("&", "&amp;", StringComparison.Ordinal)
+            .Replace("<", "&lt;", StringComparison.Ordinal)
+            .Replace(">", "&gt;", StringComparison.Ordinal)
+            .Replace("\"", "&quot;", StringComparison.Ordinal)
+            .Replace("'", "&apos;", StringComparison.Ordinal);
+    }
+
+    private readonly record struct SpeechInput(string Content, bool IsSsml);
 }
