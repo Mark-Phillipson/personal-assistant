@@ -157,7 +157,8 @@ internal sealed class TelegramApiClient : IDisposable
         {
             new("chat_id", chatId.ToString()),
             new("text", text),
-            new("disable_web_page_preview", "true")
+            new("disable_web_page_preview", "true"),
+            new("disable_notification", "true")
         };
 
         if (!string.IsNullOrWhiteSpace(parseMode))
@@ -193,6 +194,7 @@ internal sealed class TelegramApiClient : IDisposable
         {
             var form = new MultipartFormDataContent();
             form.Add(new StringContent(chatId.ToString()), "chat_id");
+            form.Add(new StringContent("true"), "disable_notification");
             var streamContent = new StreamContent(File.OpenRead(filePath));
             streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
             form.Add(streamContent, "document", fileInfo.Name);

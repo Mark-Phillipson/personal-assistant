@@ -361,4 +361,181 @@ public class DatabasePhaseThreeTests
             Assert.Fail("SqlServerDatabaseProvider test failed; ensure LocalDB is installed and available. " + ex.Message);
         }
     }
+
+    [Fact]
+    public void TextToSpeechService_BuildSpeechInput_PlainText_NoSsml()
+    {
+        var method = typeof(TextToSpeechService).GetMethod("BuildSpeechInput", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var result = method!.Invoke(null, new object[] { "Hello world, this is a test.", "en-GB-RyanNeural" })!;
+        var isSsml = (bool)result.GetType().GetProperty("IsSsml")!.GetValue(result)!;
+        var content = (string)result.GetType().GetProperty("Content")!.GetValue(result)!;
+
+        Assert.False(isSsml);
+        Assert.Equal("Hello world, this is a test.", content);
+        Assert.DoesNotContain("**", content);
+    }
+
+    [Fact]
+    public void TextToSpeechService_BuildSpeechInput_BoldMarkdown_ProducesSsmlEmphasis()
+    {
+        var method = typeof(TextToSpeechService).GetMethod("BuildSpeechInput", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var result = method!.Invoke(null, new object[] { "This is **very** important to know.", "en-GB-RyanNeural" })!;
+        var isSsml = (bool)result.GetType().GetProperty("IsSsml")!.GetValue(result)!;
+        var content = (string)result.GetType().GetProperty("Content")!.GetValue(result)!;
+
+        Assert.True(isSsml);
+        Assert.Contains("<emphasis level=\"moderate\">very</emphasis>", content);
+        Assert.Contains("This is ", content);
+        Assert.Contains(" important to know.", content);
+        Assert.DoesNotContain("**", content);
+    }
+
+    [Fact]
+    public void TextToSpeechService_BuildSpeechInput_MultipleBoldRuns_AllEmphasized()
+    {
+        var method = typeof(TextToSpeechService).GetMethod("BuildSpeechInput", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var result = method!.Invoke(null, new object[] { "**First** and **second** emphasized.", "en-GB-RyanNeural" })!;
+        var isSsml = (bool)result.GetType().GetProperty("IsSsml")!.GetValue(result)!;
+        var content = (string)result.GetType().GetProperty("Content")!.GetValue(result)!;
+
+        Assert.True(isSsml);
+        Assert.Contains("<emphasis level=\"moderate\">First</emphasis>", content);
+        Assert.Contains("<emphasis level=\"moderate\">second</emphasis>", content);
+        Assert.DoesNotContain("**", content);
+    }
+
+    [Fact]
+    public void TextToSpeechService_BuildSpeechInput_StrayAsterisks_Stripped()
+    {
+        var method = typeof(TextToSpeechService).GetMethod("BuildSpeechInput", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        // Unmatched ** should be stripped and not produce SSML.
+        var result = method!.Invoke(null, new object[] { "Hello ** world", "en-GB-RyanNeural" })!;
+        var isSsml = (bool)result.GetType().GetProperty("IsSsml")!.GetValue(result)!;
+        var content = (string)result.GetType().GetProperty("Content")!.GetValue(result)!;
+
+        Assert.False(isSsml);
+        Assert.DoesNotContain("**", content);
+        Assert.Contains("Hello", content);
+        Assert.Contains("world", content);
+    }
+
+    [Fact]
+    public void TextToSpeechService_BuildSpeechInput_XmlSpecialChars_Escaped()
+    {
+        var method = typeof(TextToSpeechService).GetMethod("BuildSpeechInput", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        // Bold word containing XML-unsafe text; rest contains & and < that must be escaped.
+        var result = method!.Invoke(null, new object[] { "Use **bold & <strong>** tags.", "en-GB-RyanNeural" })!;
+        var isSsml = (bool)result.GetType().GetProperty("IsSsml")!.GetValue(result)!;
+        var content = (string)result.GetType().GetProperty("Content")!.GetValue(result)!;
+
+        Assert.True(isSsml);
+        Assert.DoesNotContain("&<", content);
+        Assert.DoesNotContain("& <", content);
+        Assert.Contains("&amp;", content);
+        Assert.Contains("&lt;", content);
+        Assert.DoesNotContain("**", content);
+    }
+
+    [Fact]
+    public void TextToSpeechService_UrlsReplacedWithWebAddress()
+    {
+        var extract = typeof(TextToSpeechService).GetMethod("ExtractPreviewText", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(extract);
+
+        var result = (string)extract!.Invoke(null, new object[] { "Visit https://www.example.com/some/long/path?query=1 for details.", 100 })!;
+        Assert.DoesNotContain("https://", result);
+        Assert.Contains("web address", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Visit", result);
+        Assert.Contains("for details", result);
+    }
+
+    [Fact]
+    public void TextToSpeechService_EmojisStrippedFromPreviewText()
+    {
+        var extract = typeof(TextToSpeechService).GetMethod("ExtractPreviewText", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(extract);
+
+        var result = (string)extract!.Invoke(null, new object[] { "Hey there! 👋 I'd be happy to help 😊 with your request 🎉", 100 })!;
+        Assert.DoesNotContain("👋", result);
+        Assert.DoesNotContain("😊", result);
+        Assert.DoesNotContain("🎉", result);
+        Assert.Contains("Hey there", result);
+        Assert.Contains("help", result);
+    }
+
+    [Fact]
+    public void TextToSpeechService_MarkdownLinkUrlReplaced()
+    {
+        var extract = typeof(TextToSpeechService).GetMethod("ExtractPreviewText", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(extract);
+
+        // Telegram HTML link text is stripped by StripHtmlTags; plain markdown links should also be covered.
+        var result = (string)extract!.Invoke(null, new object[] { "See [map](https://goo.gl/maps/XR3L5YLadG12) for the location.", 100 })!;
+        Assert.DoesNotContain("https://", result);
+        Assert.Contains("web address", result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void LoadDotEnvIfPresent()
+    {
+        // Try repo root (developer running from workspace), then test binary base dir.
+        var candidates = new[]
+        {
+            Path.Combine(Directory.GetCurrentDirectory(), ".env"),
+            Path.Combine(AppContext.BaseDirectory, ".env"),
+        };
+
+        foreach (var path in candidates.Where(File.Exists))
+        {
+            foreach (var line in File.ReadAllLines(path))
+            {
+                var trimmed = line.Trim();
+                if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#')) continue;
+                var eq = trimmed.IndexOf('=');
+                if (eq < 0) continue;
+                var key = trimmed[..eq].Trim();
+                var val = trimmed[(eq + 1)..].Trim().Trim('"').Trim('\'');
+                if (!string.IsNullOrEmpty(key))
+                    Environment.SetEnvironmentVariable(key, val);
+            }
+            break; // Use first found .env only.
+        }
+    }
+
+    /// <summary>
+    /// Integration test: actually synthesizes speech to the default audio device so you can hear the emphasis.
+    /// Skipped automatically when AZURE_SPEECH_KEY or AZURE_SPEECH_REGION are not set.
+    /// </summary>
+    [Fact]
+    public async Task TextToSpeechService_BoldEmphasis_AudibleSmokeTest()
+    {
+        // Load .env from repo root so Azure credentials are available without needing them set in the system environment.
+        LoadDotEnvIfPresent();
+
+        var key = Environment.GetEnvironmentVariable("AZURE_SPEECH_KEY");
+        var region = Environment.GetEnvironmentVariable("AZURE_SPEECH_REGION");
+
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(region))
+        {
+            // Skip gracefully — credentials not available in this environment.
+            return;
+        }
+
+        var tts = TextToSpeechService.FromEnvironment();
+
+        // Phrase with bold markers: you should hear "very" and "important" spoken with emphasis.
+        const string phrase = "This is a **very** important test. Please listen carefully. The word **important** should sound emphasised.";
+
+        // force:true bypasses the ASSISTANT_TTS_ENABLED env check.
+        await tts.TrySpeakPreviewAsync(phrase, CancellationToken.None, force: true);
+    }
 }
