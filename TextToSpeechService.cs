@@ -156,22 +156,22 @@ internal sealed class TextToSpeechService
             return null;
         }
 
-        var snippet = ExtractPreviewText(text, _maxPreviewWords);
-        Log($"[tts.debug] synth-to-file extracted snippet ({snippet?.Length} chars): '{snippet}'");
-        if (string.IsNullOrWhiteSpace(snippet))
+        var speechText = ExtractSpeechText(text, null);
+        Log($"[tts.debug] synth-to-file extracted text ({speechText?.Length} chars): '{speechText}'");
+        if (string.IsNullOrWhiteSpace(speechText))
         {
-            Log("[tts.debug] synth-to-file early return: snippet empty after extraction");
+            Log("[tts.debug] synth-to-file early return: speech text empty after extraction");
             return null;
         }
 
         // Apply pronunciation corrections if service is available.
         if (_pronunciationService != null)
         {
-            var (correctedSnippet, appliedCorrections) = _pronunciationService.ApplyCorrections(snippet);
+            var (correctedText, appliedCorrections) = _pronunciationService.ApplyCorrections(speechText);
             if (appliedCorrections.Any())
             {
                 Log($"[tts.info] Applied {appliedCorrections.Count} pronunciation correction(s): {string.Join(", ", appliedCorrections.Keys)}");
-                snippet = correctedSnippet;
+                speechText = correctedText;
             }
         }
 
@@ -196,7 +196,7 @@ internal sealed class TextToSpeechService
 
             using var audioConfig = AudioConfig.FromWavFileOutput(tempFile);
             using var synthesizer = new SpeechSynthesizer(speechConfig, audioConfig);
-            var speechInput = BuildSpeechInput(snippet, _azureSpeechVoice);
+            var speechInput = BuildSpeechInput(speechText, _azureSpeechVoice);
 
             Log($"[tts.info] Synthesizing to file '{tempFile}' with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
 
@@ -275,7 +275,7 @@ internal sealed class TextToSpeechService
         @"|[\uD83C][\uDDE0-\uDDFF][\uD83C][\uDDE0-\uDDFF]",  // flag sequences
         RegexOptions.Compiled);
 
-    private static string ExtractPreviewText(string text, int maxWords)
+    private static string ExtractSpeechText(string text, int? maxWords = null)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -287,14 +287,25 @@ internal sealed class TextToSpeechService
         plainText = EmojiRegex.Replace(plainText, string.Empty);
         // Collapse any whitespace gaps left by removals.
         plainText = Regex.Replace(plainText, @"\s{2,}", " ").Trim();
-        var words = Regex.Split(plainText, "\\s+").Where(w => w.Length > 0).ToArray();
 
-        if (words.Length <= maxWords)
+        if (!maxWords.HasValue)
         {
             return plainText;
         }
 
-        return string.Join(' ', words.Take(maxWords)) + "...";
+        var words = Regex.Split(plainText, "\\s+").Where(w => w.Length > 0).ToArray();
+
+        if (words.Length <= maxWords.Value)
+        {
+            return plainText;
+        }
+
+        return string.Join(' ', words.Take(maxWords.Value)) + "...";
+    }
+
+    private static string ExtractPreviewText(string text, int maxWords)
+    {
+        return ExtractSpeechText(text, maxWords);
     }
 
     private static string StripHtmlTags(string input)

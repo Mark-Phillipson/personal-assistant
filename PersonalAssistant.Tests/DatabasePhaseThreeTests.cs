@@ -486,6 +486,18 @@ public class DatabasePhaseThreeTests
     }
 
     [Fact]
+    public void TextToSpeechService_ExtractSpeechText_DoesNotTruncateWhenMaxWordsNotProvided()
+    {
+        var extract = typeof(TextToSpeechService).GetMethod("ExtractSpeechText", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(extract);
+
+        var full = "This is the entire message that should not be cut off when generating full WAV file audio.";
+        var result = (string)extract!.Invoke(null, new object[] { full, null })!;
+
+        Assert.Equal(full, result);
+    }
+
+    [Fact]
     public void TelegramMessageHandler_TryParsePronunciationPayload_SupportsAsAndEquals()
     {
         var parseMethod = typeof(TelegramMessageHandler).GetMethod("TryParsePronunciationPayload", BindingFlags.Static | BindingFlags.NonPublic);
