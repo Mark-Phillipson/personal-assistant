@@ -342,6 +342,7 @@ static async Task RunTelegramAsync(
 
     using var telegram = new TelegramApiClient(telegramToken);
     var sessions = new ConcurrentDictionary<long, CopilotSession>();
+    var conversationHistories = new ConcurrentDictionary<long, List<string>>();
     var personalityProfiles = new ConcurrentDictionary<long, PersonalityProfile>();
 
     Console.WriteLine("Telegram Copilot assistant started. Press Ctrl+C to stop.");
@@ -423,6 +424,7 @@ static async Task RunTelegramAsync(
                         textToSpeechService,
                         pronunciationService,
                         knownFolderExplorerService,
+                        conversationHistories,
                         cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

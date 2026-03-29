@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using GitHub.Copilot.SDK;
@@ -32,6 +33,7 @@ internal static class TelegramMessageHandler
         TextToSpeechService textToSpeechService,
         PronunciationDictionaryService pronunciationService,
         KnownFolderExplorerService knownFolderExplorerService,
+        ConcurrentDictionary<long, List<string>> conversationHistories,
         CancellationToken cancellationToken)
     {
         var chatId = message.Chat.Id;
@@ -133,6 +135,7 @@ internal static class TelegramMessageHandler
                 knownFolderExplorerService,
                 voiceAdminService,
                 textToSpeechService,
+                conversationHistories,
                 cancellationToken);
 
             return;
@@ -347,6 +350,7 @@ internal static class TelegramMessageHandler
                         knownFolderExplorerService,
                         voiceAdminService,
                         textToSpeechService,
+                        conversationHistories,
                         cancellationToken);
 
                     return;
@@ -546,6 +550,7 @@ internal static class TelegramMessageHandler
         }
 
         var messageOptions = BuildMessageOptions(text, storedAttachment);
+        RecordConversationHistory(chatId, "User", text, conversationHistories);
 
         try
         {
@@ -558,6 +563,7 @@ internal static class TelegramMessageHandler
                 sessions,
                 assistantTools,
                 profile,
+                conversationHistories,
                 cancellationToken);
 
             if (string.IsNullOrWhiteSpace(content))
@@ -566,6 +572,7 @@ internal static class TelegramMessageHandler
             }
 
             content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
+            RecordConversationHistory(chatId, "Assistant", content, conversationHistories);
 
             Console.Error.WriteLine($"[tts.info] Main chat response will be spoken or sent as audio (if enabled).");
             await SendReplyWithOptionalTelegramAudioAsync(
@@ -613,7 +620,8 @@ internal static class TelegramMessageHandler
         CopilotClient copilotClient,
         ConcurrentDictionary<long, CopilotSession> sessions,
         ICollection<AIFunction> assistantTools,
-        PersonalityProfile profile)
+        PersonalityProfile profile,
+        ConcurrentDictionary<long, List<string>> conversationHistories)
     {
         if (sessions.TryGetValue(chatId, out var existingSession))
         {
@@ -645,13 +653,22 @@ internal static class TelegramMessageHandler
 
         var sessionTools = assistantTools.Append(sendFileTool).ToList();
 
+        var systemPrompt = SystemPromptBuilder.Build(profile);
+        if (conversationHistories.TryGetValue(chatId, out var previousHistory) && previousHistory.Count > 0)
+        {
+            var snippet = string.Join("\n", previousHistory.TakeLast(12));
+            systemPrompt += "\n\n" +
+                "[NOTE: previous conversation context preserved for this chat]\n" +
+                snippet;
+        }
+
         var createdSession = await copilotClient.CreateSessionAsync(new SessionConfig
         {
             OnPermissionRequest = PermissionHandler.ApproveAll,
             Tools = sessionTools,
             SystemMessage = new SystemMessageConfig
             {
-                Content = SystemPromptBuilder.Build(profile)
+                Content = systemPrompt
             }
         });
 
@@ -673,9 +690,10 @@ internal static class TelegramMessageHandler
         ConcurrentDictionary<long, CopilotSession> sessions,
         ICollection<AIFunction> assistantTools,
         PersonalityProfile profile,
+        ConcurrentDictionary<long, List<string>> conversationHistories,
         CancellationToken cancellationToken)
     {
-        var session = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile);
+        var session = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile, conversationHistories);
 
         try
         {
@@ -691,7 +709,7 @@ internal static class TelegramMessageHandler
                 await timedOutSession.DisposeAsync();
             }
 
-            var recreatedSession = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile);
+            var recreatedSession = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile, conversationHistories);
             var assistantReply = await recreatedSession.SendAndWaitAsync(messageOptions, null, cancellationToken);
             return assistantReply?.Data.Content?.Trim();
         }
@@ -704,9 +722,32 @@ internal static class TelegramMessageHandler
                 await staleSession.DisposeAsync();
             }
 
-            var recreatedSession = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile);
+            var recreatedSession = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile, conversationHistories);
             var assistantReply = await recreatedSession.SendAndWaitAsync(messageOptions, null, cancellationToken);
             return assistantReply?.Data.Content?.Trim();
+        }
+    }
+
+    private static void RecordConversationHistory(long chatId, string role, string text, ConcurrentDictionary<long, List<string>> conversationHistories)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var normalizedText = text.Trim().Replace("\r\n", " ").Replace("\n", " ");
+        var entry = $"{role}: {normalizedText}";
+
+        var history = conversationHistories.GetOrAdd(chatId, _ => new List<string>());
+
+        lock (history)
+        {
+            history.Add(entry);
+
+            if (history.Count > 120)
+            {
+                history.RemoveRange(0, history.Count - 120);
+            }
         }
     }
 
@@ -755,9 +796,12 @@ internal static class TelegramMessageHandler
         KnownFolderExplorerService knownFolderExplorerService,
         VoiceAdminService voiceAdminService,
         TextToSpeechService textToSpeechService,
+        ConcurrentDictionary<long, List<string>> conversationHistories,
         CancellationToken cancellationToken)
     {
         var messageOptions = new MessageOptions { Prompt = commandPayload };
+
+        RecordConversationHistory(chatId, "User", commandPayload, conversationHistories);
 
         var content = await SendWithSessionRecoveryAsync(
             chatId,
@@ -768,6 +812,7 @@ internal static class TelegramMessageHandler
             sessions,
             assistantTools,
             profile,
+            conversationHistories,
             cancellationToken);
 
         if (string.IsNullOrWhiteSpace(content))
@@ -776,6 +821,7 @@ internal static class TelegramMessageHandler
         }
 
         content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
+        RecordConversationHistory(chatId, "Assistant", content, conversationHistories);
 
         await SendReplyWithOptionalTelegramAudioAsync(
             chatId,
