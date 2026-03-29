@@ -492,7 +492,7 @@ public class DatabasePhaseThreeTests
         Assert.NotNull(extract);
 
         var full = "This is the entire message that should not be cut off when generating full WAV file audio.";
-        var result = (string)extract!.Invoke(null, new object[] { full, null })!;
+        var result = (string)extract!.Invoke(null, new object?[] { full, null })!;
 
         Assert.Equal(full, result);
     }
@@ -503,21 +503,21 @@ public class DatabasePhaseThreeTests
         var parseMethod = typeof(TelegramMessageHandler).GetMethod("TryParsePronunciationPayload", BindingFlags.Static | BindingFlags.NonPublic);
         Assert.NotNull(parseMethod);
 
-        var argsAs = new object[] { "Tonbridge as Tunbridge", string.Empty, string.Empty, null! };
+        var argsAs = new object?[] { "Tonbridge as Tunbridge", string.Empty, string.Empty, null };
         var successAs = (bool)parseMethod!.Invoke(null, argsAs)!;
         Assert.True(successAs);
         Assert.Equal("Tonbridge", argsAs[1]);
         Assert.Equal("Tunbridge", argsAs[2]);
         Assert.Null(argsAs[3]);
 
-        var argsEquals = new object[] { "Malling=Mawling", string.Empty, string.Empty, null! };
+        var argsEquals = new object?[] { "Malling=Mawling", string.Empty, string.Empty, null };
         var successEquals = (bool)parseMethod!.Invoke(null, argsEquals)!;
         Assert.True(successEquals);
         Assert.Equal("Malling", argsEquals[1]);
         Assert.Equal("Mawling", argsEquals[2]);
         Assert.Null(argsEquals[3]);
 
-        var argsWithIpa = new object[] { "Ightham as Eyetum ipa /ˈaɪtəm/", string.Empty, string.Empty, null! };
+        var argsWithIpa = new object?[] { "Ightham as Eyetum ipa /ˈaɪtəm/", string.Empty, string.Empty, null };
         var successWithIpa = (bool)parseMethod!.Invoke(null, argsWithIpa)!;
         Assert.True(successWithIpa);
         Assert.Equal("Ightham", argsWithIpa[1]);
@@ -531,7 +531,7 @@ public class DatabasePhaseThreeTests
         var parseMethod = typeof(TelegramMessageHandler).GetMethod("TryParsePronunciationAddRequest", BindingFlags.Static | BindingFlags.NonPublic);
         Assert.NotNull(parseMethod);
 
-        var args = new object[] { "add pronunciation for Ightham as Eyetum ipa ˈaɪtəm", string.Empty, string.Empty, null! };
+        var args = new object?[] { "add pronunciation for Ightham as Eyetum ipa ˈaɪtəm", string.Empty, string.Empty, null };
         var success = (bool)parseMethod!.Invoke(null, args)!;
         Assert.True(success);
         Assert.Equal("Ightham", args[1]);

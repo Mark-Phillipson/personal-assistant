@@ -15,7 +15,7 @@ internal sealed class KnownFolderExplorerService
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var repoRoot = EnvironmentSettings.ReadString("ASSISTANT_REPO_DIRECTORY", Directory.GetCurrentDirectory());
 
-        var reposRoot = EnvironmentSettings.ReadString("ASSISTANT_REPOS_DIRECTORY", null);
+        var reposRoot = EnvironmentSettings.ReadOptionalString("ASSISTANT_REPOS_DIRECTORY");
         if (string.IsNullOrWhiteSpace(reposRoot))
         {
             var repoDirectory = Path.GetFullPath(repoRoot);

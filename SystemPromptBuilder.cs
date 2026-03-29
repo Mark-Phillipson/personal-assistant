@@ -30,9 +30,12 @@ internal static class SystemPromptBuilder
             ? string.Empty
             : $"Preferred farewell style: {profile.SignatureFarewell}.";
 
+        var modelName = EnvironmentSettings.ReadString("ASSISTANT_MODEL", "Raptor mini (Preview)");
+
         return string.Join('\n', new[]
         {
             $"You are {profile.Name}, a {toneDescription} personal assistant.",
+            $"Use model: {modelName}.",
             "Always be helpful, accurate, and concise unless otherwise specified.",
             "When the user sends a file or image attachment, inspect the attachment directly before claiming you cannot access it.",
             "When the user asks to open, visit, or summarize a webpage, use the browser tool to navigate to the requested URL and provide a summary or relevant content. Do not refuse unless the request is unsafe or impossible.",

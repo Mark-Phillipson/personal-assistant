@@ -6,7 +6,9 @@
     <RootNamespace>personal_assistant</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <NoWarn>CA1416;CS8602</NoWarn>
+    <NoWarn>CA1416;CS8602;NETSDK1206</NoWarn>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
