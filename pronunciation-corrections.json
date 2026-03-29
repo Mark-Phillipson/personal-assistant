@@ -89,6 +89,16 @@
       "lastModified": null,
       "usageCount": 0,
       "enabled": true
+    },
+    {
+      "originalWord": "San Fairy Ann",
+      "replacement": "San Fairy Ann",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='sæn ˈfɛəri æn'>San Fairy Ann</phoneme>",
+      "context": "Cycling club name. 'Ann' is pronounced like the girl's name /æn/, not /ɑːn/. Derives from the French 'ça ne fait rien' (it doesn't matter).",
+      "dateAdded": "2026-03-29T07:53:00Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
     }
   ]
 }
