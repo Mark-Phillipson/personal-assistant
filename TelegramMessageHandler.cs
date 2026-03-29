@@ -524,8 +524,8 @@ internal static class TelegramMessageHandler
         {
             if (LooksLikeTodoAddRequest(text))
             {
-                var todoTitle = ExtractTodoTitleFromText(text);
-                var addResult = await voiceAdminService.AddTodoAsync(todoTitle);
+                var todoData = ExtractTodoDataFromText(text);
+                var addResult = await voiceAdminService.AddTodoAsync(todoData.Title, todoData.Description, todoData.Project, todoData.Priority);
                 await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(addResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
                 return;
             }
@@ -827,6 +827,151 @@ internal static class TelegramMessageHandler
         var mentionsTodo = Regex.IsMatch(text, "\\b(todos?|to\\s*do|task|tasks?)\\b", RegexOptions.IgnoreCase);
         var mentionsAdd = Regex.IsMatch(text, "\\b(add|create|remind|note|new)\\b", RegexOptions.IgnoreCase);
         return mentionsTodo && mentionsAdd;
+    }
+
+    private static TodoData ExtractTodoDataFromText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return new TodoData("New todo", null, null, 0);
+
+        string? title = null;
+        string? description = null;
+        string? project = null;
+        int priority = 0;
+
+        // Look for structured format: "title of X and description of Y"
+        var lowerText = text.ToLowerInvariant();
+
+        // Extract title: "title of [X] and/description/priority"
+        var titleOfIndex = lowerText.IndexOf("title of ", StringComparison.OrdinalIgnoreCase);
+        if (titleOfIndex >= 0)
+        {
+            titleOfIndex += "title of ".Length;
+            // Find where title ends: look for " and ", " description ", " priority ", or end
+            int titleEndIndex = FindNextDelimiter(lowerText, titleOfIndex, new[] { " and ", " description of ", " priority ", " project " });
+            if (titleEndIndex > titleOfIndex)
+            {
+                title = text.Substring(titleOfIndex, titleEndIndex - titleOfIndex).Trim();
+            }
+        }
+
+        // Extract description: "description of [X] and/priority/project"
+        var descriptionOfIndex = lowerText.IndexOf("description of ", StringComparison.OrdinalIgnoreCase);
+        if (descriptionOfIndex >= 0)
+        {
+            descriptionOfIndex += "description of ".Length;
+            // Find where description ends: look for " and ", " priority ", " project ", " make it a priority"
+            int descEndIndex = FindNextDelimiter(lowerText, descriptionOfIndex, new[] { " and ", " priority ", " project ", " make it ", " make a priority " });
+            if (descEndIndex > descriptionOfIndex)
+            {
+                description = text.Substring(descriptionOfIndex, descEndIndex - descriptionOfIndex).Trim();
+            }
+        }
+
+        // Extract priority: look for "priority of X" or "make it a priority of X"
+        var priorityMatch = Regex.Match(text, @"(?:priority\s+of|make\s+(?:it\s+)?a?\s+priority\s+of)\s+([0-9]+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)", RegexOptions.IgnoreCase);
+        if (priorityMatch.Success)
+        {
+            var priorityStr = priorityMatch.Groups[1].Value;
+            if (int.TryParse(priorityStr, out int p))
+            {
+                priority = p;
+            }
+            else
+            {
+                priority = TextNumberToInt(priorityStr);
+            }
+        }
+
+        // Extract project: "project of X" or "project is X"
+        var projectMatch = Regex.Match(text, @"\bproject\s+(?:of|is)\s+([^\s]+(?:\s+[^\s]+){0,3})(?:\s+and|\s+priority|\s+description|\s|$)", RegexOptions.IgnoreCase);
+        if (projectMatch.Success && !string.IsNullOrWhiteSpace(projectMatch.Groups[1].Value))
+        {
+            project = projectMatch.Groups[1].Value.Trim();
+        }
+
+        // If no explicit title was found, try the old extraction method
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            title = ExtractTodoTitleFromText(text);
+        }
+
+        // Ensure title length is reasonable
+        if (!string.IsNullOrWhiteSpace(title) && title.Length > 180)
+            title = title.Substring(0, 180).Trim() + "...";
+
+        // Ensure description length is reasonable
+        if (!string.IsNullOrWhiteSpace(description) && description.Length > 500)
+            description = description.Substring(0, 500).Trim() + "...";
+
+        return new TodoData(title ?? "New todo", description, project, priority);
+    }
+
+    private static int FindNextDelimiter(string text, int startIndex, string[] delimiters)
+    {
+        int closestIndex = text.Length;
+        foreach (var delimiter in delimiters)
+        {
+            var index = text.IndexOf(delimiter, startIndex, StringComparison.OrdinalIgnoreCase);
+            if (index >= 0 && index < closestIndex)
+            {
+                closestIndex = index;
+            }
+        }
+        return closestIndex;
+    }
+
+    private static int TextNumberToInt(string text)
+    {
+        var lowerText = text.Trim().ToLowerInvariant();
+        return lowerText switch
+        {
+            "zero" => 0,
+            "one" => 1,
+            "two" => 2,
+            "three" => 3,
+            "four" => 4,
+            "five" => 5,
+            "six" => 6,
+            "seven" => 7,
+            "eight" => 8,
+            "nine" => 9,
+            "ten" => 10,
+            "eleven" => 11,
+            "twelve" => 12,
+            "thirteen" => 13,
+            "fourteen" => 14,
+            "fifteen" => 15,
+            "sixteen" => 16,
+            "seventeen" => 17,
+            "eighteen" => 18,
+            "nineteen" => 19,
+            "twenty" => 20,
+            "thirty" => 30,
+            "forty" => 40,
+            "fifty" => 50,
+            "sixty" => 60,
+            "seventy" => 70,
+            "eighty" => 80,
+            "ninety" => 90,
+            _ => 0
+        };
+    }
+
+    private class TodoData
+    {
+        public string Title { get; }
+        public string? Description { get; }
+        public string? Project { get; }
+        public int Priority { get; }
+
+        public TodoData(string title, string? description, string? project, int priority)
+        {
+            Title = title;
+            Description = description;
+            Project = project;
+            Priority = priority;
+        }
     }
 
     private static string ExtractTodoTitleFromText(string text)
