@@ -12,6 +12,7 @@ internal static class AssistantToolsFactory
         GoogleCalendarAssistantService calendarService,
         NaturalCommandsAssistantService naturalCommandsService,
         ClipboardAssistantService clipboardService,
+        TickerNotificationService tickerNotificationService,
         DadJokeService dadJokeService,
         WebBrowserAssistantService webBrowserService,
         VoiceAdminService voiceAdminService,
@@ -67,6 +68,31 @@ internal static class AssistantToolsFactory
                     await naturalCommandsService.ExecuteForAssistantAsync(commandText),
                 "run_natural_command",
                 "Run a local NaturalCommands command on the machine hosting this bot."),
+            AIFunctionFactory.Create(
+                async () =>
+                {
+                    await tickerNotificationService.FlushAsync();
+                    return "Ticker notifications flushed to overlay.";
+                },
+                "show_ticker_notifications",
+                "Display queued notifications in the on-screen ticker overlay."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("The notification text to display")] string message,
+                    [Description("Category: info | warning | critical | success")]
+                    string category = "info") =>
+                {
+                    var cat = TickerCategory.Info;
+                    if (Enum.TryParse<TickerCategory>(category, true, out var parsed))
+                    {
+                        cat = parsed;
+                    }
+
+                    await tickerNotificationService.EnqueueAndFlushAsync(message, cat);
+                    return "Ticker notification sent.";
+                },
+                "send_ticker_notification",
+                "Immediately show a notification in the on-screen ticker overlay."),
             AIFunctionFactory.Create(
                 () => clipboardService.GetSetupStatusText(),
                 "clipboard_setup_status",

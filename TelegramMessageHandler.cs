@@ -25,6 +25,7 @@ internal static class TelegramMessageHandler
         GoogleCalendarAssistantService calendarService,
         NaturalCommandsAssistantService naturalCommandsService,
         ClipboardAssistantService clipboardService,
+        TickerNotificationService tickerNotificationService,
         DadJokeService dadJokeService,
         WebBrowserAssistantService webBrowserService,
         VoiceAdminService voiceAdminService,
@@ -254,6 +255,44 @@ internal static class TelegramMessageHandler
                         EmojiPalette.Wrap("To create an event, please use the assistant chat with a command like: 'Create a calendar event titled Meeting tomorrow at 10am for 1 hour.'", EmojiPalette.Calendar, profile.UseEmoji),
                         cancellationToken);
                     return;
+
+                case "/ticker":
+                {
+                    var payload = ExtractCommandPayload(text);
+
+                    if (string.IsNullOrWhiteSpace(payload))
+                    {
+                        await tickerNotificationService.FlushAsync();
+                        await telegram.SendMessageInChunksAsync(
+                            chatId,
+                            EmojiPalette.Wrap("Ticker notifications flushed to overlay.", EmojiPalette.Confirm, profile.UseEmoji),
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        if (payload.Contains(":"))
+                        {
+                            var parts = payload.Split(':', 2);
+                            if (Enum.TryParse<TickerCategory>(parts[0], true, out var parsed))
+                            {
+                                await tickerNotificationService.EnqueueAndFlushAsync(parts[1].Trim(), parsed);
+                                await telegram.SendMessageInChunksAsync(
+                                    chatId,
+                                    EmojiPalette.Wrap($"Enqueued ticker message with category {parsed} and flushed.", EmojiPalette.Confirm, profile.UseEmoji),
+                                    cancellationToken);
+                                return;
+                            }
+                        }
+
+                        await tickerNotificationService.EnqueueAndFlushAsync(payload, TickerCategory.Info);
+                        await telegram.SendMessageInChunksAsync(
+                            chatId,
+                            EmojiPalette.Wrap("Enqueued ticker message and flushed.", EmojiPalette.Confirm, profile.UseEmoji),
+                            cancellationToken);
+                    }
+
+                    return;
+                }
 
                 case "/weather":
                     await telegram.SendMessageInChunksAsync(

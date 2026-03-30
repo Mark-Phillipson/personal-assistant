@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Text.RegularExpressions;
@@ -49,6 +49,7 @@ var gmailService = GmailAssistantService.FromEnvironment();
 var calendarService = GoogleCalendarAssistantService.FromEnvironment();
 var naturalCommandsService = NaturalCommandsAssistantService.FromEnvironment();
 var clipboardService = ClipboardAssistantService.FromEnvironment();
+var tickerNotificationService = TickerNotificationService.FromEnvironment();
 var dadJokeService = new DadJokeService();
 var webBrowserService = WebBrowserAssistantService.FromEnvironment(clipboardService);
 var voiceAdminService = VoiceAdminService.FromEnvironment();
@@ -72,7 +73,7 @@ var textToSpeechService = TextToSpeechService.FromEnvironment(pronunciationServi
 Console.WriteLine(databaseRegistry.GetSetupStatusText());
 Console.WriteLine($"GenericDatabaseService has {genericDatabaseService.ListSources().Count} source(s) available.");
 
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, tickerNotificationService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
@@ -136,6 +137,7 @@ try
                 telegramChatIdStore,
                 textToSpeechService,
                 pronunciationService,
+                tickerNotificationService,
                 appCancellation.Token);
             break;
     }
@@ -334,6 +336,7 @@ static async Task RunTelegramAsync(
     TelegramChatIdStore telegramChatIdStore,
     TextToSpeechService textToSpeechService,
     PronunciationDictionaryService pronunciationService,
+    TickerNotificationService tickerNotificationService,
     CancellationToken cancellationToken)
 {
     var telegramToken = EnvironmentSettings.Require("TELEGRAM_BOT_TOKEN");
@@ -416,6 +419,7 @@ static async Task RunTelegramAsync(
                         calendarService,
                         naturalCommandsService,
                         clipboardService,
+                        tickerNotificationService,
                         dadJokeService,
                         webBrowserService,
                         voiceAdminService,
