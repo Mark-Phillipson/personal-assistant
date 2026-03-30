@@ -1,0 +1,10 @@
+
+
+curl -X POST "http://localhost:5000/api/command" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "deviceToken": "U3cR3t-7gH1x-7Ro8!",
+    "command": "open youtube"
+  }'
+
+  

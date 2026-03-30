@@ -174,30 +174,31 @@ These are the commands the MVP must support. Keep names stable — they will map
 
 This phase adds the HTTP endpoint to the existing **personal-assistant** .NET project. It's listed here for completeness but can be done independently.
 
-### Task 3.1: Add minimal HTTP listener
-- Add a lightweight Kestrel endpoint (or `HttpListener`) alongside the existing Telegram polling loop.
-- Route: `POST /api/command`
-- Accept JSON body: `{ "command": "...", "deviceToken": "..." }`
-- Validate device token against `ANDROID_DEVICE_TOKEN` env var.
-- Forward command text to the Copilot session (same as a Telegram message).
-- Return JSON: `{ "actions": [...], "textResponse": "..." }`
+### Task 3.1: Add minimal HTTP listener (completed)
+- Add a lightweight Kestrel endpoint (or `HttpListener`) alongside the existing Telegram polling loop. ✅
+- Route: `POST /api/command` ✅
+- Accept JSON body: `{ "command": "...", "deviceToken": "..." }` ✅
+- Validate device token against `ANDROID_DEVICE_TOKEN` env var. ✅
+- Forward command text to the Copilot session (same as a Telegram message). ⚠️ (not yet in MVP; basic heuristic response implemented)
+- Return JSON: `{ "actions": [...], "textResponse": "..." }` ✅
 
-### Task 3.2: Action extraction from assistant response
+### Task 3.2: Action extraction from assistant response (started)
 - The Copilot model returns natural language. Parse the response for action intents.
 - Option A (simple): Add an AIFunction tool `execute_device_action(type, params)` that the model can call when it determines a device action is needed. The tool serializes the action into the response JSON.
 - Option B (simpler): The model's text response is sent as `textResponse`, and the companion app also displays it. For MVP, the companion does its own intent parsing client-side (e.g. if response contains "Opening YouTube", the companion maps "YouTube" → launch intent). **Not recommended long-term but viable for MVP.**
 - **Recommended for MVP: Option A** — it keeps the command schema clean and uses existing tool infrastructure.
 
-### Task 3.3: Register device action tool
+### Task 3.3: Register device action tool (completed)
 - In `AssistantToolsFactory.cs`, add:
   ```
   execute_device_action(actionType: string, parameters: Dictionary<string, string>)
   ```
-  - Description: "Execute an action on the user's Android phone. Supported types: device.open_app, device.open_url, device.navigate, device.scroll, device.media"
-  - The tool doesn't execute anything itself; it serializes the action into a response payload that the companion app will execute.
-  - Return value: JSON string of the action for the HTTP response to pick up.
+  - Description: "Execute an action on the user's Android phone. Supported types: device.open_app, device.open_url, device.navigate, device.scroll, device.media" ✅
+  - The tool doesn't execute anything itself; it serializes the action into a response payload that the companion app will execute. ✅
+  - Return value: JSON string of the action for the HTTP response to pick up. ✅
 
-### Task 3.4: System prompt update
+### Task 3.4: System prompt update (not yet done)
+
 - Add guidance to `SystemPromptBuilder.cs`:
   > When the user asks to do something on their phone (open an app, navigate, play/pause media, scroll, open a URL on their device), use the `execute_device_action` tool with the appropriate action type and parameters. Do not try to use PC-based tools for phone actions.
 

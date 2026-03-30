@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 
 internal static class AssistantToolsFactory
@@ -68,6 +69,18 @@ internal static class AssistantToolsFactory
                     await naturalCommandsService.ExecuteForAssistantAsync(commandText),
                 "run_natural_command",
                 "Run a local NaturalCommands command on the machine hosting this bot."),
+            AIFunctionFactory.Create(
+                (string actionType, IDictionary<string, string> parameters) =>
+                {
+                    var payload = new
+                    {
+                        actionType,
+                        parameters
+                    };
+                    return JsonSerializer.Serialize(payload, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                },
+                "execute_device_action",
+                "Execute an action on the user's Android phone. Supported types: device.open_app, device.open_url, device.navigate, device.scroll, device.media. Returns structured payload for the companion app."),
             AIFunctionFactory.Create(
                 async () =>
                 {

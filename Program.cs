@@ -97,54 +97,65 @@ Console.CancelKeyPress += (_, eventArgs) =>
     appCancellation.Cancel();
 };
 
+using var apiServerCancellation = new CancellationTokenSource();
+var apiServerTask = CommandApiServer.StartAsync(apiServerCancellation.Token);
+
 try
 {
-    switch (assistantTransport)
+    if (assistantTransport == "cli")
     {
-        case "cli":
-            await RunCliAsync(
-                copilotClient,
-                assistantTools,
-                defaultPersonality,
-                dadJokeService,
-                telegramChatIdStore,
-                textToSpeechService,
-                cliPrompt,
-                appCancellation.Token);
-            break;
-
-        // Terminal transport removed — use CLI or Telegram transports only.
-
-        default:
-            await RunTelegramAsync(
-                copilotClient,
-                assistantTools,
-                defaultPersonality,
-                environmentPersonality,
-                gmailService,
-                calendarService,
-                naturalCommandsService,
-                clipboardService,
-                dadJokeService,
-                webBrowserService,
-                voiceAdminService,
-                voiceAdminSearchService,
-                talonUserDirectoryService,
-                knownFolderExplorerService,
-                telegramAttachmentService,
-                podcastSubscriptionsService,
-                clipboardHistoryService,
-                telegramChatIdStore,
-                textToSpeechService,
-                pronunciationService,
-                tickerNotificationService,
-                appCancellation.Token);
-            break;
+        await RunCliAsync(
+            copilotClient,
+            assistantTools,
+            defaultPersonality,
+            dadJokeService,
+            telegramChatIdStore,
+            textToSpeechService,
+            cliPrompt,
+            appCancellation.Token);
+    }
+    else
+    {
+        await RunTelegramAsync(
+            copilotClient,
+            assistantTools,
+            defaultPersonality,
+            environmentPersonality,
+            gmailService,
+            calendarService,
+            naturalCommandsService,
+            clipboardService,
+            dadJokeService,
+            webBrowserService,
+            voiceAdminService,
+            voiceAdminSearchService,
+            talonUserDirectoryService,
+            knownFolderExplorerService,
+            telegramAttachmentService,
+            podcastSubscriptionsService,
+            clipboardHistoryService,
+            telegramChatIdStore,
+            textToSpeechService,
+            pronunciationService,
+            tickerNotificationService,
+            appCancellation.Token);
     }
 }
 finally
 {
     clipboardHistoryService.StopMonitoring();
+    apiServerCancellation.Cancel();
+    try
+    {
+        await apiServerTask;
+    }
+    catch (OperationCanceledException)
+    {
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[command-api] shutdown error: {ex.Message}");
+    }
 }
 
 static string ResolveAssistantTransport(string[] args)
