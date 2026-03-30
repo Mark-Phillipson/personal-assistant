@@ -395,6 +395,23 @@ public class DatabasePhaseThreeTests
     }
 
     [Fact]
+    public void TextToSpeechService_BuildSpeechInput_SingleAsterisk_ProducesSsmlEmphasis()
+    {
+        var method = typeof(TextToSpeechService).GetMethod("BuildSpeechInput", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var result = method!.Invoke(null, new object[] { "This is *very* important to know.", "en-GB-RyanNeural" })!;
+        var isSsml = (bool)result.GetType().GetProperty("IsSsml")!.GetValue(result)!;
+        var content = (string)result.GetType().GetProperty("Content")!.GetValue(result)!;
+
+        Assert.True(isSsml);
+        Assert.Contains("<emphasis level=\"moderate\">very</emphasis>", content);
+        Assert.Contains("This is ", content);
+        Assert.Contains(" important to know.", content);
+        Assert.DoesNotContain("*", content);
+    }
+
+    [Fact]
     public void TextToSpeechService_BuildSpeechInput_MultipleBoldRuns_AllEmphasized()
     {
         var method = typeof(TextToSpeechService).GetMethod("BuildSpeechInput", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);

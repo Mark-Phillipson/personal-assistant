@@ -12,6 +12,8 @@ internal sealed class TextToSpeechService
     private readonly string _azureSpeechVoice;
     private readonly PronunciationDictionaryService? _pronunciationService;
     private static readonly Regex MarkdownBoldRegex = new(@"\*\*(.+?)\*\*", RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex MarkdownItalicRegex = new(@"\*(.+?)\*", RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex MarkdownFormattingRegex = new(@"\*\*(?<bold>.+?)\*\*|\*(?<italic>.+?)\*", RegexOptions.Singleline | RegexOptions.Compiled);
 
     private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "tts-debug.log");
 
@@ -325,29 +327,32 @@ internal sealed class TextToSpeechService
             return new SpeechInput(string.Empty, IsSsml: false);
         }
 
-        // If no markdown bold is present, still strip any stray '**' markers so asterisks are never spoken.
-        if (!MarkdownBoldRegex.IsMatch(text))
+        // If no markdown formatting is present, strip stray markers and return plain text.
+        var hasBold = MarkdownBoldRegex.IsMatch(text);
+        var hasItalic = MarkdownItalicRegex.IsMatch(text);
+        if (!hasBold && !hasItalic)
         {
-            return new SpeechInput(text.Replace("**", string.Empty), IsSsml: false);
+            return new SpeechInput(text.Replace("**", string.Empty).Replace("*", string.Empty), IsSsml: false);
         }
 
         var sb = new System.Text.StringBuilder();
         var lastIndex = 0;
 
-        foreach (Match match in MarkdownBoldRegex.Matches(text))
+        foreach (Match match in MarkdownFormattingRegex.Matches(text))
         {
-            var prefix = text[lastIndex..match.Index].Replace("**", string.Empty);
+            var prefix = text[lastIndex..match.Index].Replace("**", string.Empty).Replace("*", string.Empty);
             sb.Append(EscapeXml(prefix));
 
-            var emphasizedText = match.Groups[1].Value.Replace("**", string.Empty);
+            var emphasizedText = match.Groups["bold"].Success
+                ? match.Groups["bold"].Value
+                : match.Groups["italic"].Value;
+
             if (!string.IsNullOrWhiteSpace(emphasizedText))
             {
-                // Natural emphasis: slight slow-down + small volume boost + short pauses.
-                // Avoid large pitch shifts — they make the voice sound like a different person.
                 sb.Append("<break time=\"60ms\"/>");
-                sb.Append("<prosody rate=\"-15%\" pitch=\"+3%\" volume=\"+15%\">");
+                sb.Append("<emphasis level=\"moderate\">");
                 sb.Append(EscapeXml(emphasizedText));
-                sb.Append("</prosody>");
+                sb.Append("</emphasis>");
                 sb.Append("<break time=\"40ms\"/>");
             }
 
@@ -356,7 +361,7 @@ internal sealed class TextToSpeechService
 
         if (lastIndex < text.Length)
         {
-            var suffix = text[lastIndex..].Replace("**", string.Empty);
+            var suffix = text[lastIndex..].Replace("**", string.Empty).Replace("*", string.Empty);
             sb.Append(EscapeXml(suffix));
         }
 
