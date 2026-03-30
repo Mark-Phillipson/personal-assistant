@@ -171,7 +171,7 @@ Wire Telegram/webhook triggers into Tasker tasks and AutoInput actions.
 - Measure average end-to-end latency from Telegram command to phone action.
 
 ## Phase 2 (1-2 weeks): Build reliable control path
-- Create Android companion app (Kotlin) or maybe using MAUI.
+- Create Android companion app (Kotlin) with Accessibility Service.
 - Add Accessibility Service + minimal action engine.
 - Support text-targeted taps and semantic navigation.
 - Return structured status to assistant.
@@ -184,5 +184,5 @@ Wire Telegram/webhook triggers into Tasker tasks and AutoInput actions.
 ## Practical Conclusion
 This is feasible and worth doing. The key correction is to solve command entry ergonomics first. Best path: add zero-touch (or near zero-touch) mobile speech entry, then layer in ADB for fast control gains, and finally move to companion Accessibility execution for durable, low-latency phone control aligned with your Talon workflow.
 
-
+ can we create a minimum viable product regarding the android companion at mentioned in the plan it doesn't have to do much just demonstrate the feasibility please do not pollute the personal assistant per se but create a separate project.  not sure how difficult it is to create this or  as for launching things I can always ask the assistant to provide me with a link and that works well in telegram chat on the phone it's the other stuff like dictating into text boxes and controlling the phone without actually using voice access all the time that we need to measure to see see if it's feasible.  I think I can work with opening the telegram app and dictating into it as a last result but if I'm doing that regularly on the phone it will make my repetitive strain injury worse.  we have already experimented with the adb shell and got that working but it relies on the phone being in debugging mode so is not really an option for non developers. 
     

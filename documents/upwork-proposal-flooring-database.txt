@@ -1,0 +1,36 @@
+Dear Prospective Client,
+
+Your flooring stock management requirements are well-suited to a modern web-based application, and I would welcome the opportunity to build this for you.
+
+I am a Full Stack Developer with on-the-job experience since 2012, developing data-centric desktop and web applications with Microsoft technologies since 1999. I hold Upwork Top Rated Plus status with 100% Job Success.
+
+For this project I would propose building a Blazor application backed by Microsoft SQL Server. Blazor is a modern Microsoft web framework using C# throughout, which means a clean, responsive user interface for your warehouse team with strong server-side logic for stock tracking and low-stock alerts.
+
+Regarding the database, I would recommend a flexible approach depending on your setup:
+
+- If only one site needs access to the system, SQL Server Express Edition installed locally keeps things simple and cost-effective with no ongoing cloud fees.
+- If multiple stores need to share real-time stock data, Azure SQL (the cloud-hosted version) would be the better fit, giving all four locations secure access over the internet.
+
+We can discuss which option suits you best once I understand how your team across the four stores would use the system day to day.
+
+Based on your description, the core features I would deliver include:
+
+- Stock roll registration with warehouse bay number, roll length, and width.
+- A cut length form that deducts the cut from the source roll, logs the cut piece with its new warehouse location, and returns the balance to the original bay.
+- Automatic low-stock warnings when a roll drops below 10 metres, prompting a reorder.
+- A clean, easy-to-use interface designed for busy warehouse environments, with Bootstrap 5 responsive layout so it works on tablets and desktops alike.
+
+My relevant skills for this project include C#, Microsoft SQL Server and T-SQL, Entity Framework Core, Blazor Server, ASP.NET Web API, Bootstrap 5, HTML 5, CSS 3, and database schema design. I also have extensive experience migrating data from varied sources into a relational data model, which may be useful if you have existing stock records to bring across.
+
+I can integrate AI functionality such as Smart Paste and textarea suggestions into the application where relevant, for example to speed up data entry for your warehouse staff. I also have a valid GitHub Copilot subscription, which speeds up the development process considerably, especially for repetitive data-entry forms and CRUD operations typical in stock management systems.
+
+I should mention that a detailed application specification is important so your needs can be met accurately. Without one, projects are more difficult to complete on time and within budget. I would be happy to work through the requirements with you to produce a clear specification before development begins, and we can discuss this further.
+
+I am based in the UK and available for remote work. I am looking for a long-term engagement and am currently available, with high-speed broadband for reliable communication.
+
+On a practical note, I currently use a microphone-driven workflow instead of a keyboard and mouse. During any meetings I may need to speak to my computer at times, so please bear that in mind to avoid confusion. This workflow can be efficient and, in some cases, faster, especially alongside modern large language model tools.
+
+I would be glad to discuss your requirements in more detail at your convenience.
+
+Best regards,
+Mark P.
