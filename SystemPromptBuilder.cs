@@ -27,7 +27,7 @@ internal static class SystemPromptBuilder
             : $"Preferred greeting style: {profile.SignatureGreeting}.";
 
         var modelName = GetConfiguredModel();
-        var resolvedFarewellStyle = ResolveFarewellStyle(profile.SignatureFarewell, modelName);
+        var resolvedFarewellStyle = ResolveFarewellStyle(modelName,profile.SignatureFarewell ?? string.Empty);
         var farewellRule = string.IsNullOrWhiteSpace(resolvedFarewellStyle)
             ? string.Empty
             : $"Preferred farewell style: {resolvedFarewellStyle}.";
@@ -91,9 +91,9 @@ internal static class SystemPromptBuilder
 
     public static string GetConfiguredModel()
     {
-        var requestedModel = EnvironmentSettings.ReadString("ASSISTANT_MODEL", "Raptor mini (Preview)").Trim();
+        var requestedModel = EnvironmentSettings.ReadString("ASSISTANT_MODEL", "GPT-5 mini (gpt-5-mini)").Trim();
 
-        return string.IsNullOrWhiteSpace(requestedModel) ? "Raptor mini (Preview)" : requestedModel;
+        return string.IsNullOrWhiteSpace(requestedModel) ? "GPT-5 mini (gpt-5-mini)" : requestedModel;
     }
 
     // Backward-compatible wrapper; callers should prefer GetConfiguredModel.

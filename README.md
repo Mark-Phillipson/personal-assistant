@@ -71,7 +71,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 ## Environment variables
 
 - `ASSISTANT_TRANSPORT` (optional, default `telegram`; allowed: `telegram`, `cli`)
-- `ASSISTANT_MODEL` (optional, default `Raptor mini (Preview)`; forced non-premium fallback in code when a premium model name is provided)
+- `ASSISTANT_MODEL` (optional, default `GPT-5 mini (gpt-5-mini)`; forced non-premium fallback in code when a premium model name is provided)
 - `TELEGRAM_BOT_TOKEN` (required in `telegram` mode)
 - `TELEGRAM_POLL_TIMEOUT_SECONDS` (optional, default `25`, range `1-50`)
 - `TELEGRAM_ERROR_BACKOFF_SECONDS` (optional, default `3`, range `1-30`)
