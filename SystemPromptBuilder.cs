@@ -89,7 +89,7 @@ internal static class SystemPromptBuilder
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
-    private static string GetNonPremiumModel()
+    public static string GetNonPremiumModel()
     {
         var requestedModel = EnvironmentSettings.ReadString("ASSISTANT_MODEL", "Raptor mini (Preview)").Trim();
 
