@@ -318,10 +318,13 @@ internal static class TelegramMessageHandler
                     return;
 
                 case "/reset":
-                    if (sessions.TryRemove(chatId, out var removedSession))
+                    var removed = sessions.TryRemove(chatId, out var removedSession);
+                    if (removed)
                     {
                         await removedSession.DisposeAsync();
                     }
+
+                    Console.WriteLine($"[copilot.session.reset] chat={chatId} removed={removed}");
 
                     await telegram.SendMessageInChunksAsync(
                         chatId,
@@ -628,8 +631,8 @@ internal static class TelegramMessageHandler
         {
             Console.Error.WriteLine($"[copilot.session.error] chat={chatId} {ex}");
 
-            // Remove the broken session so the next request creates a fresh one.
-            if (sessions.TryRemove(chatId, out var failedSession))
+            // Only remove the cached session when the error indicates session state is invalid.
+            if (ShouldRecycleSessionAfterError(ex) && sessions.TryRemove(chatId, out var failedSession))
             {
                 await failedSession.DisposeAsync();
             }
@@ -664,6 +667,7 @@ internal static class TelegramMessageHandler
     {
         if (sessions.TryGetValue(chatId, out var existingSession))
         {
+            Console.WriteLine($"[copilot.session.reuse] chat={chatId}");
             return existingSession;
         }
 
@@ -714,9 +718,11 @@ internal static class TelegramMessageHandler
 
         if (sessions.TryAdd(chatId, createdSession))
         {
+            Console.WriteLine($"[copilot.session.create] chat={chatId}");
             return createdSession;
         }
 
+        Console.WriteLine($"[copilot.session.race] chat={chatId} another session already exists; disposing newly created duplicate");
         await createdSession.DisposeAsync();
         return sessions[chatId];
     }
@@ -823,6 +829,11 @@ internal static class TelegramMessageHandler
         }
 
         return false;
+    }
+
+    private static bool ShouldRecycleSessionAfterError(Exception exception)
+    {
+        return IsSessionNotFoundError(exception) || IsSendTimeoutError(exception);
     }
 
     private static async Task HandleAssistantVoiceCommandAsync(
