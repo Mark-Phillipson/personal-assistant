@@ -32,6 +32,17 @@ else if (File.Exists(assemblyDirectoryEnvFilePath))
     }
 }
 
+// Ensure ASSISTANT_MODEL comes from the .env configuration file when present,
+// so editor/terminal process variables cannot silently override model selection.
+var modelFromDotEnv =
+    TryReadDotEnvValue(workingDirectoryEnvFilePath, "ASSISTANT_MODEL")
+    ?? TryReadDotEnvValue(assemblyDirectoryEnvFilePath, "ASSISTANT_MODEL");
+
+if (!string.IsNullOrWhiteSpace(modelFromDotEnv))
+{
+    Environment.SetEnvironmentVariable("ASSISTANT_MODEL", modelFromDotEnv.Trim());
+}
+
 var environmentPersonality = PersonalityProfile.FromEnvironment();
 var defaultPersonality = PersonalityProfile.LoadFromEnvironmentOrJson(environmentPersonality);
 
@@ -290,6 +301,11 @@ static async Task RunCliAsync(
             return;
         }
 
+        content = Regex.Replace(
+            content,
+            "(?im)^\\s*out(?:\\s+.+)?\\s*$",
+            $"Out {SystemPromptBuilder.GetConfiguredModel()}");
+
         Console.WriteLine(content);
         if (telegram is not null && storedChatId.HasValue)
         {
@@ -464,18 +480,75 @@ static async Task RunTelegramAsync(
 
 var debugLogPath = Path.Combine(AppContext.BaseDirectory, "assistant-cli-debug.log");
 
-static Task<CopilotSession> CreateConfiguredSessionAsync(
+static async Task<CopilotSession> CreateConfiguredSessionAsync(
     CopilotClient copilotClient,
     ICollection<AIFunction> assistantTools,
     PersonalityProfile profile)
 {
-    return copilotClient.CreateSessionAsync(new SessionConfig
+    var configuredModel = SystemPromptBuilder.GetConfiguredModel();
+    var session = await copilotClient.CreateSessionAsync(new SessionConfig
     {
         OnPermissionRequest = PermissionHandler.ApproveAll,
+        Model = configuredModel,
         Tools = assistantTools,
         SystemMessage = new SystemMessageConfig
         {
             Content = SystemPromptBuilder.Build(profile)
         }
     });
+
+    await ModelSelectionGuard.EnsureSessionUsesConfiguredModelAsync(
+        session,
+        configuredModel,
+        context: "cli",
+        CancellationToken.None);
+
+    return session;
+}
+
+static string? TryReadDotEnvValue(string envFilePath, string key)
+{
+    if (!File.Exists(envFilePath))
+    {
+        return null;
+    }
+
+    foreach (var rawLine in File.ReadLines(envFilePath))
+    {
+        var line = rawLine.Trim();
+        if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
+        {
+            continue;
+        }
+
+        if (line.StartsWith("export ", StringComparison.OrdinalIgnoreCase))
+        {
+            line = line[7..].TrimStart();
+        }
+
+        var separatorIndex = line.IndexOf('=');
+        if (separatorIndex <= 0)
+        {
+            continue;
+        }
+
+        var parsedKey = line[..separatorIndex].Trim();
+        if (!parsedKey.Equals(key, StringComparison.Ordinal))
+        {
+            continue;
+        }
+
+        var parsedValue = line[(separatorIndex + 1)..].Trim();
+
+        if (parsedValue.Length >= 2
+            && ((parsedValue.StartsWith('"') && parsedValue.EndsWith('"'))
+                || (parsedValue.StartsWith('\'') && parsedValue.EndsWith('\''))))
+        {
+            parsedValue = parsedValue[1..^1];
+        }
+
+        return parsedValue;
+    }
+
+    return null;
 }

@@ -344,6 +344,46 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
+                case "/model":
+                    {
+                        var configuredModel = SystemPromptBuilder.GetConfiguredModel();
+                        try
+                        {
+                            var session = await GetOrCreateSessionAsync(
+                                chatId,
+                                telegram,
+                                knownFolderExplorerService,
+                                copilotClient,
+                                sessions,
+                                assistantTools,
+                                profile,
+                                conversationHistories);
+
+                            await ModelSelectionGuard.EnsureSessionUsesConfiguredModelAsync(
+                                session,
+                                configuredModel,
+                                context: $"telegram-model-command-{chatId}",
+                                cancellationToken);
+
+                            var active = await session.Rpc.Model.GetCurrentAsync(cancellationToken);
+                            var activeModel = string.IsNullOrWhiteSpace(active?.ModelId) ? "(unknown)" : active.ModelId;
+
+                            await telegram.SendMessageInChunksAsync(
+                                chatId,
+                                $"Configured model: {configuredModel}\nActive model: {activeModel}",
+                                cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            await telegram.SendMessageInChunksAsync(
+                                chatId,
+                                EmojiPalette.Wrap($"Model lock failed: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji),
+                                cancellationToken);
+                        }
+
+                        return;
+                    }
+
                 case "/natural":
                     commandPayload = ExtractCommandPayload(text);
 
@@ -591,6 +631,22 @@ internal static class TelegramMessageHandler
             }
         }
 
+        if (LooksLikeModelStatusRequest(text))
+        {
+            await HandleModelStatusRequestAsync(
+                chatId,
+                text,
+                telegram,
+                copilotClient,
+                sessions,
+                assistantTools,
+                profile,
+                knownFolderExplorerService,
+                conversationHistories,
+                cancellationToken);
+            return;
+        }
+
         var messageOptions = BuildMessageOptions(text, storedAttachment);
         RecordConversationHistory(chatId, "User", text, conversationHistories);
 
@@ -614,6 +670,8 @@ internal static class TelegramMessageHandler
             }
 
             content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
+            content = StripMisleadingModelClaims(content);
+            content = NormalizeConfiguredModelSignoff(content);
             RecordConversationHistory(chatId, "Assistant", content, conversationHistories);
 
             Console.Error.WriteLine($"[tts.info] Main chat response will be spoken or sent as audio (if enabled).");
@@ -705,16 +763,31 @@ internal static class TelegramMessageHandler
                 snippet;
         }
 
+        var configuredModel = SystemPromptBuilder.GetConfiguredModel();
         var createdSession = await copilotClient.CreateSessionAsync(new SessionConfig
         {
             OnPermissionRequest = PermissionHandler.ApproveAll,
-            Model = SystemPromptBuilder.GetNonPremiumModel(),
+            Model = configuredModel,
             Tools = sessionTools,
             SystemMessage = new SystemMessageConfig
             {
                 Content = systemPrompt
             }
         });
+
+        try
+        {
+            await ModelSelectionGuard.EnsureSessionUsesConfiguredModelAsync(
+                createdSession,
+                configuredModel,
+                context: $"telegram-chat-{chatId}",
+                CancellationToken.None);
+        }
+        catch
+        {
+            await createdSession.DisposeAsync();
+            throw;
+        }
 
         if (sessions.TryAdd(chatId, createdSession))
         {
@@ -725,6 +798,20 @@ internal static class TelegramMessageHandler
         Console.WriteLine($"[copilot.session.race] chat={chatId} another session already exists; disposing newly created duplicate");
         await createdSession.DisposeAsync();
         return sessions[chatId];
+    }
+
+    private static string NormalizeConfiguredModelSignoff(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return content;
+        }
+
+        var configuredModel = SystemPromptBuilder.GetConfiguredModel();
+        return Regex.Replace(
+            content,
+            "(?im)^\\s*out(?:\\s+.+)?\\s*$",
+            $"Out {configuredModel}");
     }
 
     private static async Task<string?> SendWithSessionRecoveryAsync(
@@ -872,6 +959,8 @@ internal static class TelegramMessageHandler
         }
 
         content = await ReconcileTodoEmptyClaimAsync(content, voiceAdminService);
+        content = StripMisleadingModelClaims(content);
+        content = NormalizeConfiguredModelSignoff(content);
         RecordConversationHistory(chatId, "Assistant", content, conversationHistories);
 
         await SendReplyWithOptionalTelegramAudioAsync(
@@ -905,6 +994,84 @@ internal static class TelegramMessageHandler
             RegexOptions.IgnoreCase);
 
         return mentionsTodo && asksToList;
+    }
+
+    private static bool LooksLikeModelStatusRequest(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return Regex.IsMatch(
+            text,
+            "\\b(current|actual|active|using|used|running)\\b.{0,40}\\b(model|model id)\\b|\\bwhat model\\b|\\b/model\\b",
+            RegexOptions.IgnoreCase);
+    }
+
+    private static async Task HandleModelStatusRequestAsync(
+        long chatId,
+        string userText,
+        TelegramApiClient telegram,
+        CopilotClient copilotClient,
+        ConcurrentDictionary<long, CopilotSession> sessions,
+        ICollection<AIFunction> assistantTools,
+        PersonalityProfile profile,
+        KnownFolderExplorerService knownFolderExplorerService,
+        ConcurrentDictionary<long, List<string>> conversationHistories,
+        CancellationToken cancellationToken)
+    {
+        var configuredModel = SystemPromptBuilder.GetConfiguredModel();
+
+        try
+        {
+            var session = await GetOrCreateSessionAsync(
+                chatId,
+                telegram,
+                knownFolderExplorerService,
+                copilotClient,
+                sessions,
+                assistantTools,
+                profile,
+                conversationHistories);
+
+            await ModelSelectionGuard.EnsureSessionUsesConfiguredModelAsync(
+                session,
+                configuredModel,
+                context: $"telegram-model-status-{chatId}",
+                cancellationToken);
+
+            var active = await session.Rpc.Model.GetCurrentAsync(cancellationToken);
+            var activeModel = string.IsNullOrWhiteSpace(active?.ModelId) ? "(unknown)" : active.ModelId;
+
+            RecordConversationHistory(chatId, "User", userText, conversationHistories);
+            var statusReply = $"Configured model: {configuredModel}\nActive model: {activeModel}\nOut {configuredModel}";
+            RecordConversationHistory(chatId, "Assistant", statusReply, conversationHistories);
+
+            await telegram.SendMessageInChunksAsync(chatId, statusReply, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await telegram.SendMessageInChunksAsync(
+                chatId,
+                EmojiPalette.Wrap($"Model lock/status check failed: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji),
+                cancellationToken);
+        }
+    }
+
+    private static string StripMisleadingModelClaims(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return content;
+        }
+
+        var sanitized = Regex.Replace(
+            content,
+            "(?im)^.*\\b(powered by|underlying model|model id)\\b.*(?:\\r?\\n)?",
+            string.Empty);
+
+        return sanitized.Trim();
     }
 
     private static bool LooksLikeNoTodoClaim(string content)

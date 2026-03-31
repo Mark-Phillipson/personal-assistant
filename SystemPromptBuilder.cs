@@ -26,11 +26,11 @@ internal static class SystemPromptBuilder
             ? string.Empty
             : $"Preferred greeting style: {profile.SignatureGreeting}.";
 
-        var farewellRule = string.IsNullOrWhiteSpace(profile.SignatureFarewell)
+        var modelName = GetConfiguredModel();
+        var resolvedFarewellStyle = ResolveFarewellStyle(profile.SignatureFarewell, modelName);
+        var farewellRule = string.IsNullOrWhiteSpace(resolvedFarewellStyle)
             ? string.Empty
-            : $"Preferred farewell style: {profile.SignatureFarewell}.";
-
-        var modelName = GetNonPremiumModel();
+            : $"Preferred farewell style: {resolvedFarewellStyle}.";
 
         return string.Join('\n', new[]
         {
@@ -89,21 +89,36 @@ internal static class SystemPromptBuilder
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
-    public static string GetNonPremiumModel()
+    public static string GetConfiguredModel()
     {
         var requestedModel = EnvironmentSettings.ReadString("ASSISTANT_MODEL", "Raptor mini (Preview)").Trim();
 
-        var premiumIdentifiers = new[]
-        {
-            "gpt-4", "gpt-4o", "claude", "gemini", "falcon", "davinci", "text-davinci-", "ada", "babbage", "curie"
-        };
+        return string.IsNullOrWhiteSpace(requestedModel) ? "Raptor mini (Preview)" : requestedModel;
+    }
 
-        if (premiumIdentifiers.Any(id => requestedModel.Contains(id, StringComparison.OrdinalIgnoreCase)))
+    // Backward-compatible wrapper; callers should prefer GetConfiguredModel.
+    public static string GetNonPremiumModel() => GetConfiguredModel();
+
+    private static string? ResolveFarewellStyle(string? signatureFarewell, string configuredModelName)
+    {
+        if (string.IsNullOrWhiteSpace(signatureFarewell))
         {
-            Console.Error.WriteLine($"[warn] ASSISTANT_MODEL '{requestedModel}' is premium; forcing 'Raptor mini (Preview)' to avoid high-cost usage.");
-            return "Raptor mini (Preview)";
+            return signatureFarewell;
         }
 
-        return string.IsNullOrWhiteSpace(requestedModel) ? "Raptor mini (Preview)" : requestedModel;
+        var trimmedFarewell = signatureFarewell.Trim();
+
+        if (trimmedFarewell.Contains("{model}", StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmedFarewell.Replace("{model}", configuredModelName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (string.Equals(trimmedFarewell, "Out", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(trimmedFarewell, "Out.", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Out {configuredModelName}";
+        }
+
+        return trimmedFarewell;
     }
 }
