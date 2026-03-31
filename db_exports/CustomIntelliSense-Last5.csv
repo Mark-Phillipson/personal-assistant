@@ -1,0 +1,6 @@
+ID,LanguageID,Display_Value,SendKeys_Value,Command_Type,CategoryID,Remarks,Search,ComputerID,DeliveryType,Variable1,Variable2,Variable3,SelectWordFromRight,MoveCharactersLeft,SelectCharactersLeft
+107851,1,Local Voice Admin appsettings Production File,"""C:\Users\MPhil\source\repos\VoiceLauncherBlazor\VoiceAdmin\bin\Release\net10.0\win-x64\publish\appsettings.Production.json""",SendKeys,34, after publishing locally need to edit this to point to the correct database file,,,Copy and Paste,,,,0,0,0
+107850,1,Elliott Bayer,Elliott,SendKeys,4143,,,,Copy and Paste,,,,0,0,0
+107849,1,Donald Choi,Donald,SendKeys,4143,,,,Copy and Paste,,,,0,0,0
+107848,1,Suleman Gaffar,Suleman,SendKeys,4143,,,,Copy and Paste,,,,0,0,0
+107847,1,Testing Only Please Delete Me,Actual Snippet,SendKeys,34,Remarks Go Here,,,Copy and Paste,,,,1,1,1

@@ -571,6 +571,65 @@ public class DatabasePhaseThreeTests
         Assert.False(isDifferentTimeout);
     }
 
+    [Fact]
+    public void TelegramApiClient_NormalizePlainTextTableForHtml_WrapsPipeTableInBackticks()
+    {
+        var method = typeof(TelegramApiClient).GetMethod("NormalizePlainTextTableForHtml", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var table = """
+| ID | Name | Value |
+|----|------|-------|
+| 1  | Alice| 123   |
+| 2  | Bob  | 456   |
+""";
+
+        var result = (string)method!.Invoke(null, new object[] { table })!;
+
+        Assert.StartsWith("```", result);
+        Assert.EndsWith("```", result.Trim());
+        Assert.Contains("| ID | Name | Value |", result);
+        Assert.DoesNotContain("<pre>", result);
+    }
+
+    [Fact]
+    public void TelegramApiClient_NormalizePlainTextTableForHtml_ConvertsHtmlPreTableToMarkdownFencedBlock()
+    {
+        var method = typeof(TelegramApiClient).GetMethod("NormalizePlainTextTableForHtml", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var htmlTable = "<b>Found 2 rows</b>\n<pre>| ID | Name | Value |\n|----|------|-------|\n| 1 | Alice | 123 |\n| 2 | Bob | 456 |</pre>";
+        var result = (string)method!.Invoke(null, new object[] { htmlTable })!;
+
+        Assert.StartsWith("```", result);
+        Assert.EndsWith("```", result.Trim());
+        Assert.Contains("| ID | Name | Value |", result);
+        Assert.DoesNotContain("<pre>", result);
+    }
+
+    [Fact]
+    public void TelegramApiClient_ChunkTextPreservingMarkdownCode_KeepsFencedCodeBlocks()
+    {
+        var method = typeof(TelegramApiClient).GetMethod("ChunkTextPreservingMarkdownCode", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var inner = string.Join("\n", Enumerable.Range(1, 50).Select(i => $"row{i:000}"));
+        var source = $"```\n{inner}\n```";
+
+        var result = (IEnumerable<string>)method!.Invoke(null, new object[] { source, 120 })!;
+        var chunks = result.ToList();
+
+        Assert.True(chunks.Count > 1);
+        Assert.All(chunks, chunk => {
+            Assert.StartsWith("```", chunk);
+            Assert.EndsWith("```", chunk);
+        });
+
+        var combined = string.Join("\n", chunks.Select(chunk => chunk.Trim('`', '\n')));
+        Assert.Contains("row001", combined);
+        Assert.Contains("row050", combined);
+    }
+
     private static void LoadDotEnvIfPresent()
     {
         // Try repo root (developer running from workspace), then test binary base dir.

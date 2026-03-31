@@ -87,19 +87,28 @@ internal sealed class TelegramApiClient : IDisposable
     public async Task SendMessageInChunksAsync(long chatId, string text, CancellationToken cancellationToken)
     {
         var normalizedText = NormalizePlainTextTableForHtml(text);
+        var useMarkdown = ContainsMarkdownFences(normalizedText);
+        var parseMode = useMarkdown ? "MarkdownV2" : "HTML";
 
-        foreach (var chunk in ChunkTextPreservingHtml(normalizedText, 4000))
+        var chunks = useMarkdown
+            ? ChunkTextPreservingMarkdownCode(normalizedText, 4000)
+            : ChunkTextPreservingHtml(normalizedText, 4000);
+
+        foreach (var chunk in chunks)
         {
             try
             {
-                await SendMessageAsync(chatId, chunk, cancellationToken);
+                await SendMessageAsync(chatId, chunk, cancellationToken, parseMode);
             }
-            catch (InvalidOperationException ex) when (IsTelegramHtmlParseError(ex.Message))
+            catch (InvalidOperationException ex) when (useMarkdown ? IsTelegramMarkdownParseError(ex.Message) : IsTelegramHtmlParseError(ex.Message))
             {
-                // Telegram HTML mode rejects unsupported tags (for example <table>) and malformed entities.
-                // Fall back to plain text so the user still receives the content instead of a hard failure.
-                Console.Error.WriteLine($"[telegram.send.html_fallback] {ex.Message}");
-                var plainText = ConvertHtmlToPlainText(chunk);
+                // Telegram parsing failed. Fall back to plain text so the user still receives the content.
+                Console.Error.WriteLine($"[telegram.send.fallback] {ex.Message}");
+
+                var plainText = useMarkdown
+                    ? ConvertMarkdownToPlainText(chunk)
+                    : ConvertHtmlToPlainText(chunk);
+
                 await SendMessageAsync(chatId, plainText, cancellationToken, parseMode: null);
             }
         }
@@ -110,12 +119,67 @@ internal sealed class TelegramApiClient : IDisposable
         if (string.IsNullOrWhiteSpace(text))
             return text;
 
-        // If the model emits a plain pipe-table instead of Telegram HTML, wrap in <pre>
-        // so Telegram uses monospace layout and column alignment remains readable.
-        if (ContainsHtmlTags(text) || !LooksLikePipeTable(text))
+        // Table strings can be produced as HTML pre blocks (VoiceAdmin, ClipboardHistory, etc.)
+        // or as plain pipe tables. Normalize both into a Markdown fenced code block.
+        if (ContainsHtmlTags(text))
+        {
+            var preContent = ExtractPreBlockContent(text);
+            if (!string.IsNullOrWhiteSpace(preContent))
+            {
+                var normalizedTable = preContent.Trim();
+                return $"```\n{normalizedTable}\n```";
+            }
+
+            var plainText = ConvertHtmlToPlainText(text).Trim();
+            if (LooksLikePipeTable(plainText))
+            {
+                return $"```\n{plainText}\n```";
+            }
+
+            return text;
+        }
+
+        if (!LooksLikePipeTable(text))
             return text;
 
-        return $"<pre>{EscapeHtml(text)}</pre>";
+        var trimmed = text.Trim();
+        return $"```\n{trimmed}\n```";
+    }
+
+    private static string? ExtractPreBlockContent(string text)
+    {
+        var match = Regex.Match(text, "<pre>(.*?)</pre>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    private static bool ContainsMarkdownFences(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+        return text.Contains("```", StringComparison.Ordinal);
+    }
+
+    private static bool IsFencedMarkdownCodeBlock(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var trimmed = text.Trim();
+        return trimmed.StartsWith("```", StringComparison.Ordinal) && trimmed.EndsWith("```", StringComparison.Ordinal);
+    }
+
+    private static IEnumerable<string> ChunkTextPreservingMarkdownCode(string text, int maxLength)
+    {
+        // Mixed MarkdownV2 content: just chunk by length.
+        // Fenced blocks are handled correctly by Telegram MarkdownV2 as long as we don't split fence delimiters.
+        if (string.IsNullOrEmpty(text))
+        {
+            yield return string.Empty;
+            yield break;
+        }
+
+        foreach (var chunk in ChunkText(text, maxLength))
+            yield return chunk;
     }
 
     private static bool ContainsHtmlTags(string text)
@@ -460,6 +524,30 @@ internal sealed class TelegramApiClient : IDisposable
             || message.Contains("unsupported start tag", StringComparison.OrdinalIgnoreCase)
             || message.Contains("unsupported end tag", StringComparison.OrdinalIgnoreCase)
             || message.Contains("tag", StringComparison.OrdinalIgnoreCase) && message.Contains("not allowed", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTelegramMarkdownParseError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        // Markdown parsing errors also typically include entity parse errors.
+        return IsTelegramHtmlParseError(message) || message.Contains("can't parse entities", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ConvertMarkdownToPlainText(string markdown)
+    {
+        if (string.IsNullOrEmpty(markdown))
+            return string.Empty;
+
+        var text = markdown.Trim();
+
+        if (text.StartsWith("```", StringComparison.Ordinal) && text.EndsWith("```", StringComparison.Ordinal))
+        {
+            text = text[3..^3];
+        }
+
+        return text.Trim();
     }
 
     private static string ConvertHtmlToPlainText(string html)

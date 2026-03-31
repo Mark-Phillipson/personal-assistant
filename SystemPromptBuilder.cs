@@ -30,7 +30,7 @@ internal static class SystemPromptBuilder
             ? string.Empty
             : $"Preferred farewell style: {profile.SignatureFarewell}.";
 
-        var modelName = EnvironmentSettings.ReadString("ASSISTANT_MODEL", "Raptor mini (Preview)");
+        var modelName = GetNonPremiumModel();
 
         return string.Join('\n', new[]
         {
@@ -70,7 +70,8 @@ internal static class SystemPromptBuilder
             "When the user asks to search Values records, call search_values_records.",
             "When the user asks to search Transactions records, call search_transactions_records.",
             "When the user asks for Telegram-friendly table formatting for search/list results, set htmlFormat=true on supported search tools so results are returned as Telegram preformatted table text inside <pre> blocks.",
-            "Telegram Bot HTML parse mode does not support <table> tags. Never output <table>/<tr>/<td>; use preformatted table text inside <pre> or tool outputs with htmlFormat=true instead.  if a table is more than thirty rows instead create a CSV file and open it in Visual Studio code with the csv extension for better readability.",
+            "Telegram Bot HTML parse mode does not support <table> tags. Never output <table>/<tr>/<td>; use preformatted table text inside <pre> or tool outputs with htmlFormat=true instead. if a table is more than thirty rows instead create a CSV file and open it in Visual Studio code with the csv extension for better readability.",
+            "CRITICAL TABLE RULE: When displaying any tabular data or markdown pipe table in Telegram, you MUST always wrap the ENTIRE table (header row, separator row, and all data rows) inside triple backticks on their own lines, like this:\n```\n| Col1 | Col2 |\n|------|------|\n| val  | val  |\n```\nThis is mandatory. Never output a raw pipe table without backtick fences. The table will be unreadable otherwise.",
             "When the user asks to copy a value from one of those tables, first search for the row, then call copy_voice_admin_value_to_clipboard with table name, RowId, and column name.",
             "For Talon local files, the default root is C:/Users/MPhil/AppData/Roaming/talon/user unless talon_user_directory_status reports a different configured root.",
             "When the user asks to browse Talon files or folders, call list_talon_user_files.",
@@ -86,5 +87,23 @@ internal static class SystemPromptBuilder
             greetingRule,
             farewellRule
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    private static string GetNonPremiumModel()
+    {
+        var requestedModel = EnvironmentSettings.ReadString("ASSISTANT_MODEL", "Raptor mini (Preview)").Trim();
+
+        var premiumIdentifiers = new[]
+        {
+            "gpt-4", "gpt-4o", "claude", "gemini", "falcon", "davinci", "text-davinci-", "ada", "babbage", "curie"
+        };
+
+        if (premiumIdentifiers.Any(id => requestedModel.Contains(id, StringComparison.OrdinalIgnoreCase)))
+        {
+            Console.Error.WriteLine($"[warn] ASSISTANT_MODEL '{requestedModel}' is premium; forcing 'Raptor mini (Preview)' to avoid high-cost usage.");
+            return "Raptor mini (Preview)";
+        }
+
+        return string.IsNullOrWhiteSpace(requestedModel) ? "Raptor mini (Preview)" : requestedModel;
     }
 }
