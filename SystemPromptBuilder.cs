@@ -26,16 +26,15 @@ internal static class SystemPromptBuilder
             ? string.Empty
             : $"Preferred greeting style: {profile.SignatureGreeting}.";
 
-        var farewellRule = string.IsNullOrWhiteSpace(profile.SignatureFarewell)
-            ? string.Empty
-            : $"Preferred farewell style: {profile.SignatureFarewell}.";
-
         var modelName = GetNonPremiumModel();
+
+        var farewellRule = string.IsNullOrWhiteSpace(profile.SignatureFarewell)
+            ? $"End each response with the model name, e.g.: {modelName}"
+            : $"Preferred farewell style: {profile.SignatureFarewell}: {modelName}";
 
         return string.Join('\n', new[]
         {
             $"You are {profile.Name}, a {toneDescription} personal assistant.",
-            $"Use model: {modelName}.",
             "Always be helpful, accurate, and concise unless otherwise specified.",
             "When the user sends a file or image attachment, inspect the attachment directly before claiming you cannot access it.",
             "When the user asks to open, visit, or summarize a webpage, use the browser tool to navigate to the requested URL and provide a summary or relevant content. Do not refuse unless the request is unsafe or impossible.",
@@ -89,21 +88,28 @@ internal static class SystemPromptBuilder
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
-    private static string GetNonPremiumModel()
+    internal static string GetNonPremiumModel()
     {
-        var requestedModel = EnvironmentSettings.ReadString("ASSISTANT_MODEL", "Raptor mini (Preview)").Trim();
+        const string DefaultModel = "gpt-5-mini";
+        var requestedModel = EnvironmentSettings.ReadString("ASSISTANT_MODEL", DefaultModel).Trim();
+
+        // Models ending in -mini are explicitly non-premium; skip the premium check.
+        if (requestedModel.EndsWith("-mini", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrWhiteSpace(requestedModel) ? DefaultModel : requestedModel;
+        }
 
         var premiumIdentifiers = new[]
         {
-            "gpt-4", "gpt-4o", "claude", "gemini", "falcon", "davinci", "text-davinci-", "ada", "babbage", "curie"
+            "gpt-4o", "gpt-4", "claude", "gemini", "falcon", "davinci", "text-davinci-", "ada", "babbage", "curie"
         };
 
         if (premiumIdentifiers.Any(id => requestedModel.Contains(id, StringComparison.OrdinalIgnoreCase)))
         {
-            Console.Error.WriteLine($"[warn] ASSISTANT_MODEL '{requestedModel}' is premium; forcing 'Raptor mini (Preview)' to avoid high-cost usage.");
-            return "Raptor mini (Preview)";
+            Console.Error.WriteLine($"[warn] ASSISTANT_MODEL '{requestedModel}' is premium; forcing '{DefaultModel}' to avoid high-cost usage.");
+            return DefaultModel;
         }
 
-        return string.IsNullOrWhiteSpace(requestedModel) ? "Raptor mini (Preview)" : requestedModel;
+        return string.IsNullOrWhiteSpace(requestedModel) ? DefaultModel : requestedModel;
     }
 }

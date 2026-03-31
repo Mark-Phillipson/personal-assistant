@@ -31,9 +31,21 @@ internal sealed class TickerNotificationService
     public static TickerNotificationService FromEnvironment()
     {
         var executable = Environment.GetEnvironmentVariable("NATURAL_COMMANDS_EXECUTABLE")?.Trim();
+
+        // If not explicitly configured, prefer the locally-built NaturalCommands exe in the sibling repo
         if (string.IsNullOrEmpty(executable))
         {
-            executable = "NaturalCommands.exe";
+            var repoRoot = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", ".."));
+            var candidates = new[]
+            {
+                Path.Combine(repoRoot, "NaturalCommands", "bin", "Debug", "net10.0-windows", "NaturalCommands.exe"),
+                Path.Combine(repoRoot, "NaturalCommands", "bin", "Release", "net10.0-windows", "NaturalCommands.exe"),
+                Path.Combine(repoRoot, "NaturalCommands", "bin", "Release", "net10.0-windows", "publish", "NaturalCommands.exe"),
+                Path.Combine(repoRoot, "NaturalCommands", "NaturalCommands.exe"),
+                "NaturalCommands.exe"
+            };
+
+            executable = candidates.FirstOrDefault(File.Exists) ?? "NaturalCommands.exe";
         }
 
         var thresholdText = Environment.GetEnvironmentVariable("TICKER_AUTO_FLUSH_THRESHOLD");
@@ -94,24 +106,57 @@ internal sealed class TickerNotificationService
 
         await File.WriteAllLinesAsync(tempFile, lines, Encoding.UTF8);
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = _executable,
-            Arguments = $"ticker-file \"{tempFile}\"",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = false,
-            RedirectStandardError = false,
-        };
-
         try
         {
+            // If a resident NaturalCommands listen-mode is running, deliver the payload via a known LocalAppData file instead of starting a new process.
+            var running = Process.GetProcessesByName("NaturalCommands");
+            if (running != null && running.Length > 0)
+            {
+                try
+                {
+                    var baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NaturalCommands");
+                    Directory.CreateDirectory(baseDir);
+                    var payloadPath = Path.Combine(baseDir, ".ticker_payload");
+                    var tempPath = payloadPath + ".tmp";
+                    await File.WriteAllLinesAsync(tempPath, lines, Encoding.UTF8);
+                    // Atomically move
+                    if (File.Exists(payloadPath)) File.Delete(payloadPath);
+                    File.Move(tempPath, payloadPath);
+                    NaturalCommandsLog($"Delivered ticker payload to resident listener: {payloadPath}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    NaturalCommandsLog($"Failed to deliver ticker payload to listener: {ex.Message} — falling back to process start");
+                    // fall through to process start
+                }
+            }
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = _executable,
+                Arguments = $"ticker-file \"{tempFile}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = false,
+                RedirectStandardError = false,
+            };
+
+            NaturalCommandsLog($"Starting ticker process: {psi.FileName} {psi.Arguments}");
             using var process = Process.Start(psi);
-            // not awaiting process completion; overlay is managed in NaturalCommands process
+            if (process == null)
+            {
+                NaturalCommandsLog("Process.Start returned null — unable to start NaturalCommands executable.");
+            }
+            else
+            {
+                NaturalCommandsLog($"Started NaturalCommands process with PID {process.Id}");
+            }
         }
         catch (Exception ex)
         {
-            // revert if the process couldn't start
+            NaturalCommandsLog($"Failed to start or deliver NaturalCommands: {ex.Message}");
+            // revert if the process couldn't start or delivery failed
             lock (_lock)
             {
                 foreach (var item in batch)
@@ -122,7 +167,18 @@ internal sealed class TickerNotificationService
 
             throw new InvalidOperationException($"Failed to start ticker: {ex.Message}", ex);
         }
+
     }
+
+    private static void NaturalCommandsLog(string message)
+    {
+        try
+        {
+            var logPath = Path.Combine(Path.GetTempPath(), "personal_assistant_ticker.log");
+            File.AppendAllText(logPath, $"[{DateTime.Now:O}] {message}\n");
+        }
+        catch { }
+        }
 
     private static string FormatLine(TickerMessage m)
     {

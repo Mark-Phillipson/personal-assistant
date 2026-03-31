@@ -704,6 +704,7 @@ internal static class TelegramMessageHandler
         var createdSession = await copilotClient.CreateSessionAsync(new SessionConfig
         {
             OnPermissionRequest = PermissionHandler.ApproveAll,
+            Model = SystemPromptBuilder.GetNonPremiumModel(),
             Tools = sessionTools,
             SystemMessage = new SystemMessageConfig
             {
