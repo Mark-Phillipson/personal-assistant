@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -9,6 +10,72 @@ namespace PersonalAssistant.Tests;
 
 public class DatabasePhaseThreeTests
 {
+    [Fact]
+    public void PersonalityProfile_LoadFromEnvironmentOrJson_UsesSignatureArrays()
+    {
+        var tempFile = Path.GetTempFileName();
+
+        try
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                signatureGreetings = new[] { "  Oy,  ", "Right," },
+                signatureFarewells = new[] { "Out.", "Sorted." }
+            });
+
+            File.WriteAllText(tempFile, json);
+            Environment.SetEnvironmentVariable("ASSISTANT_PERSONALITY_CONFIG_PATH", tempFile);
+            Environment.SetEnvironmentVariable("ASSISTANT_SIGNATURE_GREETING", "Hello");
+            Environment.SetEnvironmentVariable("ASSISTANT_SIGNATURE_FAREWELL", "Bye");
+
+            var profile = PersonalityProfile.LoadFromEnvironmentOrJson(PersonalityProfile.FromEnvironment());
+
+            Assert.Equal(new[] { "Oy,", "Right," }, profile.SignatureGreetings);
+            Assert.Equal(new[] { "Out.", "Sorted." }, profile.SignatureFarewells);
+            Assert.Equal("Oy,", profile.SignatureGreeting);
+            Assert.Equal("Out.", profile.SignatureFarewell);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ASSISTANT_PERSONALITY_CONFIG_PATH", null);
+            Environment.SetEnvironmentVariable("ASSISTANT_SIGNATURE_GREETING", null);
+            Environment.SetEnvironmentVariable("ASSISTANT_SIGNATURE_FAREWELL", null);
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void SystemPromptBuilder_Build_ChoosesFromSignatureArrays()
+    {
+        var profile = new PersonalityProfile
+        {
+            Name = "Bob",
+            Tone = AssistantTone.Irreverent,
+            UseEmoji = true,
+            EmojiDensity = EmojiDensity.Moderate,
+            SignatureGreetings = new[] { "Oy", "Right" },
+            SignatureFarewells = new[] { "Out.", "Sorted." }
+        };
+
+        var prompts = Enumerable.Range(0, 64)
+            .Select(_ => SystemPromptBuilder.Build(profile))
+            .ToArray();
+
+        Assert.All(prompts, prompt =>
+        {
+            Assert.True(
+                prompt.Contains("Preferred greeting style: Oy.")
+                || prompt.Contains("Preferred greeting style: Right."));
+
+            Assert.DoesNotContain("Preferred farewell style: GPT-5", prompt, StringComparison.OrdinalIgnoreCase);
+        });
+
+        Assert.Contains(prompts, prompt => prompt.Contains("Preferred greeting style: Oy."));
+        Assert.Contains(prompts, prompt => prompt.Contains("Preferred greeting style: Right."));
+        Assert.Contains(prompts, prompt => prompt.Contains("Preferred farewell style: Out GPT-5", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(prompts, prompt => prompt.Contains("Preferred farewell style: Sorted.", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public async Task WindowsFocusAssistService_ToggleOnOff_WorksWhenWindowsAsync()
     {
@@ -59,6 +126,36 @@ public class DatabasePhaseThreeTests
 
         Assert.True((bool)listMethod!.Invoke(null, new object[] { "show my open todo list" })!);
         Assert.False((bool)addMethod!.Invoke(null, new object[] { "show my open todo list" })!);
+    }
+
+    [Fact]
+    public void TelegramMessageHandler_IsAudioReplyRequested_RequiresReplyIntent()
+    {
+        var type = typeof(TelegramMessageHandler);
+        var method = type.GetMethod("IsAudioReplyRequested", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        Assert.True((bool)method!.Invoke(null, new object[] { "reply in audio" })!);
+        Assert.True((bool)method.Invoke(null, new object[] { "read that out loud" })!);
+        Assert.True((bool)method.Invoke(null, new object[] { "send me a test message as a wave file" })!);
+        Assert.False((bool)method.Invoke(null, new object[] { "give me a text representation of this wav file" })!);
+        Assert.False((bool)method.Invoke(null, new object[] { "transcribe this audio to text" })!);
+    }
+
+    [Fact]
+    public void TelegramMessageHandler_TextRepresentationOfAudio_DisablesTelegramAudio()
+    {
+        var type = typeof(TelegramMessageHandler);
+        var textRepresentationMethod = type.GetMethod("IsTextRepresentationOfAudioRequested", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(textRepresentationMethod);
+
+        var shouldSendTelegramAudioMethod = type.GetMethod("ShouldSendTelegramAudio", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(shouldSendTelegramAudioMethod);
+
+        const string transcriptionRequest = "give me a text representation of the previously sent wave file";
+
+        Assert.True((bool)textRepresentationMethod!.Invoke(null, new object[] { transcriptionRequest })!);
+        Assert.False((bool)shouldSendTelegramAudioMethod!.Invoke(null, new object?[] { transcriptionRequest })!);
     }
 
     [Fact]

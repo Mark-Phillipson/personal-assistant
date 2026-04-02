@@ -8,7 +8,7 @@ internal static class SystemPromptBuilder
             AssistantTone.Professional => "clear and professional",
             AssistantTone.Witty => "smart and lightly witty",
             AssistantTone.Calm => "calm and reassuring",
-            AssistantTone.Irreverent => "sarcastic, rude and irreverent",
+            AssistantTone.Irreverent => "sarcastic, rude and irreverent but surprisingly helpful",
             _ => "helpful"
         };
 
@@ -22,12 +22,13 @@ internal static class SystemPromptBuilder
             }
             : "Do not use emoji in responses.";
 
-        var greetingRule = string.IsNullOrWhiteSpace(profile.SignatureGreeting)
+        var greetingStyle = profile.GetRandomSignatureGreeting();
+        var greetingRule = string.IsNullOrWhiteSpace(greetingStyle)
             ? string.Empty
-            : $"Preferred greeting style: {profile.SignatureGreeting}.";
+            : $"Preferred greeting style: {greetingStyle}.";
 
         var modelName = GetConfiguredModel();
-        var resolvedFarewellStyle = ResolveFarewellStyle(modelName,profile.SignatureFarewell ?? string.Empty);
+        var resolvedFarewellStyle = ResolveFarewellStyle(profile.GetRandomSignatureFarewell(), modelName);
         var farewellRule = string.IsNullOrWhiteSpace(resolvedFarewellStyle)
             ? string.Empty
             : $"Preferred farewell style: {resolvedFarewellStyle}.";
@@ -80,6 +81,7 @@ internal static class SystemPromptBuilder
             "When the user asks to list files in a known folder (documents, desktop, downloads, pictures, videos, repo, repos), call list_files_in_folder with folderAlias, optional subPath, optional fileFilter, and maxResults.",
             "When the user asks to send a local file from a known folder to Telegram, call send_file_to_telegram with folderAlias and relativeFilePath after verifying the path is safe.",
             "When the user asks for an audio reply, voice response, or to 'read that out loud', the bot will automatically synthesize the response as a WAV audio file and send it to this chat. Acknowledge this naturally — say something like 'Here's that as audio' — and do not claim you cannot send audio files. The audio file will be attached to this conversation by the bot infrastructure.",
+            "If the user asks for a transcription, text representation, or written version of an audio attachment, voice note, or WAV file, reply with text and do not ask for or imply an audio-formatted response unless they explicitly ask for both.",
             "When the user asks to read a Talon file, call read_talon_user_file with a path relative to the Talon user root.",
             "When the user asks to find text in Talon files, call search_talon_user_files_text.",
             "Never write, modify, or delete Talon files. Talon file tools are strictly read-only.",

@@ -122,10 +122,12 @@ Example `personality.json`:
    "tone": "Friendly",
    "useEmoji": true,
    "emojiDensity": "Moderate",
-   "signatureGreeting": "Hi there!",
-   "signatureFarewell": "Talk soon"
+   "signatureGreetings": ["Hi there!", "Alright then", "Right"],
+   "signatureFarewells": ["Talk soon", "Catch you later", "Out."]
 }
 ```
+
+`signatureGreeting` and `signatureFarewell` still work for single fixed values. Use `signatureGreetings` and `signatureFarewells` to provide multiple options and the assistant will pick one at random when building a session prompt.
 
 ## Gmail setup (for `MPhillipson0@gmail.com`)
 

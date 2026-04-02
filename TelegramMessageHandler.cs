@@ -1379,13 +1379,37 @@ internal static class TelegramMessageHandler
             return false;
 
         return Regex.IsMatch(text,
-            @"\b(reply|respond|send|give|answer)\b.{0,30}\b(audio|voice|speech|wav|spoken|out\s*loud|read\s*out)\b" +
-            @"|\b(audio|voice|speech)\b.{0,20}\b(reply|response|message|file)\b",
+            @"\b(reply|respond|send|give|answer)\b.{0,20}\b(?:as|in|with)\b.{0,10}\b(audio|voice|speech|wav|wave(?:\s+file)?|spoken)\b" +
+            @"|\b(reply|respond|send|give|answer)\b.{0,20}\b(audio|voice|speech|wav|wave(?:\s+file)?|spoken)\b.{0,10}\b(reply|response|message)\b" +
+            @"|\b(audio|voice|speech|wav|wave(?:\s+file)?|spoken)\b.{0,20}\b(reply|response|message)\b" +
+            @"|\b(read|say)\b.{0,20}\b(out\s*loud|as\s+(audio|voice|speech|wav|wave(?:\s+file)?))\b",
+            RegexOptions.IgnoreCase);
+    }
+
+    private static bool IsTextRepresentationOfAudioRequested(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var mentionsAudioSource = Regex.IsMatch(text,
+            @"\b(audio|voice|speech|wav|wave|recording|recorded|voice\s+note|sound\s+file)\b",
+            RegexOptions.IgnoreCase);
+
+        if (!mentionsAudioSource)
+            return false;
+
+        return Regex.IsMatch(text,
+            @"\b(transcrib(?:e|ed|ing)|transcript|text\s+representation|text\s+version|written\s+version|write\s+(?:it|that|this)?\s*out|as\s+text|in\s+text|into\s+text|to\s+text)\b",
             RegexOptions.IgnoreCase);
     }
 
     private static bool ShouldSendTelegramAudio(string? userRequestText)
     {
+        if (IsTextRepresentationOfAudioRequested(userRequestText ?? string.Empty))
+        {
+            return false;
+        }
+
         var userWantsAudio = userRequestText is not null && IsAudioReplyRequested(userRequestText);
         return userWantsAudio || !IsTelegramDesktopFocused();
     }
@@ -1400,6 +1424,12 @@ internal static class TelegramMessageHandler
         CancellationToken cancellationToken,
         string ttsErrorContext)
     {
+        if (IsTextRepresentationOfAudioRequested(userRequestText ?? string.Empty))
+        {
+            await telegram.SendMessageInChunksAsync(chatId, telegramText, cancellationToken);
+            return;
+        }
+
         var sendTelegramAudio = ShouldSendTelegramAudio(userRequestText);
 
         if (!sendTelegramAudio)

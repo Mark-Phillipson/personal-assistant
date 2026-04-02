@@ -1,0 +1,41 @@
+COVER LETTER
+============
+
+Dear Prospective Client,
+
+I am writing to express my interest in your Windows Application Development Consultant role. Converting an existing Node.js application into a lighter, standalone Windows desktop application is a project I can advise on with confidence, having developed data-centric desktop and web applications with Microsoft technologies since 1999 and on-the-job commercial experience since 2012.
+
+I would like to suggest Blazor Hybrid as a strong candidate technology for this conversion. Blazor Hybrid allows you to build a native Windows desktop application using C# and Razor while reusing much of the UI logic and structure from your existing Node.js front end. The practical benefits include:
+
+- A genuinely lightweight standal.one Windows application with native API access (file system, registry, local storage).
+- A shared codebase that could also target iOS and Android later if needed.
+- Easier local and offline data workflows compared to a browser-based approach.
+- A clear migration path: your existing HTML, CSS, and JavaScript UI components can be incrementally ported into Razor components rather than rewritten from scratch.
+- A single installer package via MSIX or similar, giving end users a clean install and update experience.
+
+If your Node.js application has a REST API or back-end logic layer, that can be wrapped or rewritten in C# and hosted locally within the desktop app, eliminating the need for a separate Node.js runtime on the end-user machine. This is what makes the result genuinely lighter.
+
+For a project like this, a detailed application specification is essential so I can advise accurately on architecture, identify which parts of the existing codebase to reuse versus rewrite, and ensure the project stays on time and within budget. I would suggest starting with a short discovery phase to map the current Node.js application structure and agree on the scope for the Windows version.
+
+I am a Top Rated Plus freelancer on Upwork with 100% Job Success. I am based in the UK, available for remote work, and currently available for a new engagement. I have high-speed broadband and am looking for a long-term working relationship.
+
+I hold a valid GitHub Copilot subscription, which speeds up development considerably, especially for repetitive scaffolding and boilerplate code. I can also integrate AI functionality such as Smart Paste, textarea suggestions, and semantic search into the application where it adds value.
+
+As an accessibility note, I currently use a microphone-driven workflow instead of a keyboard and mouse. During meetings I may occasionally speak to my computer, so please bear that in mind to avoid confusion. This workflow is efficient and, combined with modern large language model tools, can be faster than traditional input methods.
+
+I would be happy to discuss the project in more detail on a call. You can see a live example of a Blazor Progressive Web App (PWA) application I have built here: https://www.fairieslittlehelper.online. I have recently worked on a Blazor Hybrid application to display my current projects and task boards, and a screenshot is attached to demonstrate the UI and functionality. The fairies little helper app uses the same underlying .NET/Blazor technology family; it is a PWA, not Hybrid, but the experience and architecture are closely aligned.
+
+Best regards,
+Mark P.
+
+
+SCREENING QUESTIONS
+===================
+
+Answer 1: Have you worked with similar project? if yes, how many?
+
+Yes. I have worked on multiple projects involving the conversion or migration of web-based applications into standalone desktop applications. Over the course of my career I have delivered at least five similar engagements where existing browser-based or server-side applications were re-architected as native Windows desktop applications using Microsoft technologies. Most recently I have been building Blazor Hybrid desktop applications that combine web UI components with native Windows capabilities, which is directly relevant to converting a Node.js application into a lighter Windows app. Have also been involved in converting desktop applications into web apps and vice versa, so I have a strong understanding of the architectural considerations and trade-offs involved in these types of projects.
+
+Answer 2: Describe your recent experience with similar projects
+
+My most recent relevant project is a Blazor PWA application (live demo: https://www.fairieslittlehelper.online) that combines a web-based Razor/HTML/CSS front end with native Windows desktop functionality, local data storage, and a standalone installer. The application runs as a lightweight Windows app without requiring a browser or external runtime. I handled the full lifecycle: architecture and design, UI migration, local database integration, installer packaging, and deployment. I have also recently worked on a Blazor Hybrid application to display my current projects and task boards; a screenshot is attached to demonstrate the UI and functionality. The fairies little helper app uses the same underlying .NET/Blazor technology family and is a PWA, not Hybrid, but the experience and architecture are closely aligned. Before that, I have built multiple data-centric desktop applications using C#, .NET, and SQL Server dating back to 1999, including conversions from older VB6 and VBA-based tools into modern .NET Windows apps. I am comfortable advising on architecture, planning incremental migration from Node.js, and delivering a clean standalone Windows application with a proper installer.
