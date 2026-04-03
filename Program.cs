@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using DotNetEnv;
 using GitHub.Copilot.SDK;
@@ -111,36 +112,13 @@ Console.CancelKeyPress += (_, eventArgs) =>
 using var apiServerCancellation = new CancellationTokenSource();
 var apiServerTask = CommandApiServer.StartAsync(
     apiServerCancellation.Token,
-    aiFallback: async (command, ct) =>
-    {
-        var telegramToken = EnvironmentSettings.ReadOptionalString("TELEGRAM_BOT_TOKEN");
-        var storedChatId = telegramToken is not null ? await telegramChatIdStore.LoadAsync() : null;
-        using var telegram = storedChatId.HasValue && telegramToken is not null
-            ? new TelegramApiClient(telegramToken)
-            : null;
-
-        // Echo command to Telegram so user sees what was heard
-        if (telegram is not null && storedChatId.HasValue)
-            await telegram.SendMessageInChunksAsync(storedChatId.Value,
-                $"📱 <b>Android command:</b> {System.Net.WebUtility.HtmlEncode(command)}", ct);
-
-        var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
-        try
-        {
-            var reply = await session.SendAndWaitAsync(new MessageOptions { Prompt = command }, null, ct);
-            var content = reply?.Data.Content?.Trim() ?? "No response from assistant.";
-
-            if (telegram is not null && storedChatId.HasValue)
-                await telegram.SendMessageInChunksAsync(storedChatId.Value, content, ct);
-
-            Console.WriteLine($"[command-api] AI response sent to Telegram: {content[..Math.Min(80, content.Length)]}...");
-            return content;
-        }
-        finally
-        {
-            await session.DisposeAsync();
-        }
-    });
+    aiFallback: (command, ct) => HandleAndroidCompanionFallbackAsync(
+        command,
+        ct,
+        copilotClient,
+        assistantTools,
+        defaultPersonality,
+        telegramChatIdStore));
 
 try
 {
@@ -535,6 +513,217 @@ static async Task<CopilotSession> CreateConfiguredSessionAsync(
         CancellationToken.None);
 
     return session;
+}
+
+static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFallbackAsync(
+    string command,
+    CancellationToken cancellationToken,
+    CopilotClient copilotClient,
+    ICollection<AIFunction> assistantTools,
+    PersonalityProfile defaultPersonality,
+    TelegramChatIdStore telegramChatIdStore)
+{
+    var telegramToken = EnvironmentSettings.ReadOptionalString("TELEGRAM_BOT_TOKEN");
+    var storedChatId = telegramToken is not null ? await telegramChatIdStore.LoadAsync() : null;
+    using var telegram = storedChatId.HasValue && telegramToken is not null
+        ? new TelegramApiClient(telegramToken)
+        : null;
+
+    if (telegram is not null && storedChatId.HasValue)
+    {
+        await telegram.SendMessageInChunksAsync(
+            storedChatId.Value,
+            $"📱 <b>Android command:</b> {System.Net.WebUtility.HtmlEncode(command)}",
+            cancellationToken);
+    }
+
+    var deviceActions = new List<CommandApiServer.CommandAction>();
+    var trackedToolCalls = new HashSet<string>(StringComparer.Ordinal);
+    var syncRoot = new object();
+
+    var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
+    using var sessionSubscription = session.On(evt =>
+    {
+        switch (evt)
+        {
+            case ToolExecutionStartEvent start
+                when string.Equals(start.Data?.ToolName, "execute_device_action", StringComparison.Ordinal):
+                if (!string.IsNullOrWhiteSpace(start.Data.ToolCallId))
+                {
+                    lock (syncRoot)
+                    {
+                        trackedToolCalls.Add(start.Data.ToolCallId);
+                    }
+                }
+                break;
+
+            case ToolExecutionCompleteEvent complete:
+                if (complete.Data is null || !complete.Data.Success || string.IsNullOrWhiteSpace(complete.Data.ToolCallId))
+                {
+                    break;
+                }
+
+                lock (syncRoot)
+                {
+                    if (!trackedToolCalls.Contains(complete.Data.ToolCallId))
+                    {
+                        return;
+                    }
+                }
+
+                if (TryExtractDeviceActions(complete.Data.Result, out var extractedActions))
+                {
+                    lock (syncRoot)
+                    {
+                        deviceActions.AddRange(extractedActions);
+                    }
+                }
+                break;
+        }
+    });
+
+    try
+    {
+        var reply = await session.SendAndWaitAsync(new MessageOptions { Prompt = command }, null, cancellationToken);
+        var content = reply?.Data.Content?.Trim();
+        List<CommandApiServer.CommandAction> actionsSnapshot;
+
+        lock (syncRoot)
+        {
+            if (string.IsNullOrWhiteSpace(content) && deviceActions.Count > 0)
+            {
+                content = "Prepared an action for your phone.";
+            }
+
+            content ??= "No response from assistant.";
+            actionsSnapshot = [.. deviceActions];
+        }
+
+        if (telegram is not null && storedChatId.HasValue)
+        {
+            await telegram.SendMessageInChunksAsync(storedChatId.Value, content, cancellationToken);
+        }
+
+        Console.WriteLine($"[command-api] AI response sent to Telegram: {content[..Math.Min(80, content.Length)]}... | Copilot actions: {actionsSnapshot.Count}");
+        return new CommandApiServer.AiFallbackResponse(content, actionsSnapshot, true);
+    }
+    finally
+    {
+        await session.DisposeAsync();
+    }
+}
+
+static bool TryExtractDeviceActions(
+    ToolExecutionCompleteDataResult? result,
+    out List<CommandApiServer.CommandAction> actions)
+{
+    actions = [];
+
+    if (result is null)
+    {
+        return false;
+    }
+
+    foreach (var payload in EnumerateToolResultPayloads(result))
+    {
+        if (TryParseDeviceActionPayload(payload, out var action))
+        {
+            actions.Add(action);
+        }
+    }
+
+    return actions.Count > 0;
+}
+
+static IEnumerable<string> EnumerateToolResultPayloads(ToolExecutionCompleteDataResult result)
+{
+    if (!string.IsNullOrWhiteSpace(result.Content))
+    {
+        yield return result.Content;
+    }
+
+    if (!string.IsNullOrWhiteSpace(result.DetailedContent)
+        && !string.Equals(result.DetailedContent, result.Content, StringComparison.Ordinal))
+    {
+        yield return result.DetailedContent;
+    }
+
+    if (result.Contents is null)
+    {
+        yield break;
+    }
+
+    foreach (var item in result.Contents)
+    {
+        switch (item)
+        {
+            case ToolExecutionCompleteDataResultContentsItemText textItem when !string.IsNullOrWhiteSpace(textItem.Text):
+                yield return textItem.Text;
+                break;
+
+            case ToolExecutionCompleteDataResultContentsItemResource resourceItem when resourceItem.Resource is not null:
+                if (resourceItem.Resource is JsonElement jsonElement)
+                {
+                    yield return jsonElement.GetRawText();
+                }
+                else
+                {
+                    yield return resourceItem.Resource.ToString() ?? string.Empty;
+                }
+                break;
+        }
+    }
+}
+
+static bool TryParseDeviceActionPayload(string payload, out CommandApiServer.CommandAction action)
+{
+    action = null!;
+
+    if (string.IsNullOrWhiteSpace(payload))
+    {
+        return false;
+    }
+
+    try
+    {
+        using var document = JsonDocument.Parse(payload);
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (!document.RootElement.TryGetProperty("actionType", out var actionTypeElement)
+            || actionTypeElement.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var actionType = actionTypeElement.GetString()?.Trim();
+        if (string.IsNullOrWhiteSpace(actionType))
+        {
+            return false;
+        }
+
+        Dictionary<string, string>? parameters = null;
+        if (document.RootElement.TryGetProperty("parameters", out var parametersElement)
+            && parametersElement.ValueKind == JsonValueKind.Object)
+        {
+            parameters = [];
+            foreach (var property in parametersElement.EnumerateObject())
+            {
+                parameters[property.Name] = property.Value.ValueKind == JsonValueKind.String
+                    ? property.Value.GetString() ?? string.Empty
+                    : property.Value.ToString();
+            }
+        }
+
+        action = new CommandApiServer.CommandAction(actionType, parameters);
+        return true;
+    }
+    catch (JsonException)
+    {
+        return false;
+    }
 }
 
 static string? TryReadDotEnvValue(string envFilePath, string key)

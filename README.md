@@ -62,7 +62,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - Exposes an Android companion command API:
    - `POST /api/command` accepts a spoken or typed phone command
    - Simple phone intents like open app, open URL, back/home/recents/notifications, scroll, and basic media controls are returned as structured device actions for the companion app
-   - Anything not recognized as a simple device action is forwarded to the Copilot assistant and the reply is also sent back to the saved Telegram chat
+   - Anything not recognized as a simple device action is forwarded to the Copilot assistant; if Copilot calls `execute_device_action`, those structured actions are returned to the companion app and the reply is also sent back to the saved Telegram chat
 
 ## Prerequisites
 
@@ -338,7 +338,7 @@ dotnet run -- --cli "bob please play Ukraine the latest podcast"
 - `Play music to code by on YouTube Music` (explicit YouTube Music)
 - `Play contemplation music without lyrics`
 - `List Talon Commands with Upwork`
-- `Find Custom in Tele Sense entries containing Blazor`
+- `Find Custom Intel stopleSense entries containing Blazor`
 - `Search Values for customerId`
 - `List Transactions containing invoice`
 - `Copy the Value column from Values row 42 to my clipboard`

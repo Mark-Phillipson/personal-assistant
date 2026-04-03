@@ -7,7 +7,7 @@ internal static class CommandApiServer
 {
     public static async Task StartAsync(
         CancellationToken cancellationToken,
-        Func<string, CancellationToken, Task<string>>? aiFallback = null)
+        Func<string, CancellationToken, Task<AiFallbackResponse>>? aiFallback = null)
     {
         var prefix = EnvironmentSettings.ReadString("ANDROID_COMPANION_API_PREFIX", "http://localhost:5000/");
         var expectedDeviceToken = EnvironmentSettings.ReadOptionalString("ANDROID_DEVICE_TOKEN");
@@ -55,7 +55,7 @@ internal static class CommandApiServer
         listener.Stop();
     }
 
-    private static async Task HandleRequestAsync(HttpListenerContext context, string? expectedDeviceToken, Func<string, CancellationToken, Task<string>>? aiFallback)
+    private static async Task HandleRequestAsync(HttpListenerContext context, string? expectedDeviceToken, Func<string, CancellationToken, Task<AiFallbackResponse>>? aiFallback)
     {
         var request = context.Request;
         var response = context.Response;
@@ -107,7 +107,19 @@ internal static class CommandApiServer
                     Console.WriteLine($"[command-api] No heuristic match - forwarding to Copilot AI: {commandText}");
                     try
                     {
-                        textResponse = await aiFallback(commandText, CancellationToken.None);
+                        var fallbackResponse = await aiFallback(commandText, CancellationToken.None);
+                        textResponse = fallbackResponse.TextResponse;
+                        success = fallbackResponse.Success;
+
+                        if (fallbackResponse.Actions is { Count: > 0 })
+                        {
+                            actions.AddRange(fallbackResponse.Actions);
+                        }
+
+                        if (!success)
+                        {
+                            response.StatusCode = (int)HttpStatusCode.BadGateway;
+                        }
                     }
                     catch (Exception aiEx)
                     {
@@ -245,7 +257,7 @@ internal static class CommandApiServer
                 continue;
             }
 
-            var payload = commandText[verb.Length..].Trim();
+            var payload = NormalizeAppLaunchPayload(commandText[verb.Length..]);
             if (string.IsNullOrWhiteSpace(payload))
             {
                 return false;
@@ -278,6 +290,32 @@ internal static class CommandApiServer
         return false;
     }
 
+    private static string NormalizeAppLaunchPayload(string payload)
+    {
+        var normalized = payload.Trim();
+
+        normalized = Regex.Replace(
+            normalized,
+            @"\b(on|in)\s+(my|the)\s+(phone|android|mobile|device)\b",
+            string.Empty,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        normalized = Regex.Replace(
+            normalized,
+            @"\b(on|in)\s+(phone|android|mobile|device)\b",
+            string.Empty,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        normalized = Regex.Replace(
+            normalized,
+            @"\b(please|now)\b",
+            string.Empty,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        normalized = Regex.Replace(normalized, @"\s+", " ").Trim(' ', ',', '.', ';', ':');
+        return normalized;
+    }
+
     private static bool TryMatchMediaAction(string lower, out string action)
     {
         action = lower switch
@@ -292,7 +330,9 @@ internal static class CommandApiServer
         return action.Length > 0;
     }
 
+    internal sealed record AiFallbackResponse(string TextResponse, List<CommandAction>? Actions, bool Success);
+    internal sealed record CommandAction(string Type, Dictionary<string, string>? Params);
+
     private record CommandApiRequest(string Command, string DeviceToken, string? DeviceName = null);
-    private record CommandAction(string Type, Dictionary<string, string>? Params);
     private record CommandApiResponse(string TextResponse, List<CommandAction>? Actions, bool Success);
 }
