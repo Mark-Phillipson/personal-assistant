@@ -50,6 +50,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
    - `search_values_records` — keyword search in Values table
    - `search_transactions_records` — keyword search in Transactions table
    - `copy_voice_admin_value_to_clipboard` — read one value by table/row/column and copy it to clipboard
+   - Voice Admin schema reference: [documents/voice-admin-entity-relationship-diagram.md](documents/voice-admin-entity-relationship-diagram.md)
 - Exposes read-only Talon user-directory file tools to Copilot:
    - `talon_user_directory_status` — verify Talon user directory availability and configured root
    - `list_talon_user_files` — list files under Talon user directory root (recursive by default)

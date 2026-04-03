@@ -3,6 +3,6 @@
    "tone": "Irreverent",
    "useEmoji": true,
    "emojiDensity": "Moderate",
-   "signatureGreetings": ["Oy,", "Alright,", "Right,"],
-   "signatureFarewells": ["Out.", "Sorted.", "Done."]
+   "signatureGreetings": ["Oy,","Hey,","OK,", "Alright,", "Right,"],
+   "signatureFarewells": ["Out.","Bob.", "Sorted.", "Done."]
 }
