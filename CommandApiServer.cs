@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 internal static class CommandApiServer
 {
@@ -87,63 +88,31 @@ internal static class CommandApiServer
                 return;
             }
 
-            var lower = commandRequest.Command.Trim().ToLowerInvariant();
+            var commandText = commandRequest.Command.Trim();
+            var lower = commandText.ToLowerInvariant();
             var actions = new List<CommandAction>();
-            var textResponse = $"Received command: {commandRequest.Command}";
+            var textResponse = $"Received command: {commandText}";
+            var success = true;
 
-            Console.WriteLine($"[command-api] Command from '{commandRequest.DeviceName ?? "unknown"}': {commandRequest.Command}");
+            Console.WriteLine($"[command-api] Command from '{commandRequest.DeviceName ?? "unknown"}': {commandText}");
 
-            // URL open: any command containing a http/https URL
-            if (lower.Contains("http://") || lower.Contains("https://"))
+            if (TryBuildRecognizedResponse(commandText, lower, actions, out var recognizedResponse))
             {
-                var targetUrl = commandRequest.Command.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                    .FirstOrDefault(t => t.StartsWith("http", StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
-                actions.Add(new CommandAction("device.open_url", new Dictionary<string, string> { ["url"] = targetUrl }));
-                textResponse = $"Opening URL {targetUrl}.";
-            }
-            // Navigation: home / back
-            else if (lower == "go home" || lower == "home" || lower == "go to home screen")
-            {
-                actions.Add(new CommandAction("device.navigate", new Dictionary<string, string> { ["action"] = "home" }));
-                textResponse = "Navigating home.";
-            }
-            else if (lower == "go back" || lower == "back")
-            {
-                actions.Add(new CommandAction("device.navigate", new Dictionary<string, string> { ["action"] = "back" }));
-                textResponse = "Navigating back.";
-            }
-            // App launch: "launch X", "open X", "start X", "run X"
-            else if (lower.StartsWith("launch ") || lower.StartsWith("open ") ||
-                     lower.StartsWith("start ") || lower.StartsWith("run "))
-            {
-                var appName = lower
-                    .Replace("launch ", "").Replace("open ", "")
-                    .Replace("start ", "").Replace("run ", "").Trim();
-                actions.Add(new CommandAction("device.open_app", new Dictionary<string, string> { ["name"] = appName }));
-                textResponse = $"Launching {appName}.";
-            }
-            // Media controls
-            else if (lower.Contains("play") || lower.Contains("pause") || lower.Contains("stop") ||
-                     lower.Contains("next") || lower.Contains("previous"))
-            {
-                var mediaAction = lower.Contains("play") ? "play" :
-                                  lower.Contains("pause") ? "pause" :
-                                  lower.Contains("stop") ? "stop" :
-                                  lower.Contains("next") ? "next" : "previous";
-                actions.Add(new CommandAction("device.media", new Dictionary<string, string> { ["action"] = mediaAction }));
-                textResponse = $"Media: {mediaAction}.";
+                textResponse = recognizedResponse;
             }
             else
             {
                 if (aiFallback != null)
                 {
-                    Console.WriteLine($"[command-api] No heuristic match — forwarding to Copilot AI: {commandRequest.Command}");
+                    Console.WriteLine($"[command-api] No heuristic match - forwarding to Copilot AI: {commandText}");
                     try
                     {
-                        textResponse = await aiFallback(commandRequest.Command, CancellationToken.None);
+                        textResponse = await aiFallback(commandText, CancellationToken.None);
                     }
                     catch (Exception aiEx)
                     {
+                        success = false;
+                        response.StatusCode = (int)HttpStatusCode.BadGateway;
                         textResponse = $"AI error: {aiEx.Message}";
                         Console.Error.WriteLine($"[command-api] AI fallback error: {aiEx.Message}");
                     }
@@ -157,8 +126,8 @@ internal static class CommandApiServer
 
             Console.WriteLine($"[command-api] Response: {textResponse} | Actions: {actions.Count}");
 
-            response.StatusCode = (int)HttpStatusCode.OK;
-            await WriteJsonResponseAsync(response, new CommandApiResponse(textResponse, actions, true));
+            response.StatusCode = response.StatusCode == 0 ? (int)HttpStatusCode.OK : response.StatusCode;
+            await WriteJsonResponseAsync(response, new CommandApiResponse(textResponse, actions, success));
         }
         catch (Exception ex)
         {
@@ -181,6 +150,146 @@ internal static class CommandApiServer
         response.ContentType = "application/json; charset=utf-8";
         response.ContentLength64 = bytes.Length;
         await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+    }
+
+    private static bool TryBuildRecognizedResponse(
+        string commandText,
+        string lower,
+        List<CommandAction> actions,
+        out string textResponse)
+    {
+        if (TryExtractUrl(commandText, out var targetUrl))
+        {
+            actions.Add(new CommandAction("device.open_url", new Dictionary<string, string> { ["url"] = targetUrl }));
+            textResponse = $"Opening URL {targetUrl}.";
+            return true;
+        }
+
+        if (TryMatchNavigationAction(lower, out var navigationAction))
+        {
+            actions.Add(new CommandAction("device.navigate", new Dictionary<string, string> { ["action"] = navigationAction }));
+            textResponse = $"Navigating {navigationAction}.";
+            return true;
+        }
+
+        if (TryMatchScrollDirection(lower, out var scrollDirection))
+        {
+            actions.Add(new CommandAction("device.scroll", new Dictionary<string, string> { ["direction"] = scrollDirection }));
+            textResponse = $"Scrolling {scrollDirection}.";
+            return true;
+        }
+
+        if (TryExtractAppLaunchName(commandText, lower, out var appName))
+        {
+            actions.Add(new CommandAction("device.open_app", new Dictionary<string, string> { ["name"] = appName }));
+            textResponse = $"Launching {appName}.";
+            return true;
+        }
+
+        if (TryMatchMediaAction(lower, out var mediaAction))
+        {
+            actions.Add(new CommandAction("device.media", new Dictionary<string, string> { ["action"] = mediaAction }));
+            textResponse = mediaAction == "play" ? "Resuming media." :
+                mediaAction == "pause" ? "Pausing media." :
+                mediaAction == "next" ? "Skipping to the next track." :
+                "Going to the previous track.";
+            return true;
+        }
+
+        textResponse = string.Empty;
+        return false;
+    }
+
+    private static bool TryExtractUrl(string commandText, out string url)
+    {
+        var match = Regex.Match(commandText, @"https?://\S+", RegexOptions.IgnoreCase);
+        url = match.Success ? match.Value.TrimEnd('.', ',', ';', ')', ']', '}') : string.Empty;
+        return !string.IsNullOrWhiteSpace(url);
+    }
+
+    private static bool TryMatchNavigationAction(string lower, out string action)
+    {
+        action = lower switch
+        {
+            "go home" or "home" or "go to home screen" or "show home screen" => "home",
+            "go back" or "back" => "back",
+            "show recents" or "open recents" or "recent apps" or "show recent apps" => "recents",
+            "show notifications" or "open notifications" or "notification shade" => "notifications",
+            _ => string.Empty
+        };
+
+        return action.Length > 0;
+    }
+
+    private static bool TryMatchScrollDirection(string lower, out string direction)
+    {
+        direction = lower switch
+        {
+            "scroll up" or "swipe up" => "up",
+            "scroll down" or "swipe down" => "down",
+            "scroll left" or "swipe left" => "left",
+            "scroll right" or "swipe right" => "right",
+            _ => string.Empty
+        };
+
+        return direction.Length > 0;
+    }
+
+    private static bool TryExtractAppLaunchName(string commandText, string lower, out string appName)
+    {
+        appName = string.Empty;
+        foreach (var verb in new[] { "launch ", "open ", "start ", "run " })
+        {
+            if (!lower.StartsWith(verb, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var payload = commandText[verb.Length..].Trim();
+            if (string.IsNullOrWhiteSpace(payload))
+            {
+                return false;
+            }
+
+            if (payload.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || payload.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (payload.StartsWith("the ", StringComparison.OrdinalIgnoreCase)
+                || payload.StartsWith("my ", StringComparison.OrdinalIgnoreCase)
+                || payload.StartsWith("a ", StringComparison.OrdinalIgnoreCase)
+                || payload.StartsWith("an ", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var wordCount = payload.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+            if (wordCount > 4)
+            {
+                return false;
+            }
+
+            appName = payload;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryMatchMediaAction(string lower, out string action)
+    {
+        action = lower switch
+        {
+            "play" or "play music" or "resume" or "resume music" or "continue music" => "play",
+            "pause" or "pause music" or "stop" or "stop music" => "pause",
+            "next" or "next track" or "next song" or "skip" or "skip track" or "skip song" => "next",
+            "previous" or "previous track" or "previous song" or "go previous" or "go to previous track" => "previous",
+            _ => string.Empty
+        };
+
+        return action.Length > 0;
     }
 
     private record CommandApiRequest(string Command, string DeviceToken, string? DeviceName = null);

@@ -59,6 +59,10 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - Exposes allowlisted known-folder Explorer tools to Copilot:
    - `known_folder_explorer_status` — show configured folder roots for explorer actions
    - `open_known_folder_in_explorer` — open File Explorer at documents, desktop, downloads, pictures, videos, or repo (plus optional relative subfolder)
+- Exposes an Android companion command API:
+   - `POST /api/command` accepts a spoken or typed phone command
+   - Simple phone intents like open app, open URL, back/home/recents/notifications, scroll, and basic media controls are returned as structured device actions for the companion app
+   - Anything not recognized as a simple device action is forwarded to the Copilot assistant and the reply is also sent back to the saved Telegram chat
 
 ## Prerequisites
 
@@ -102,6 +106,8 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - `TALON_USER_DIRECTORY` (optional, default `%USERPROFILE%\AppData\Roaming\talon\user`; root path for read-only Talon file tools)
 - `ASSISTANT_REPO_DIRECTORY` (optional, default current working directory when app starts; root path for the `repo` alias in `open_known_folder_in_explorer`)
 - `UPWORK_CHROME_CDP_URL` (optional, default `http://127.0.0.1:9222`; when Chrome is started with remote debugging, Upwork tools can attach to your existing logged-in Chrome profile/session)
+- `ANDROID_COMPANION_API_PREFIX` (optional, default `http://localhost:5000/`; HttpListener prefix used by the Android companion command API)
+- `ANDROID_DEVICE_TOKEN` (optional but recommended; shared secret required by `POST /api/command` when set)
 - `ASSISTANT_NAME` (optional, default `Bob`)
 - `ASSISTANT_TONE` (optional, default `Friendly`; allowed: `Friendly`, `Professional`, `Witty`, `Calm`, `Irreverent`)
 - `ASSISTANT_USE_EMOJI` (optional, default `true`; `true` or `false`)
@@ -318,8 +324,7 @@ dotnet run -- --cli "bob please play Ukraine the latest podcast"
 - `What is in this screenshot?` with a screenshot attached
 - `Summarize this PDF` with a PDF attached
 - `/personality emoji expressive`
-- `/personality tone calm`
-- `List my next 5 calendar events`
+- `/personality tone calm`Stop`List my next 5 calendar events`
 - `Create a calendar event titled Meeting tomorrow at 10am for 1 hour`
 - `List files in my Downloads folder`
 - `Find PDFs in Documents and send budget-2026.pdf`
