@@ -4,7 +4,9 @@ using System.Text.Json;
 
 internal static class CommandApiServer
 {
-    public static async Task StartAsync(CancellationToken cancellationToken)
+    public static async Task StartAsync(
+        CancellationToken cancellationToken,
+        Func<string, CancellationToken, Task<string>>? aiFallback = null)
     {
         var prefix = EnvironmentSettings.ReadString("ANDROID_COMPANION_API_PREFIX", "http://localhost:5000/");
         var expectedDeviceToken = EnvironmentSettings.ReadOptionalString("ANDROID_DEVICE_TOKEN");
@@ -46,13 +48,13 @@ internal static class CommandApiServer
                 continue;
             }
 
-            _ = Task.Run(async () => await HandleRequestAsync(context, expectedDeviceToken), cancellationToken);
+            _ = Task.Run(async () => await HandleRequestAsync(context, expectedDeviceToken, aiFallback), cancellationToken);
         }
 
         listener.Stop();
     }
 
-    private static async Task HandleRequestAsync(HttpListenerContext context, string? expectedDeviceToken)
+    private static async Task HandleRequestAsync(HttpListenerContext context, string? expectedDeviceToken, Func<string, CancellationToken, Task<string>>? aiFallback)
     {
         var request = context.Request;
         var response = context.Response;
@@ -89,27 +91,71 @@ internal static class CommandApiServer
             var actions = new List<CommandAction>();
             var textResponse = $"Received command: {commandRequest.Command}";
 
-            // Basic heuristic mapping for initial MVP
-            if (lower.Contains("open youtube"))
+            Console.WriteLine($"[command-api] Command from '{commandRequest.DeviceName ?? "unknown"}': {commandRequest.Command}");
+
+            // URL open: any command containing a http/https URL
+            if (lower.Contains("http://") || lower.Contains("https://"))
             {
-                actions.Add(new CommandAction("device.open_app", new Dictionary<string, string> { ["name"] = "youtube" }));
-                textResponse = "Opening YouTube.";
-            }
-            else if (lower.Contains("open ") && (lower.Contains("http://") || lower.Contains("https://")))
-            {
-                var targetUrl = commandRequest.Command.Split(' ', StringSplitOptions.RemoveEmptyEntries).Last();
+                var targetUrl = commandRequest.Command.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .FirstOrDefault(t => t.StartsWith("http", StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
                 actions.Add(new CommandAction("device.open_url", new Dictionary<string, string> { ["url"] = targetUrl }));
-                textResponse = $"Opening URL {targetUrl}";
+                textResponse = $"Opening URL {targetUrl}.";
             }
-            else if (lower.Contains("home") || lower.Contains("go home"))
+            // Navigation: home / back
+            else if (lower == "go home" || lower == "home" || lower == "go to home screen")
             {
                 actions.Add(new CommandAction("device.navigate", new Dictionary<string, string> { ["action"] = "home" }));
                 textResponse = "Navigating home.";
             }
+            else if (lower == "go back" || lower == "back")
+            {
+                actions.Add(new CommandAction("device.navigate", new Dictionary<string, string> { ["action"] = "back" }));
+                textResponse = "Navigating back.";
+            }
+            // App launch: "launch X", "open X", "start X", "run X"
+            else if (lower.StartsWith("launch ") || lower.StartsWith("open ") ||
+                     lower.StartsWith("start ") || lower.StartsWith("run "))
+            {
+                var appName = lower
+                    .Replace("launch ", "").Replace("open ", "")
+                    .Replace("start ", "").Replace("run ", "").Trim();
+                actions.Add(new CommandAction("device.open_app", new Dictionary<string, string> { ["name"] = appName }));
+                textResponse = $"Launching {appName}.";
+            }
+            // Media controls
+            else if (lower.Contains("play") || lower.Contains("pause") || lower.Contains("stop") ||
+                     lower.Contains("next") || lower.Contains("previous"))
+            {
+                var mediaAction = lower.Contains("play") ? "play" :
+                                  lower.Contains("pause") ? "pause" :
+                                  lower.Contains("stop") ? "stop" :
+                                  lower.Contains("next") ? "next" : "previous";
+                actions.Add(new CommandAction("device.media", new Dictionary<string, string> { ["action"] = mediaAction }));
+                textResponse = $"Media: {mediaAction}.";
+            }
             else
             {
-                textResponse = "Command received, but no action matched. Adjust prompt or implement additional mappings.";
+                if (aiFallback != null)
+                {
+                    Console.WriteLine($"[command-api] No heuristic match — forwarding to Copilot AI: {commandRequest.Command}");
+                    try
+                    {
+                        textResponse = await aiFallback(commandRequest.Command, CancellationToken.None);
+                    }
+                    catch (Exception aiEx)
+                    {
+                        textResponse = $"AI error: {aiEx.Message}";
+                        Console.Error.WriteLine($"[command-api] AI fallback error: {aiEx.Message}");
+                    }
+                }
+                else
+                {
+                    textResponse = $"Command '{commandRequest.Command}' received but no action matched.";
+                    Console.WriteLine($"[command-api] No action matched for: {commandRequest.Command}");
+                }
             }
+
+            Console.WriteLine($"[command-api] Response: {textResponse} | Actions: {actions.Count}");
 
             response.StatusCode = (int)HttpStatusCode.OK;
             await WriteJsonResponseAsync(response, new CommandApiResponse(textResponse, actions, true));
@@ -137,7 +183,7 @@ internal static class CommandApiServer
         await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
     }
 
-    private record CommandApiRequest(string Command, string DeviceToken);
+    private record CommandApiRequest(string Command, string DeviceToken, string? DeviceName = null);
     private record CommandAction(string Type, Dictionary<string, string>? Params);
     private record CommandApiResponse(string TextResponse, List<CommandAction>? Actions, bool Success);
 }

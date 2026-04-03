@@ -109,7 +109,38 @@ Console.CancelKeyPress += (_, eventArgs) =>
 };
 
 using var apiServerCancellation = new CancellationTokenSource();
-var apiServerTask = CommandApiServer.StartAsync(apiServerCancellation.Token);
+var apiServerTask = CommandApiServer.StartAsync(
+    apiServerCancellation.Token,
+    aiFallback: async (command, ct) =>
+    {
+        var telegramToken = EnvironmentSettings.ReadOptionalString("TELEGRAM_BOT_TOKEN");
+        var storedChatId = telegramToken is not null ? await telegramChatIdStore.LoadAsync() : null;
+        using var telegram = storedChatId.HasValue && telegramToken is not null
+            ? new TelegramApiClient(telegramToken)
+            : null;
+
+        // Echo command to Telegram so user sees what was heard
+        if (telegram is not null && storedChatId.HasValue)
+            await telegram.SendMessageInChunksAsync(storedChatId.Value,
+                $"📱 <b>Android command:</b> {System.Net.WebUtility.HtmlEncode(command)}", ct);
+
+        var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
+        try
+        {
+            var reply = await session.SendAndWaitAsync(new MessageOptions { Prompt = command }, null, ct);
+            var content = reply?.Data.Content?.Trim() ?? "No response from assistant.";
+
+            if (telegram is not null && storedChatId.HasValue)
+                await telegram.SendMessageInChunksAsync(storedChatId.Value, content, ct);
+
+            Console.WriteLine($"[command-api] AI response sent to Telegram: {content[..Math.Min(80, content.Length)]}...");
+            return content;
+        }
+        finally
+        {
+            await session.DisposeAsync();
+        }
+    });
 
 try
 {
