@@ -40,6 +40,67 @@ internal static class TelegramMessageHandler
         var chatId = message.Chat.Id;
         var profile = GetPersonalityForChat(chatId, personalityProfiles, defaultPersonality);
 
+        // Redact attempts to read or display .env or secrets: replace values with [REDACTED]
+        if (!string.IsNullOrWhiteSpace(text) && Regex.IsMatch(text, @"(\.|\b)(env|\.env|env file|show\s+env|show\s+\.env|display\s+env)\b", RegexOptions.IgnoreCase))
+        {
+            try
+            {
+                // Look for .env in common locations
+                var envPaths = new[]
+                {
+                    Path.Combine(AppContext.BaseDirectory, ".env"),
+                    Path.Combine(Directory.GetCurrentDirectory(), ".env"),
+                    ".env"
+                };
+
+                string found = null;
+                foreach (var p in envPaths)
+                {
+                    if (File.Exists(p))
+                    {
+                        found = p;
+                        break;
+                    }
+                }
+
+                if (found is null)
+                {
+                    await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap("I will not expose secrets. No .env file was accessible.", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+                    return;
+                }
+
+                var lines = await File.ReadAllLinesAsync(found, cancellationToken);
+                var secretKeyPattern = new Regex(@"\b(KEY|TOKEN|SECRET|PASSWORD|CLIENT_SECRET|CLIENT_ID)\b", RegexOptions.IgnoreCase);
+                var redactExactKeys = new Regex(@"^(ASSISTANT_MODEL|ANDROID_DEVICE_TOKEN|TELEGRAM_BOT_TOKEN|AZURE_SPEECH_KEY|GMAIL_CLIENT_SECRET_PATH|CALENDAR_CLIENT_SECRET_PATH|NATURAL_COMMANDS_EXECUTABLE|VOICE_LAUNCHER_DB_PATH|VOICE_ADMIN_DB_PATH)\s*=", RegexOptions.IgnoreCase);
+
+                var redacted = lines.Select(l =>
+                {
+                    if (redactExactKeys.IsMatch(l))
+                    {
+                        var idx = l.IndexOf('=');
+                        if (idx >= 0) return l.Substring(0, idx + 1) + " [REDACTED]";
+                    }
+
+                    if (secretKeyPattern.IsMatch(l))
+                    {
+                        var idx = l.IndexOf('=');
+                        if (idx >= 0) return l.Substring(0, idx + 1) + " [REDACTED]";
+                    }
+
+                    return l;
+                });
+
+                var messageText = "Redacted .env contents:\n" + string.Join("\n", redacted);
+                await telegram.SendMessageInChunksAsync(chatId, TelegramRichTextFormatter.CodeBlock(messageText), cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap($"I will not expose secrets: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+            }
+
+            return;
+        }
+
         // TTS service isolate route
         if (text.Equals("tts test", StringComparison.OrdinalIgnoreCase) || text.Equals("/tts-test", StringComparison.OrdinalIgnoreCase))
         {
