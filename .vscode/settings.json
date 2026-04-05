@@ -1,0 +1,7 @@
+{
+    "chat.agent.thinking.phrases": {
+
+        "mode": "append",
+        "phrases": ["Burning Trees","Destroying the Planet","Wasting Water"]
+    }
+}

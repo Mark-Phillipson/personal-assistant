@@ -758,9 +758,10 @@ internal static class TelegramMessageHandler
 
             try
             {
+                var reason = ClassifyError(ex);
                 await telegram.SendMessageInChunksAsync(
                     chatId,
-                    EmojiPalette.Wrap($"I hit an error while generating a reply: {ex.Message}. Please try again.", EmojiPalette.Warning, profile.UseEmoji),
+                    EmojiPalette.Wrap($"I hit an error while generating a reply.\nReason: {reason}\nDetail: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji),
                     cancellationToken);
             }
             catch (Exception sendEx)
@@ -898,10 +899,17 @@ internal static class TelegramMessageHandler
         {
             Console.Error.WriteLine($"[copilot.session.retry] chat={chatId} SendAndWaitAsync timed out; retrying once with a fresh session.");
 
+            await telegram.SendMessageInChunksAsync(
+                chatId,
+                EmojiPalette.Wrap("I'm busy right now — retrying in a moment...", EmojiPalette.Warning, profile.UseEmoji),
+                cancellationToken);
+
             if (sessions.TryRemove(chatId, out var timedOutSession))
             {
                 await timedOutSession.DisposeAsync();
             }
+
+            await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
 
             var recreatedSession = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile, conversationHistories);
             var assistantReply = await recreatedSession.SendAndWaitAsync(messageOptions, null, cancellationToken);
@@ -982,6 +990,33 @@ internal static class TelegramMessageHandler
     private static bool ShouldRecycleSessionAfterError(Exception exception)
     {
         return IsSessionNotFoundError(exception) || IsSendTimeoutError(exception);
+    }
+
+    private static string ClassifyError(Exception exception)
+    {
+        if (IsSendTimeoutError(exception))
+            return "The AI model took too long to respond (>1 min). This usually means Copilot is under heavy load. Try again in a moment.";
+
+        if (IsSessionNotFoundError(exception))
+            return "The AI session expired or was lost. A fresh session has been created — try sending your message again.";
+
+        if (exception is OperationCanceledException or TaskCanceledException)
+            return "The request was cancelled, likely because it was taking too long. Try again.";
+
+        if (exception.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains("429", StringComparison.Ordinal))
+            return "Rate limit hit — too many requests in a short period. Wait a few seconds and try again.";
+
+        if (exception.Message.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains("401", StringComparison.Ordinal))
+            return "Authentication failed. The Copilot token may have expired — a restart may be needed.";
+
+        if (exception.Message.Contains("network", StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains("connection", StringComparison.OrdinalIgnoreCase)
+            || exception is System.Net.Http.HttpRequestException)
+            return "Network or connection error communicating with Copilot. Check internet connectivity.";
+
+        return $"Unexpected error ({exception.GetType().Name}). Check the server logs for the full stack trace.";
     }
 
     private static async Task HandleAssistantVoiceCommandAsync(
