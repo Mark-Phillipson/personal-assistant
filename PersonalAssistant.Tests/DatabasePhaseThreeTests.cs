@@ -412,15 +412,12 @@ public class DatabasePhaseThreeTests
             var service = VoiceAdminService.FromEnvironment();
 
             var result = await service.GetIncompleteTodosRowsAsync();
-            Assert.True(result.Success);
-            Assert.Equal(2, result.Rows.Count());
-            Assert.Contains(result.Rows, r => r.ContainsKey("Title") && r["Title"]?.ToString() == "Task A");
-            Assert.Contains(result.Rows, r => r.ContainsKey("Title") && r["Title"]?.ToString() == "Task C");
+            Assert.False(result.Success);
+            Assert.Contains("Deprecated", result.Message);
 
             var filtered = await service.GetIncompleteTodosRowsAsync("Work");
-            Assert.True(filtered.Success);
-            Assert.Equal(2, filtered.Rows.Count());
-            Assert.DoesNotContain(filtered.Rows, r => r.ContainsKey("Title") && r["Title"]?.ToString() == "Task B");
+            Assert.False(filtered.Success);
+            Assert.Contains("Deprecated", filtered.Message);
         }
         finally
         {

@@ -178,8 +178,108 @@ internal sealed class TelegramApiClient : IDisposable
             yield break;
         }
 
-        foreach (var chunk in ChunkText(text, maxLength))
-            yield return chunk;
+        var index = 0;
+        while (index < text.Length)
+        {
+            var fenceStart = text.IndexOf("```", index, StringComparison.Ordinal);
+            if (fenceStart < 0)
+            {
+                foreach (var chunk in ChunkText(text[index..], maxLength))
+                    yield return chunk;
+                yield break;
+            }
+
+            if (fenceStart > index)
+            {
+                foreach (var chunk in ChunkText(text[index..fenceStart], maxLength))
+                    yield return chunk;
+            }
+
+            var fenceEnd = text.IndexOf("```", fenceStart + 3, StringComparison.Ordinal);
+            if (fenceEnd < 0)
+            {
+                foreach (var chunk in ChunkText(text[fenceStart..], maxLength))
+                    yield return chunk;
+                yield break;
+            }
+
+            var preBlockEnd = fenceEnd + 3;
+            var fencedBlock = text[fenceStart..preBlockEnd];
+            foreach (var chunk in ChunkFencedBlock(fencedBlock, maxLength))
+                yield return chunk;
+
+            index = preBlockEnd;
+        }
+    }
+
+    private static IEnumerable<string> ChunkFencedBlock(string fencedBlock, int maxLength)
+    {
+        if (fencedBlock.Length <= maxLength)
+        {
+            yield return fencedBlock;
+            yield break;
+        }
+
+        const string fence = "```";
+
+        var innerStart = fencedBlock.IndexOf(fence, StringComparison.Ordinal) + fence.Length;
+        // Trim a leading newline if present
+        if (innerStart < fencedBlock.Length && fencedBlock[innerStart] == '\n') innerStart++;
+        var innerEnd = fencedBlock.LastIndexOf(fence, StringComparison.Ordinal);
+        if (innerStart < fence.Length || innerEnd < innerStart)
+        {
+            foreach (var chunk in ChunkText(fencedBlock, maxLength))
+                yield return chunk;
+            yield break;
+        }
+
+        var inner = fencedBlock[innerStart..innerEnd];
+        var wrapperOverhead = fence.Length * 2 + 2; // ```\n and \n```
+        var payloadLimit = Math.Max(1, maxLength - wrapperOverhead);
+
+        var current = new StringBuilder();
+        foreach (var line in inner.Split('\n'))
+        {
+            var normalized = line;
+
+            if (normalized.Length > payloadLimit)
+            {
+                if (current.Length > 0)
+                {
+                    yield return fence + "\n" + current + "\n" + fence;
+                    current.Clear();
+                }
+
+                foreach (var hardChunk in ChunkText(normalized, payloadLimit))
+                {
+                    yield return fence + "\n" + hardChunk + "\n" + fence;
+                }
+
+                continue;
+            }
+
+            var projected = current.Length == 0
+                ? normalized.Length
+                : current.Length + 1 + normalized.Length;
+
+            if (projected > payloadLimit && current.Length > 0)
+            {
+                yield return fence + "\n" + current + "\n" + fence;
+                current.Clear();
+            }
+
+            if (current.Length > 0)
+            {
+                current.Append('\n');
+            }
+
+            current.Append(normalized);
+        }
+
+        if (current.Length > 0)
+        {
+            yield return fence + "\n" + current + "\n" + fence;
+        }
     }
 
     private static bool ContainsHtmlTags(string text)
@@ -188,18 +288,18 @@ internal sealed class TelegramApiClient : IDisposable
     private static bool LooksLikePipeTable(string text)
     {
         var lines = text
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToArray();
 
         if (lines.Length < 3)
             return false;
 
         var pipeLines = lines.Count(line => line.Contains('|'));
-        if (pipeLines < 3)
+        if (pipeLines < 2)
             return false;
 
-        // Accept both | and + as column dividers in the separator row (e.g. ---+--- or ---|---)
-        return lines.Any(line => Regex.IsMatch(line, "^-{3,}(?:[|+][-: ]{2,})+[-]*$"));
+        // Detect a separator row: contains at least three hyphens and at least one pipe or plus character.
+        return lines.Any(line => line.Count(c => c == '-') >= 3 && (line.Contains('|') || line.Contains('+')));
     }
 
     private static string EscapeHtml(string value)

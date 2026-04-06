@@ -226,101 +226,54 @@ internal static class AssistantToolsFactory
                 "launch_voice_admin_launcher",
                 "Launch a Voice Admin launcher entry by its numeric ID on the host machine. Always call search_voice_admin_launchers first to confirm the ID unless the user explicitly provides one."),
             AIFunctionFactory.Create(
-                async (
-                    [Description("Optional project/category filter for open todos (matches the Todos.Project field)")] string? projectOrCategory = null,
-                    [Description("Maximum number of results to return (1-100, default 20)")] int? maxResults = null,
-                    [Description("When true, return a Telegram-friendly HTML table (preformatted text). Defaults to true for Telegram readability.") ] bool htmlFormat = true) =>
-                    await voiceAdminService.ListIncompleteTodosAsync(projectOrCategory, maxResults, htmlFormat),
-                "list_voice_admin_open_todos",
-                "List Voice Admin Todos that are not completed and not archived. Includes TodoId, title, project/category, priority, and created date. Use projectOrCategory to filter. Returns Telegram preformatted table output by default."),
-            AIFunctionFactory.Create(
-                async (
-                    [Description("Optional project/category filter for open todos (matches the Todos.Project field)")] string? projectOrCategory = null,
-                    [Description("Maximum number of results to export (1-100, default 20)")] int? maxResults = null,
-                    [Description("Optional output filename (without folder, .csv is appended if absent)")] string? outputFileName = null,
-                    [Description("When true, open the generated CSV in VS Code (default true)")] bool openInVsCode = true) =>
+                (string? projectOrCategory = null, int? maxResults = null, bool htmlFormat = true) =>
                 {
-                    var queryResult = await voiceAdminService.GetIncompleteTodosRowsAsync(projectOrCategory, maxResults);
-                    if (!queryResult.Success)
-                        return queryResult.Message;
-
-                    if (!queryResult.Rows.Any())
-                        return string.IsNullOrWhiteSpace(queryResult.Message) ? "No incomplete Voice Admin todo items found." : queryResult.Message;
-
-                    string repoRoot;
-                    try
-                    {
-                        repoRoot = Path.GetFullPath(EnvironmentSettings.ReadString("ASSISTANT_REPO_DIRECTORY", Directory.GetCurrentDirectory()));
-                    }
-                    catch (Exception ex)
-                    {
-                        return $"Failed to resolve repository root for CSV export: {ex.Message}";
-                    }
-
-                    var exportFolder = Path.Combine(repoRoot, "db_exports");
-                    Directory.CreateDirectory(exportFolder);
-
-                    outputFileName = string.IsNullOrWhiteSpace(outputFileName)
-                        ? SanitizeFileName($"voice_admin_todos_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv")
-                        : SanitizeFileName(outputFileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? outputFileName : outputFileName + ".csv");
-
-                    var fullPath = Path.Combine(exportFolder, outputFileName);
-
-                    try
-                    {
-                        File.WriteAllText(fullPath, BuildCsvContent(queryResult.Rows), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                    }
-                    catch (Exception ex)
-                    {
-                        return $"Failed to write CSV file '{fullPath}': {ex.Message}";
-                    }
-
-                    if (openInVsCode)
-                    {
-                        var openResult = await knownFolderExplorerService.OpenFileInVsCodeAsync("repo", Path.Combine("db_exports", outputFileName));
-                        return $"Voice Admin CSV exported to {fullPath}. {openResult}";
-                    }
-
-                    return $"Voice Admin CSV exported to {fullPath}.";
+                    return Task.FromResult<string>("Deprecated: Voice Admin Todos are migrated. Use 'list_personal_todos' (GitHub Issues) instead.");
+                },
+                "list_voice_admin_open_todos",
+                "Deprecated: was List Voice Admin Todos. Use GitHub-backed personal todos instead."),
+            AIFunctionFactory.Create(
+                (string? projectOrCategory = null, int? maxResults = null, string? outputFileName = null, bool openInVsCode = true) =>
+                {
+                    return Task.FromResult<string>("Deprecated: Exporting Voice Admin Todos is disabled. Use GitHub Issues exports via the Personal-Todos repository instead.");
                 },
                 "export_voice_admin_open_todos_to_csv",
-                "Export Voice Admin open/incomplete todo items to CSV and optionally open it in Visual Studio Code."),
+                "Deprecated: exporting Voice Admin Todos to CSV is disabled."),
             AIFunctionFactory.Create(
-                async (
-                    [Description("Todo title") ] string title,
-                    [Description("Optional todo description") ] string? description = null,
-                    [Description("Optional project/category label (stored in the Todos.Project field)")] string? projectOrCategory = null,
-                    [Description("Optional sort priority (default 0)")] int sortPriority = 0) =>
-                    await voiceAdminService.AddTodoAsync(title, description, projectOrCategory, sortPriority),
+                (string title, string? description = null, string? projectOrCategory = null, int sortPriority = 0) =>
+                {
+                    return Task.FromResult<string>("Deprecated: Adding to Voice Admin Todos is disabled. Use 'add_personal_todo' to create a GitHub Issue in Personal-Todos.");
+                },
                 "add_voice_admin_todo",
-                "Add a new Voice Admin todo item with title and optional description/project-category/priority. New items are created as incomplete and non-archived."),
+                "Deprecated: add voice admin todo is disabled."),
             AIFunctionFactory.Create(
-                async ([Description("Todo ID to mark complete")] int todoId) =>
-                    await voiceAdminService.MarkTodoCompleteAsync(todoId),
+                (int todoId) =>
+                {
+                    return Task.FromResult<string>("Deprecated: Completing Voice Admin Todos is disabled. Use 'complete_personal_todo' with the GitHub Issue number instead.");
+                },
                 "complete_voice_admin_todo",
-                "Mark a Voice Admin todo item complete by Todo ID."),
+                "Deprecated: complete voice admin todo is disabled."),
             AIFunctionFactory.Create(
-                async (
-                    [Description("Todo title or keyword to find the open todo item") ] string titleOrKeyword,
-                    [Description("When true, only an exact title match is accepted. Default false for conversational partial matching.")] bool exactMatch = false) =>
-                    await voiceAdminService.MarkTodoCompleteByTextAsync(titleOrKeyword, exactMatch),
+                (string titleOrKeyword, bool exactMatch = false) =>
+                {
+                    return Task.FromResult<string>("Deprecated: Completing Voice Admin Todos by text is disabled. Search personal todos with 'list_personal_todos' and close by issue number.");
+                },
                 "complete_voice_admin_todo_by_text",
-                "Conversational shortcut: mark an open Voice Admin todo complete by title or keyword. If multiple matches are found, it returns candidate TodoIds so you can confirm."),
+                "Deprecated: complete by text is disabled."),
             AIFunctionFactory.Create(
-                async (
-                    [Description("Todo ID to update") ] int todoId,
-                    [Description("Project/category label to assign. Provide empty text to clear.")] string? projectOrCategory = null) =>
-                    await voiceAdminService.AssignTodoProjectAsync(todoId, projectOrCategory),
+                (int todoId, string? projectOrCategory = null) =>
+                {
+                    return Task.FromResult<string>("Deprecated: Assigning projects to Voice Admin Todos is disabled. Use GitHub issue labels to categorize personal todos.");
+                },
                 "assign_voice_admin_todo_project",
-                "Assign or clear the project/category value for a Voice Admin todo item by Todo ID. This updates the Todos.Project field."),
+                "Deprecated: assign project is disabled."),
             AIFunctionFactory.Create(
-                async (
-                    [Description("Todo title or keyword to find the open todo item") ] string titleOrKeyword,
-                    [Description("Project/category label to assign. Provide empty text to clear.")] string? projectOrCategory = null,
-                    [Description("When true, only an exact title match is accepted. Default false for conversational partial matching.")] bool exactMatch = false) =>
-                    await voiceAdminService.AssignTodoProjectByTextAsync(titleOrKeyword, projectOrCategory, exactMatch),
+                (string titleOrKeyword, string? projectOrCategory = null, bool exactMatch = false) =>
+                {
+                    return Task.FromResult<string>("Deprecated: Assigning projects by text is disabled. Use 'list_personal_todos' and update issue labels instead.");
+                },
                 "assign_voice_admin_todo_project_by_text",
-                "Conversational shortcut: assign or clear project/category for an open Voice Admin todo by title or keyword. If multiple matches are found, it returns candidate TodoIds so you can confirm."),
+                "Deprecated: assign project by text is disabled."),
             AIFunctionFactory.Create(
                 () => genericDatabaseService.ListSources().Count > 0 ? "configured" : "no sources configured",
                 "database_registry_status",

@@ -460,6 +460,7 @@ static async Task RunTelegramAsync(
                         dadJokeService,
                         webBrowserService,
                         voiceAdminService,
+                        GitHubTodosService.FromEnvironment(),
                         podcastSubscriptionsService,
                         clipboardHistoryService,
                         textToSpeechService,

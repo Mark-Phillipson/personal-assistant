@@ -29,6 +29,7 @@ internal static class TelegramMessageHandler
         DadJokeService dadJokeService,
         WebBrowserAssistantService webBrowserService,
         VoiceAdminService voiceAdminService,
+        GitHubTodosService gitHubTodosService,
         PodcastSubscriptionsService podcastSubscriptionsService,
         ClipboardHistoryService clipboardHistoryService,
         TextToSpeechService textToSpeechService,
@@ -667,18 +668,41 @@ internal static class TelegramMessageHandler
         }
 
         // Deterministic path for conversational todo add/list requests to avoid model hallucinations.
-        if (storedAttachment is null && voiceAdminService.IsConfigured)
+        if (storedAttachment is null)
         {
             if (LooksLikeTodoAddRequest(text))
             {
                 var todoData = ExtractTodoDataFromText(text);
-                var addResult = await voiceAdminService.AddTodoAsync(todoData.Title, todoData.Description, todoData.Project, todoData.Priority);
-                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(addResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
+                if (gitHubTodosService.IsConfigured)
+                {
+                    var addResult = await gitHubTodosService.AddTodoAsync(todoData.Title, todoData.Description, todoData.Project, cancellationToken);
+                    await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(addResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
+                    return;
+                }
+
+                if (voiceAdminService.IsConfigured)
+                {
+                    var addResult = await voiceAdminService.AddTodoAsync(todoData.Title, todoData.Description, todoData.Project, todoData.Priority);
+                    await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(addResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
+                    return;
+                }
+
+                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap("No todo backend is configured. Configure GitHub Personal Todos (recommended) or Voice Admin DB.", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
                 return;
             }
 
             if (LooksLikeTodoListRequest(text))
             {
+                if (gitHubTodosService.IsConfigured)
+                {
+                    // For GitHub-backed personal todos, list open issues optionally filtered by label.
+                    var labelMatch = Regex.Match(text, "\\blabel\\s*(?:=|is|:)?\\s*([\\w\\s-]+)\\b", RegexOptions.IgnoreCase);
+                    var label = labelMatch.Success ? labelMatch.Groups[1].Value.Trim() : null;
+                    var listResult = await gitHubTodosService.ListOpenIssuesAsync(label, 20, htmlFormat: true, cancellationToken);
+                    await telegram.SendMessageInChunksAsync(chatId, listResult, cancellationToken);
+                    return;
+                }
+
                 if (LooksLikeTodoCsvExportRequest(text))
                 {
                     var exportResult = await ExportVoiceAdminTodosToCsvAsync(text, voiceAdminService);
@@ -686,8 +710,14 @@ internal static class TelegramMessageHandler
                     return;
                 }
 
-                var todoTable = await voiceAdminService.ListIncompleteTodosAsync(asHtmlTable: true);
-                await telegram.SendMessageInChunksAsync(chatId, todoTable, cancellationToken);
+                if (voiceAdminService.IsConfigured)
+                {
+                    var todoTable = await voiceAdminService.ListIncompleteTodosAsync(asHtmlTable: true);
+                    await telegram.SendMessageInChunksAsync(chatId, todoTable, cancellationToken);
+                    return;
+                }
+
+                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap("No todo backend is configured. Configure GitHub Personal Todos (recommended).", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
                 return;
             }
         }
