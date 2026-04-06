@@ -1,0 +1,9 @@
+Android Phone App Experiment / Feasibility Study. Use existing phone app on a different branch as a test to save on the plumbing. Mostly done; still testing. Need to figure out custom commands that are useful. (Fairies Little Helper so far)
+
+---
+Source: Voice Admin Todo Id 19311
+Project: Android Phone
+Created: 2026-04-02 08:36:18.0231321
+
+Migrated from Mark-Phillipson/Personal-Todos#12
+Note: This migration moves a private issue to a public repository by the user's request.

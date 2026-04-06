@@ -1,0 +1,6 @@
+number,title,labels,status,url
+1,Tax Return,"Tax;priority:high;voice-admin-migrated",OPEN,https://github.com/Mark-Phillipson/Personal-Todos/issues/1
+13,Migrate to Blazor,"priority:high;voice-admin-migrated;Chain of Custody",OPEN,https://github.com/Mark-Phillipson/Personal-Todos/issues/13
+12,"Voice Access Replacement?","priority:high;voice-admin-migrated;Android Phone",CLOSED,https://github.com/Mark-Phillipson/Personal-Todos/issues/12 -> https://github.com/Mark-Phillipson/TimeCheck/issues/2
+10,Cloud Todos,"priority:high;voice-admin-migrated;Personal Assistant",CLOSED,https://github.com/Mark-Phillipson/Personal-Todos/issues/10
+9,Phone Link Android,"priority:high;voice-admin-migrated;Community",CLOSED,https://github.com/Mark-Phillipson/Personal-Todos/issues/9 -> https://github.com/Mark-Phillipson/TimeCheck/issues/1 (migrated in error)

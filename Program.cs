@@ -74,6 +74,7 @@ var knownFolderExplorerService = KnownFolderExplorerService.FromEnvironment();
 var telegramAttachmentService = TelegramAttachmentService.FromEnvironment();
 var podcastSubscriptionsService = PodcastSubscriptionsService.FromEnvironmentOrJson();
 var clipboardHistoryService = ClipboardHistoryService.FromEnvironment();
+var gitHubTodosService = GitHubTodosService.FromEnvironment();
 var telegramChatIdStore = TelegramChatIdStore.FromEnvironment();
 
 // Initialize pronunciation dictionary service for TTS corrections.
@@ -85,7 +86,7 @@ var textToSpeechService = TextToSpeechService.FromEnvironment(pronunciationServi
 Console.WriteLine(databaseRegistry.GetSetupStatusText());
 Console.WriteLine($"GenericDatabaseService has {genericDatabaseService.ListSources().Count} source(s) available.");
 
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, tickerNotificationService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService);
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, tickerNotificationService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService, gitHubTodosService);
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;

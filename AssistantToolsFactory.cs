@@ -23,7 +23,8 @@ internal static class AssistantToolsFactory
         TalonUserDirectoryService talonUserDirectoryService,
         KnownFolderExplorerService knownFolderExplorerService,
         PodcastSubscriptionsService podcastSubscriptionsService,
-        ClipboardHistoryService clipboardHistoryService)
+        ClipboardHistoryService clipboardHistoryService,
+        GitHubTodosService gitHubTodosService)
     {
         return
         [
@@ -714,7 +715,40 @@ internal static class AssistantToolsFactory
                 async ([Description("When true, return Telegram-compatible preformatted table text (<pre>). Telegram does not support true <table> tags.") ] bool htmlFormat = false) =>
                     await clipboardHistoryService.GetTodayEntriesAsync(CancellationToken.None, htmlFormat),
                 "get_clipboard_history_today",
-                "Get all clipboard history entries recorded today. Shows timestamps and content snippets. Includes both assistant-copied and manually-monitored entries. Set htmlFormat=true for Telegram preformatted table-style output.")
+                "Get all clipboard history entries recorded today. Shows timestamps and content snippets. Includes both assistant-copied and manually-monitored entries. Set htmlFormat=true for Telegram preformatted table-style output."),
+            AIFunctionFactory.Create(
+                () => gitHubTodosService.GetSetupStatusText(),
+                "personal_todos_status",
+                "Check whether the Personal Todos GitHub integration is configured (requires GITHUB_PERSONAL_TODOS_TOKEN and GITHUB_TODOS_REPO env vars)."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Optional GitHub label to filter by (e.g. project name or priority). Leave empty for all.")] string? label = null,
+                    [Description("Maximum number of open todos to return (1-100, default 20)")] int maxResults = 20,
+                    [Description("When true (default), return a Telegram-friendly preformatted table.")] bool htmlFormat = true) =>
+                    await gitHubTodosService.ListOpenIssuesAsync(label, maxResults, htmlFormat),
+                "list_personal_todos",
+                "List open personal todos stored as GitHub Issues in the Personal-Todos repository. Optionally filter by label. Returns issue number, title, and labels."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Todo title (required)")] string title,
+                    [Description("Optional longer description or detail for the todo body")] string? body = null,
+                    [Description("Optional label / project category to apply (e.g. Work, Personal, Finance)")] string? label = null) =>
+                    await gitHubTodosService.AddTodoAsync(title, body, label),
+                "add_personal_todo",
+                "Add a new personal todo as a GitHub Issue in the Personal-Todos repository. Provide a clear title and optional body/label."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Issue number from list_personal_todos (e.g. 3)")] int issueNumber,
+                    [Description("New title for the todo (leave null to keep existing title)")] string? newTitle = null,
+                    [Description("New body / description for the todo (leave null to keep existing body)")] string? newBody = null) =>
+                    await gitHubTodosService.UpdateTodoAsync(issueNumber, newTitle, newBody),
+                "update_personal_todo",
+                "Edit the title or description of an existing personal todo by its issue number. Use list_personal_todos to get the correct issue number first."),
+            AIFunctionFactory.Create(
+                async ([Description("Issue number from list_personal_todos to mark as done and close")] int issueNumber) =>
+                    await gitHubTodosService.CloseTodoAsync(issueNumber),
+                "complete_personal_todo",
+                "Mark a personal todo as complete by closing the GitHub Issue. Use list_personal_todos to find the issue number first.")
         ];
     }
 
