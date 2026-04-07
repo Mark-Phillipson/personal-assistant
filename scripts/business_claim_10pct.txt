@@ -1,0 +1,7 @@
+Business Expense total: £478.56
+
+If you want to claim 10% of household (flagged) plus full business expenses, combine:
+- Household flagged total: £11,509.80 (10% = £1,150.98)
+- Business Expense total: £478.56
+
+Generated: 2026-04-07

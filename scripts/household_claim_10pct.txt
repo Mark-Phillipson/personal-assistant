@@ -1,0 +1,5 @@
+Household claimable total (flagged): £11,509.80
+10% claim amount: £1,150.98
+
+Generated from scripts/household_claimable.csv
+Date: 2026-04-07
