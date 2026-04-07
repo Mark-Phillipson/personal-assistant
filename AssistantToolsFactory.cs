@@ -26,8 +26,8 @@ internal static class AssistantToolsFactory
         ClipboardHistoryService clipboardHistoryService,
         GitHubTodosService gitHubTodosService)
     {
-        return
-        [
+        var tools = new List<AIFunction>
+        {
             AIFunctionFactory.Create(
                 ([Description("Optional email address that should own Gmail access")] string? expectedAccount = null) =>
                     gmailService.GetSetupStatus(expectedAccount),
@@ -655,7 +655,33 @@ internal static class AssistantToolsFactory
                     await gitHubTodosService.CloseTodoAsync(issueNumber),
                 "complete_personal_todo",
                 "Mark a personal todo as complete by closing the GitHub Issue. Use list_personal_todos to find the issue number first.")
-        ];
+        };
+
+        // Defense-in-depth: filter out any tools that are deprecated or explicitly related
+        // to legacy Voice Admin todo write operations so models cannot discover them.
+        var filtered = tools.Where(t =>
+        {
+            try
+            {
+                var name = t.Name ?? string.Empty;
+                var desc = t.Description ?? string.Empty;
+
+                if (name.IndexOf("voice_admin", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return false;
+
+                if (desc.IndexOf("deprecated", StringComparison.OrdinalIgnoreCase) >= 0
+                    || desc.IndexOf("removed", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return false;
+            }
+            catch
+            {
+                // be conservative: if anything goes wrong, keep the tool
+            }
+
+            return true;
+        }).ToList();
+
+        return filtered;
     }
 
     private static string BuildCsvContent(IEnumerable<IDictionary<string, object?>> rows)
