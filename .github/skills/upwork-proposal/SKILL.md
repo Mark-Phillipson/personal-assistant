@@ -31,7 +31,8 @@ Mark P.
 - Mention that Mark is looking for a long-term engagement and is currently available.
 - Mention that Mark has high-speed broadband.
 - Present this as an accessibility note: Mark currently uses a microphone-driven workflow instead of a keyboard and mouse, and during meetings he may need to speak to his computer at times so clients can bear that in mind and avoid confusion. Where appropriate, also note that this workflow can be efficient and, in some cases, faster, especially alongside modern large language model tools.
-- Mention that Mark can integrate AI functionality such as Smart Paste, textarea suggestions, and semantic search into the application when relevant.
+- Mention that Mark can integrate AI functionality such as specific domain chat interface, data entry by clipboard, custom text box suggestions, summarization, and semantic search into the application when relevant.
+ - Mention that Mark can integrate AI functionality such as specific domain chat interfaces, and can build a personal assistant to manage email, chat messages, and general computer tasks with voice and text interactions, as well as data entry by clipboard, custom text box suggestions, summarization, and semantic search into the application when relevant.
 - Mention that Mark has a valid GitHub Copilot subscription, which can speed up the development process considerably, especially when typing repetitive or repeating code.
 - Mention that a detailed application specification is required so client needs can be met accurately, and that without it the project is more difficult to complete on time and within budget.
 - Keep the tone professional, direct, and concise.
@@ -47,6 +48,8 @@ Mark P.
 - Full Stack Developer with ASP.NET MVC/Blazor, C#, and Microsoft SQL Server.
 - Developing data-centric desktop and web applications with Microsoft technologies since 1999.
 - Proficient in GUI design and UX with MVC and Blazor.
+ - Proficient in GUI design and UX with MVC and Blazor.
+ - GitHub: https://github.com/Mark-Phillipson
 
 ## Skills To Use Selectively
 
@@ -91,4 +94,5 @@ Mark P.
 - For security/confidentiality questions, mention NDA readiness, least-privilege access, and encrypted/password-managed workflows.
 - For individual-vs-company/availability questions, state that Mark is an individual developer, seeks long-term engagements, and is currently available.
 - For recent similar-project questions, include concrete examples when available (for example a relevant live demo), then offer to share more detail in a call.
-- Use this Blazor Hybrid example link when relevant to the job: https://www.fairieslittlehelper.online
+ - Use this Blazor PWA example link when relevant to the job: https://www.fairieslittlehelper.online
+ - Use this Blazor Web App example link when relevant to the job: https://voicelauncherblazor.azurewebsites.net/

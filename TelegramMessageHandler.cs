@@ -10,6 +10,7 @@ using Microsoft.Extensions.AI;
 
 internal static class TelegramMessageHandler
 {
+    private static readonly ConcurrentDictionary<long, string> SessionToolSignatures = new();
     public static async Task HandleAsync(
         TelegramMessage message,
         string text,
@@ -819,10 +820,23 @@ internal static class TelegramMessageHandler
         PersonalityProfile profile,
         ConcurrentDictionary<long, List<string>> conversationHistories)
     {
+        var currentSig = string.Join(";", assistantTools.Select(t => t.Name ?? string.Empty).OrderBy(n => n));
+
         if (sessions.TryGetValue(chatId, out var existingSession))
         {
-            Console.WriteLine($"[copilot.session.reuse] chat={chatId}");
-            return existingSession;
+            if (SessionToolSignatures.TryGetValue(chatId, out var knownSig) && string.Equals(knownSig, currentSig, StringComparison.Ordinal))
+            {
+                Console.WriteLine($"[copilot.session.reuse] chat={chatId}");
+                return existingSession;
+            }
+
+            Console.WriteLine($"[copilot.session.tools_changed] chat={chatId} disposing stale session due to toolset change");
+            if (sessions.TryRemove(chatId, out var removed))
+            {
+                await removed.DisposeAsync();
+            }
+
+            SessionToolSignatures.TryRemove(chatId, out _);
         }
 
         var sendFileTool = AIFunctionFactory.Create(
@@ -887,6 +901,7 @@ internal static class TelegramMessageHandler
 
         if (sessions.TryAdd(chatId, createdSession))
         {
+            SessionToolSignatures[chatId] = currentSig;
             Console.WriteLine($"[copilot.session.create] chat={chatId}");
             return createdSession;
         }

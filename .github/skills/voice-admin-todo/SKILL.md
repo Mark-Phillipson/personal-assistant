@@ -1,7 +1,7 @@
 ---
 name: voice-admin-todo
-description: 'Manage and query Voice Admin todo lists and launcher actions with read-only and launcher-focused actions. Write operations (add/complete/assign) are deprecated and should not be used for personal todos.'
-argument-hint: 'Ask about open todos or launcher searches. Write operations are deprecated; prefer Personal-Todos for personal todo management.'
+description: 'Manage and query Voice Admin launcher actions with read-only and launcher-focused actions. For personal todo management, prefer the personal-todos skill which uses GitHub Issues. This skill is focused on Voice Admin-specific interactions and read-only queries.'
+argument-hint: 'Ask about open launcher searches.'
 user-invocable: false
 ---
 
