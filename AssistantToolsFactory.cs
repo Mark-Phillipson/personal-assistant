@@ -225,55 +225,8 @@ internal static class AssistantToolsFactory
                     await voiceAdminService.LaunchLauncherByIdAsync(launcherId),
                 "launch_voice_admin_launcher",
                 "Launch a Voice Admin launcher entry by its numeric ID on the host machine. Always call search_voice_admin_launchers first to confirm the ID unless the user explicitly provides one."),
-            AIFunctionFactory.Create(
-                (string? projectOrCategory = null, int? maxResults = null, bool htmlFormat = true) =>
-                {
-                    return Task.FromResult<string>("Deprecated: Voice Admin Todos are migrated. Use 'list_personal_todos' (GitHub Issues) instead.");
-                },
-                "list_voice_admin_open_todos",
-                "Deprecated: was List Voice Admin Todos. Use GitHub-backed personal todos instead."),
-            AIFunctionFactory.Create(
-                (string? projectOrCategory = null, int? maxResults = null, string? outputFileName = null, bool openInVsCode = true) =>
-                {
-                    return Task.FromResult<string>("Deprecated: Exporting Voice Admin Todos is disabled. Use GitHub Issues exports via the Personal-Todos repository instead.");
-                },
-                "export_voice_admin_open_todos_to_csv",
-                "Deprecated: exporting Voice Admin Todos to CSV is disabled."),
-            AIFunctionFactory.Create(
-                (string title, string? description = null, string? projectOrCategory = null, int sortPriority = 0) =>
-                {
-                    return Task.FromResult<string>("Deprecated: Adding to Voice Admin Todos is disabled. Use 'add_personal_todo' to create a GitHub Issue in Personal-Todos.");
-                },
-                "add_voice_admin_todo",
-                "Deprecated: add voice admin todo is disabled."),
-            AIFunctionFactory.Create(
-                (int todoId) =>
-                {
-                    return Task.FromResult<string>("Deprecated: Completing Voice Admin Todos is disabled. Use 'complete_personal_todo' with the GitHub Issue number instead.");
-                },
-                "complete_voice_admin_todo",
-                "Deprecated: complete voice admin todo is disabled."),
-            AIFunctionFactory.Create(
-                (string titleOrKeyword, bool exactMatch = false) =>
-                {
-                    return Task.FromResult<string>("Deprecated: Completing Voice Admin Todos by text is disabled. Search personal todos with 'list_personal_todos' and close by issue number.");
-                },
-                "complete_voice_admin_todo_by_text",
-                "Deprecated: complete by text is disabled."),
-            AIFunctionFactory.Create(
-                (int todoId, string? projectOrCategory = null) =>
-                {
-                    return Task.FromResult<string>("Deprecated: Assigning projects to Voice Admin Todos is disabled. Use GitHub issue labels to categorize personal todos.");
-                },
-                "assign_voice_admin_todo_project",
-                "Deprecated: assign project is disabled."),
-            AIFunctionFactory.Create(
-                (string titleOrKeyword, string? projectOrCategory = null, bool exactMatch = false) =>
-                {
-                    return Task.FromResult<string>("Deprecated: Assigning projects by text is disabled. Use 'list_personal_todos' and update issue labels instead.");
-                },
-                "assign_voice_admin_todo_project_by_text",
-                "Deprecated: assign project by text is disabled."),
+            // Voice Admin todo operations were removed to avoid confusion with Personal Todos (GitHub Issues).
+            // Use the Personal-Todos functions (list_personal_todos, add_personal_todo, complete_personal_todo) instead.
             AIFunctionFactory.Create(
                 () => genericDatabaseService.ListSources().Count > 0 ? "configured" : "no sources configured",
                 "database_registry_status",
