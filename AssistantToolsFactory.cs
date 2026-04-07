@@ -641,7 +641,7 @@ internal static class AssistantToolsFactory
                     [Description("Optional label / project category to apply (e.g. Work, Personal, Finance)")] string? label = null) =>
                     await gitHubTodosService.AddTodoAsync(title, body, label),
                 "add_personal_todo",
-                "Add a new personal todo as a GitHub Issue in the Personal-Todos repository. Provide a clear title and optional body/label."),
+                "Add a new personal todo as a GitHub Issue in the Personal-Todos repository. If the user gives freeform text, generate a concise title (prefer under 60 chars) summarizing the action and place remaining details into the body. If the user already provides a short title and optional body, use them verbatim. Optionally include a label."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Issue number from list_personal_todos (e.g. 3)")] int issueNumber,

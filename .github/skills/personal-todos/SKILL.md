@@ -22,6 +22,16 @@ Use this skill for all personal todo interactions. Todos are stored as GitHub Is
 3. Confirm the created issue number and URL to the user.
 4. Do not chain `list_personal_todos` in the same turn unless the user asks.
 
+### Title extraction guidance
+When the user provides a single freeform todo request (for example: "Buy printer ink and check the cartridge model, and also order labels for the office"), do not place the entire text into the `title` parameter. Instead:
+
+1. Generate a concise, human-readable `title` that summarizes the action (aim for 40-80 characters; prefer under 60).
+2. Put the remaining detail, context, or subtasks into the `body` parameter so the issue description contains the full user intent.
+3. If the user message already looks like a short title (one phrase or a short imperative sentence), use it as `title` and leave `body` empty unless they provided additional context.
+4. If the user explicitly specifies a `title` and `body`, use their inputs verbatim.
+
+Rationale: GitHub issue titles should be short and searchable while the body holds details and context. Follow this rule when mapping natural language to `add_personal_todo(title, body?, label?)` calls.
+
 ### Editing a todo (update title or description)
 1. If the user does not provide an issue number, call `list_personal_todos` first to find it.
 2. Call `update_personal_todo(issueNumber, newTitle?, newBody?)`.
