@@ -680,14 +680,18 @@ internal static class TelegramMessageHandler
                     return;
                 }
 
-                if (voiceAdminService.IsConfigured)
+                // Voice Admin todos are deprecated; prefer GitHub Personal Todos.
+                if (voiceAdminService.IsConfigured && gitHubTodosService.IsConfigured is false)
                 {
-                    var addResult = await voiceAdminService.AddTodoAsync(todoData.Title, todoData.Description, todoData.Project, todoData.Priority);
-                    await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(addResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
+                    // If only the legacy Voice Admin DB is configured, inform the user it's deprecated and point them to Personal-Todos.
+                    await telegram.SendMessageInChunksAsync(chatId,
+                        EmojiPalette.Wrap("Voice Admin todos are deprecated. Configure GitHub Personal Todos and use 'add_personal_todo' to create a todo in Personal-Todos.", EmojiPalette.Warning, profile.UseEmoji),
+                        cancellationToken);
                     return;
                 }
 
-                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap("No todo backend is configured. Configure GitHub Personal Todos (recommended) or Voice Admin DB.", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+                // If GitHub Personal Todos is not configured, instruct the user how to set it up.
+                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap("No todo backend is configured. Configure GitHub Personal Todos (recommended) by setting GITHUB_PERSONAL_TODOS_TOKEN and GITHUB_TODOS_REPO, then use 'add_personal_todo' to create todos.", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
                 return;
             }
 
