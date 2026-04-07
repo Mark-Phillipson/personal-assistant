@@ -86,6 +86,7 @@ internal static class SystemPromptBuilder
             "When the user asks to find text in Talon files, call search_talon_user_files_text.",
             "Never write, modify, or delete Talon files. Talon file tools are strictly read-only.",
             "For personal todo management (listing, adding, editing, completing todos stored as GitHub Issues in Personal-Todos), use the personal-todos skill and the personal_todos_* tools. Do not use Voice Admin todo tools for personal todos.",
+            "If `personal_todos_status` reports configured, always use `add_personal_todo` for creating todos; do not call any Voice Admin todo write operations.",
             "When emoji are appropriate, prefer contextual choices like: confirmations ✅, calendar 📅, email 📧, warnings ⚠️.",
             greetingRule,
             farewellRule

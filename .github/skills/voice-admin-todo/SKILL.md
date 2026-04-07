@@ -1,8 +1,8 @@
 ---
 name: voice-admin-todo
-description: 'Manage and query Voice Admin todo lists and launcher actions with read-only and update actions. Use this skill for Voice Admin task workflows.'
-argument-hint: 'Ask about open todos, add tasks, complete tasks, or export todo data.'
-user-invocable: true
+description: 'Manage and query Voice Admin todo lists and launcher actions with read-only and launcher-focused actions. Write operations (add/complete/assign) are deprecated and should not be used for personal todos.'
+argument-hint: 'Ask about open todos or launcher searches. Write operations are deprecated; prefer Personal-Todos for personal todo management.'
+user-invocable: false
 ---
 
 # Voice Admin Todo + Launcher Skill
@@ -25,14 +25,10 @@ Use this skill to handle Voice Admin todo and launcher interactions without embe
    - export_voice_admin_open_todos_to_csv(projectOrCategory?, maxResults?)
    - if user wants both summary and CSV, output summary + CSV file path.
 
-4. For adding todos:
-   - add_voice_admin_todo(title, description?, project?, priority?)
-   - do not chain list_voice_admin_open_todos in same turn as adding unless user asks.
-
-5. For completing todos:
-   - if user gives Todo ID, call complete_voice_admin_todo(todoId).
-   - if no ID, call complete_voice_admin_todo_by_text(text) first.
-   - confirm the result to user.
+4. For adding and completing todos: (DEPRECATED)
+   - Write operations such as `add_voice_admin_todo`, `complete_voice_admin_todo`, and related assignment APIs are deprecated for personal todo workflows.
+   - For personal todo creation, editing, or completion, prefer the `personal-todos` skill which stores todos as GitHub Issues.
+   - If a caller attempts to invoke write operations, return a brief guidance message directing users to configure Personal-Todos or use `add_personal_todo`.
 
 6. For assigning/changing category or project:
    - if user provides Todo ID, call assign_voice_admin_todo_project(todoId, projectOrCategory).
