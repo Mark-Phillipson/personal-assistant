@@ -210,3 +210,11 @@ Read [](file:///c%3A/Users/MPhil/source/repos/personal-assistant/AssistantToolsF
 Read [](file:///c%3A/Users/MPhil/source/repos/personal-assistant/WebBrowserAssistantService.cs#820-820), lines 820 to 850
 
 Searched for text `StatusAsync|GetBrowserAsync|GetPlaywrightAsync` (`**/WebBrowserAssistantService.cs`), 6 results
+
+## Launching Browser
+
+```powershell
+Start-Process -FilePath "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" -ArgumentList '--remote-debugging-port=9223','--user-data-dir=msedge-remote-profile'
+```
+
+Start-Process 'msedge' '--remote-debugging-port=9223 --user-data-dir="C:\Users\MPhil\AppData\Local\Microsoft\Edge\User Data"' 

@@ -9,6 +9,10 @@
     <NoWarn>CA1416;CS8602;NETSDK1206</NoWarn>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64</RuntimeIdentifiers>
+    <!-- Disable SDK-generated assembly attributes because this project defines AssemblyInfo.cs manually -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- Also disable generation of TargetFrameworkAttribute to avoid duplicate attribute when RuntimeIdentifier is present -->
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
 
   <ItemGroup>

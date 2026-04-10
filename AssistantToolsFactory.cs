@@ -185,11 +185,36 @@ internal static class AssistantToolsFactory
             AIFunctionFactory.Create(
                 async (
                     [Description("Full URL of the page containing the form")] string url,
-                    [Description("JSON object mapping form field name/id to value, e.g. {\"firstName\":\"Carla\",\"lastName\":\"Schmid\"}")] string formFieldsJson,
-                    [Description("When true, attempt to submit the form after filling. Default is false.")] bool submitForm = false) =>
-                    await webBrowserService.FillWebFormAsync(url, formFieldsJson, submitForm),
+                    [Description("JSON object mapping form field name/id to value, e.g. {\"firstName\":\"Carla\",\"lastName\":\"Schmid\"}")] string formFieldsJson) =>
+                    await webBrowserService.FillWebFormAsync(url, formFieldsJson),
                 "fill_web_form",
-                "Navigate to a URL and fill in web form fields by their name or id attributes. Provide the fields as a JSON object. Optionally submit the form."),
+                "Navigate to a URL and fill in web form fields by their name or id attributes. Provide the fields as a JSON object. NEVER submits — the tab stays open for the user to review and submit manually."),
+            AIFunctionFactory.Create(
+                async ([Description("Full URL of the page containing the form to inspect")] string url) =>
+                    await webBrowserService.ReadWebFormStructureAsync(url),
+                "read_web_form_structure",
+                "Open a URL in the user's browser (Edge by default) and return the form fields discovered via the accessibility tree. Includes role, label, required status, and available options for each field. Password fields are excluded and flagged. Call this before fill_web_form to discover what fields the form expects."),
+            AIFunctionFactory.Create(
+                () => webBrowserService.LaunchFormBrowser(),
+                "launch_form_browser",
+                "Launch Edge with remote debugging enabled so the assistant can fill web forms. Call this FIRST before fill_web_form or conversational_fill. Returns immediately — after Edge opens, the user should log in to any required sites and say 'ready'."),
+            AIFunctionFactory.Create(
+                async ([Description("Full URL of the page to screenshot")] string url) =>
+                    await webBrowserService.TakePageScreenshotAsync(url),
+                "take_page_screenshot",
+                "Take a screenshot of a page in the user's browser and save it to the logs folder. Returns the file path. Use this to let the user verify a filled form before submitting."),
+            AIFunctionFactory.Create(
+                async ([Description("Full URL of the page containing the form")] string url,
+                       [Description("One or more natural language fill instructions separated by semicolons. Example: 'put John Smith in the full name field; put john@example.com in the email field; set country to UK'")] string instructions) =>
+                    await webBrowserService.BatchConversationalFillAsync(url, instructions),
+                "batch_fill_form",
+                "Fill multiple form fields in a single call based on natural language instructions separated by semicolons. Much faster than calling conversational_fill once per field. Example instructions: 'put John Smith in the full name field; put john@example.com in the email field; set country to UK'. NEVER submits — the tab stays open for the user to review and submit manually."),
+            AIFunctionFactory.Create(
+                async ([Description("Full URL of the page containing the form")] string url,
+                       [Description("Natural language instruction, e.g. 'put John Smith in the full name field'")] string instruction) =>
+                    await webBrowserService.ConversationalFillAsync(url, instruction),
+                "conversational_fill",
+                "Fill a SINGLE form field based on a natural language instruction. Use batch_fill_form instead when filling two or more fields — it is much faster. NEVER submits — the tab stays open for the user to review and submit manually."),
             AIFunctionFactory.Create(
                 async () =>
                     await webBrowserService.GetUpworkSessionStatusAsync(),

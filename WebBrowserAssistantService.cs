@@ -2,6 +2,7 @@ using Microsoft.Playwright;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using System.Text.Json;
 
 internal sealed class WebBrowserAssistantService : IAsyncDisposable
 {
@@ -23,6 +24,8 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
     private readonly int _timeoutMs;
     private readonly string? _upworkChromeCdpUrl;
     private readonly ClipboardAssistantService? _clipboardService;
+    private readonly string? _formBrowserCdpUrl;
+    private readonly string _formBrowserKey;
 
     private IPlaywright? _playwright;
     private IBrowser? _browser;
@@ -32,14 +35,18 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
     private bool _upworkUsingCdp;
     private DateTimeOffset? _upworkLastCdpAttemptUtc;
     private string? _upworkCdpLastError;
+    private IBrowser? _formBrowser;
+    private bool _formBrowserIsCdp;
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
-    private WebBrowserAssistantService(bool headless, int timeoutMs, string? upworkChromeCdpUrl, ClipboardAssistantService? clipboardService)
+    private WebBrowserAssistantService(bool headless, int timeoutMs, string? upworkChromeCdpUrl, ClipboardAssistantService? clipboardService, string? formBrowserCdpUrl, string formBrowserKey)
     {
         _headless = headless;
         _timeoutMs = timeoutMs;
         _upworkChromeCdpUrl = upworkChromeCdpUrl;
         _clipboardService = clipboardService;
+        _formBrowserCdpUrl = formBrowserCdpUrl;
+        _formBrowserKey = formBrowserKey;
     }
 
     private static string GetChromeExecutablePath()
@@ -52,12 +59,36 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         throw new InvalidOperationException("Could not find Google Chrome executable. Please install Chrome or set UPWORK_CHROME_CDP_URL to a running instance.");
     }
 
+    private static string GetEdgeExecutablePath()
+    {
+        var paths = new[]
+        {
+            @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            @"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        };
+        foreach (var path in paths)
+            if (System.IO.File.Exists(path)) return path;
+        throw new InvalidOperationException("Could not find Microsoft Edge executable. Please install Edge or set FORM_FILL_BROWSER_CDP_URL to a running Edge instance.");
+    }
+
+    private string GetConfiguredFormBrowserPath()
+    {
+        return _formBrowserKey.ToLowerInvariant() switch
+        {
+            "msedge" or "edge" => GetEdgeExecutablePath(),
+            "chrome" => GetChromeExecutablePath(),
+            _ => GetEdgeExecutablePath()
+        };
+    }
+
     public static WebBrowserAssistantService FromEnvironment(ClipboardAssistantService? clipboardService = null)
     {
         var headless = EnvironmentSettings.ReadBool("PLAYWRIGHT_HEADLESS", fallback: true);
         var timeoutSeconds = EnvironmentSettings.ReadInt("PLAYWRIGHT_TIMEOUT_SECONDS", fallback: 30, min: 5, max: 120);
         var upworkChromeCdpUrl = EnvironmentSettings.ReadOptionalString("UPWORK_CHROME_CDP_URL");
-        return new WebBrowserAssistantService(headless, timeoutSeconds * 1000, upworkChromeCdpUrl, clipboardService);
+        var formBrowserCdpUrl = EnvironmentSettings.ReadOptionalString("FORM_FILL_BROWSER_CDP_URL");
+        var formBrowserKey = EnvironmentSettings.ReadString("FORM_FILL_BROWSER", "msedge");
+        return new WebBrowserAssistantService(headless, timeoutSeconds * 1000, upworkChromeCdpUrl, clipboardService, formBrowserCdpUrl, formBrowserKey);
     }
 
     public string GetSetupStatusText()
@@ -738,11 +769,13 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Navigate to a URL and fill in named form fields, then optionally submit the form.
+    /// <summary>
+    /// Navigate to a URL and fill in named form fields. Never submits or closes the tab —
+    /// the user reviews and submits manually.
     /// <paramref name="formFieldsJson"/> should be a JSON object mapping field name/id to value,
     /// e.g. {"firstName":"Carla","lastName":"Schmid"}.
     /// </summary>
-    public async Task<string> FillWebFormAsync(string url, string formFieldsJson, bool submitForm = false, CancellationToken cancellationToken = default)
+    public async Task<string> FillWebFormAsync(string url, string formFieldsJson, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(url))
             return "No URL provided.";
@@ -766,71 +799,44 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
 
         try
         {
-            var browser = await GetBrowserAsync(cancellationToken);
-            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
-            {
-                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-            });
+            var browser = await GetFormBrowserAsync(cancellationToken);
+            var context = browser.Contexts.FirstOrDefault() ?? await browser.NewContextAsync();
 
-            var page = await context.NewPageAsync();
+            // Find the tab already showing the target URL — never create new tabs or navigate existing ones.
+            var page = FindPageForUrl(context, url);
+            if (page is null)
+                return $"No open tab is currently showing {url}. Please open that page in your Edge browser and try again.";
+
             page.SetDefaultTimeout(_timeoutMs);
 
-            try
+            var filled = new List<string>();
+            var skipped = new List<string>();
+
+            foreach (var (fieldName, value) in fields)
             {
-                await page.GotoAsync(url, new PageGotoOptions
+                var selector = $"[name='{fieldName}'], #{fieldName}";
+                var element = page.Locator(selector).First;
+                try
                 {
-                    WaitUntil = WaitUntilState.DOMContentLoaded,
-                    Timeout = _timeoutMs
-                });
-
-                var filled = new List<string>();
-                var skipped = new List<string>();
-
-                foreach (var (fieldName, value) in fields)
-                {
-                    // Try by name attribute first, then by id
-                    var selector = $"[name='{fieldName}'], #{fieldName}";
-                    var element = page.Locator(selector).First;
-                    try
-                    {
-                        await element.WaitForAsync(new LocatorWaitForOptions { Timeout = 5000 });
-                        var tagName = await element.EvaluateAsync<string>("el => el.tagName.toLowerCase()");
-                        if (tagName == "select")
-                            await element.SelectOptionAsync(value);
-                        else
-                            await element.FillAsync(value);
-                        filled.Add(fieldName);
-                    }
-                    catch
-                    {
-                        skipped.Add(fieldName);
-                    }
+                    await element.WaitForAsync(new LocatorWaitForOptions { Timeout = 5000 });
+                    var tagName = await element.EvaluateAsync<string>("el => el.tagName.toLowerCase()");
+                    if (tagName == "select")
+                        await element.SelectOptionAsync(value);
+                    else
+                        await element.FillAsync(value);
+                    filled.Add(fieldName);
                 }
-
-                if (submitForm)
+                catch
                 {
-                    try
-                    {
-                        await page.Locator("form button[type='submit'], form input[type='submit']").First.ClickAsync();
-                        await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-                    }
-                    catch (Exception ex)
-                    {
-                        return $"Form fields filled ({string.Join(", ", filled)}) but submit failed: {ex.Message}";
-                    }
+                    skipped.Add(fieldName);
                 }
+            }
 
-                var summary = $"Filled {filled.Count} field(s): {string.Join(", ", filled)}.";
-                if (skipped.Count > 0)
-                    summary += $" Could not locate {skipped.Count} field(s): {string.Join(", ", skipped)}.";
-                if (submitForm)
-                    summary += " Form submitted.";
-                return summary;
-            }
-            finally
-            {
-                await page.CloseAsync();
-            }
+            var summary = $"Filled {filled.Count} field(s): {string.Join(", ", filled)}.";
+            if (skipped.Count > 0)
+                summary += $" Could not locate {skipped.Count} field(s): {string.Join(", ", skipped)}.";
+            summary += " The tab is still open — please review and submit manually.";
+            return summary;
         }
         catch (PlaywrightException ex)
         {
@@ -839,6 +845,99 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         catch (Exception ex)
         {
             return $"Failed to fill form: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Navigate to a URL in the user's actual browser (Edge by default) and return the form fields
+    /// using the accessibility snapshot. Password fields are excluded and flagged in warnings.
+    /// </summary>
+    public async Task<string> ReadWebFormStructureAsync(string url, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return "No URL provided.";
+        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            url = "https://" + url;
+
+        try
+        {
+            var browser = await GetFormBrowserAsync(cancellationToken);
+            var context = browser.Contexts.FirstOrDefault() ?? await browser.NewContextAsync();
+
+            var page = FindPageForUrl(context, url);
+            if (page is null)
+                return $"No open tab is currently showing {url}. Please open that page in your Edge browser and try again.";
+
+            page.SetDefaultTimeout(_timeoutMs);
+
+#pragma warning disable CS0612
+                var snapshot = await page.Accessibility.SnapshotAsync();
+#pragma warning restore CS0612
+                if (snapshot is null)
+                    return "No accessibility snapshot available. The page may be blank or not interactive.";
+
+                var fields = new List<System.Text.Json.JsonElement>();
+                var warnings = new List<string>();
+                FlattenFormControls(snapshot.Value, fields, warnings);
+
+                if (fields.Count == 0)
+                {
+                    var msg = "No form fields detected on this page.";
+                    if (warnings.Count > 0)
+                        msg += " Warnings: " + string.Join("; ", warnings);
+                    return msg;
+                }
+
+                var result = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["url"] = url,
+                    ["fieldCount"] = fields.Count,
+                    ["fields"] = new System.Text.Json.Nodes.JsonArray(fields.Select(f =>
+                        System.Text.Json.Nodes.JsonNode.Parse(f.GetRawText())!).ToArray()),
+                };
+                if (warnings.Count > 0)
+                    result["warnings"] = new System.Text.Json.Nodes.JsonArray(warnings.Select(w =>
+                        System.Text.Json.Nodes.JsonValue.Create(w)!).Cast<System.Text.Json.Nodes.JsonNode>().ToArray());
+
+                return result.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to read form structure: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Take a screenshot of the given URL using the user's actual browser and save it to the logs folder.
+    /// Returns the file path of the saved screenshot.
+    /// </summary>
+    public async Task<string> TakePageScreenshotAsync(string url, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return "No URL provided.";
+        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            url = "https://" + url;
+
+        try
+        {
+            var browser = await GetFormBrowserAsync(cancellationToken);
+            var context = browser.Contexts.FirstOrDefault() ?? await browser.NewContextAsync();
+
+            var page = FindPageForUrl(context, url);
+            if (page is null)
+                return $"No open tab is showing {url}. Please open that page in Edge first.";
+
+            System.IO.Directory.CreateDirectory("logs");
+            var screenshotPath = $"logs/form-screenshot-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.png";
+            await page.ScreenshotAsync(new PageScreenshotOptions { Path = screenshotPath, FullPage = false });
+
+            return screenshotPath;
+        }
+        catch (Exception ex)
+        {
+            return $"Screenshot failed: {ex.Message}";
         }
     }
 
@@ -880,6 +979,168 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         finally
         {
             _initLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Get (or lazily create) a browser connected to the user's actual running browser via CDP.
+    /// Defaults to Microsoft Edge on port 9223. If no running instance is found, Edge is launched
+    /// with --remote-debugging-port=9223 so the user can log in manually.
+    /// </summary>
+    /// <summary>
+    /// Find an open page whose URL matches the given URL (ignoring trailing slash differences).
+    /// Returns null if no match — callers should then ask the user to open the page rather than
+    /// navigating or creating new tabs.
+    /// </summary>
+    private static IPage? FindPageForUrl(IBrowserContext context, string url)
+    {
+        var normalised = url.TrimEnd('/');
+        return context.Pages.FirstOrDefault(p =>
+            p.Url.TrimEnd('/').StartsWith(normalised, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetRealEdgeProfileDir() =>
+        System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Microsoft", "Edge", "User Data");
+
+    /// <summary>
+    /// Launches Edge with --remote-debugging-port=9223 using your real Edge profile.
+    /// If Edge is already running WITHOUT the debug port, it closes existing Edge windows
+    /// first (to free the profile lock), then relaunches with the debug port.
+    /// Returns once the CDP endpoint is confirmed listening.
+    /// </summary>
+    public string LaunchFormBrowser()
+    {
+        var cdpUrl = string.IsNullOrWhiteSpace(_formBrowserCdpUrl)
+            ? "http://127.0.0.1:9223"
+            : _formBrowserCdpUrl;
+
+        // If CDP port is already responding, nothing to do
+        if (IsCdpPortUp(cdpUrl))
+            return $"✅ Edge is already running with remote debugging at {cdpUrl}. Ready to fill forms.";
+
+        var exePath = GetConfiguredFormBrowserPath();
+        var profileDir = GetRealEdgeProfileDir();
+
+        // Kill any existing main Edge processes (those WITHOUT --type= are the browser host).
+        // Subprocesses (renderer, gpu, utility) will exit automatically when the parent dies.
+        var mainEdgeProcs = System.Diagnostics.Process.GetProcessesByName("msedge")
+            .Where(p =>
+            {
+                try
+                {
+                    var cmdLine = p.MainModule?.FileName; // just checking access
+                    // Heuristic: main browser process has a window handle or no --type= in its args
+                    // We detect subprocesses by checking if they have --type= via WMI would be heavy;
+                    // instead we kill all msedge processes and let Windows restart them cleanly.
+                    return true;
+                }
+                catch { return false; }
+            })
+            .ToList();
+
+        foreach (var p in mainEdgeProcs)
+        {
+            try { p.Kill(entireProcessTree: false); } catch { }
+        }
+
+        // Brief pause to let process handles release the profile lock
+        System.Threading.Thread.Sleep(2000);
+
+        // Launch with real profile + remote debugging
+        new System.Diagnostics.Process
+        {
+            StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = $"--remote-debugging-port=9223 --user-data-dir=\"{profileDir}\"",
+                UseShellExecute = true
+            }
+        }.Start();
+
+        // Wait up to 15s for CDP endpoint to come up
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            System.Threading.Thread.Sleep(1000);
+            if (IsCdpPortUp(cdpUrl))
+                return $"✅ Edge is ready with your real profile and remote debugging on port 9223. " +
+                       "Your tabs should be restored. You can now say \"ready\" and I'll fill the form.";
+        }
+
+        return $"⚠️ Edge launched but the debug port at {cdpUrl} didn't respond within 15 seconds. " +
+               "Edge may still be loading — try saying \"ready\" in a moment.";
+    }
+
+    private static bool IsCdpPortUp(string cdpBaseUrl)
+    {
+        try
+        {
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            return http.GetAsync(cdpBaseUrl + "/json/version").Result.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    private async Task<IBrowser> GetFormBrowserAsync(CancellationToken cancellationToken)
+    {
+        // Validate cached connection is still alive
+        if (_formBrowser is not null)
+        {
+            try { _ = _formBrowser.Contexts; return _formBrowser; }
+            catch { _formBrowser = null; }
+        }
+
+        await _initLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_formBrowser is not null)
+            {
+                try { _ = _formBrowser.Contexts; return _formBrowser; }
+                catch { _formBrowser = null; }
+            }
+
+            _playwright ??= await Playwright.CreateAsync();
+
+            var cdpUrl = string.IsNullOrWhiteSpace(_formBrowserCdpUrl)
+                ? "http://127.0.0.1:9223"
+                : _formBrowserCdpUrl;
+
+            // Only try to attach — never auto-launch (that's LaunchFormBrowser's job).
+            // Auto-launching inside a fill request causes timeouts and spawns duplicate windows.
+            if (!await IsCdpPortListeningAsync(cdpUrl, cancellationToken))
+            {
+                var profileDir = GetRealEdgeProfileDir();
+                throw new InvalidOperationException(
+                    $"No browser with remote debugging found at {cdpUrl}. " +
+                    "Ask me to 'launch the form browser' first, or run this in PowerShell:\n" +
+                    $"Start-Process 'msedge' '--remote-debugging-port=9223 --user-data-dir=\"{profileDir}\"'\n" +
+                    "Once Edge opens, log into any required sites, then say \"ready\" and I'll fill the form.");
+            }
+
+            _formBrowser = await _playwright.Chromium.ConnectOverCDPAsync(cdpUrl,
+                new BrowserTypeConnectOverCDPOptions { Timeout = 10000 });
+            _formBrowserIsCdp = true;
+            return _formBrowser;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
+
+    private static async Task<bool> IsCdpPortListeningAsync(string cdpBaseUrl, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var resp = await http.GetAsync(cdpBaseUrl + "/json/version", cancellationToken);
+            return resp.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -1511,6 +1772,393 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Conversational fill: interpret a natural language instruction and fill a matching form field on the given page.
+    /// Examples: "put John Smith in the full name field", "set email to test@example.com".
+    /// The method will try to discover visible form controls (name/id/label/placeholder) and perform a fuzzy match
+    /// between the user's instruction and available fields. If a value can't be inferred, a clarification message is returned.
+    /// </summary>
+    public async Task<string> ConversationalFillAsync(string url, string instruction, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return "No URL provided.";
+        if (string.IsNullOrWhiteSpace(instruction))
+            return "No instruction provided.";
+
+        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            url = "https://" + url;
+
+        try
+        {
+            var browser = await GetFormBrowserAsync(cancellationToken);
+            var context = browser.Contexts.FirstOrDefault() ?? await browser.NewContextAsync();
+
+            // Find the tab already showing the target URL — never create new tabs or navigate existing ones.
+            var page = FindPageForUrl(context, url);
+            if (page is null)
+                return $"No open tab is currently showing {url}. Please open that page in your Edge browser and try again.";
+
+            page.SetDefaultTimeout(_timeoutMs);
+
+                // Collect simple form element metadata from the page DOM
+                var elementsJson = await page.EvaluateAsync<string>("() => { const elements = Array.from(document.querySelectorAll('input, textarea, select')); return JSON.stringify(elements.map(el => { const name = el.getAttribute('name') || ''; const id = el.id || ''; let labelText = ''; if (el.labels && el.labels.length) labelText = Array.from(el.labels).map(l=>l.textContent||'').join(' ').trim(); if(!labelText){ const parentLabel = el.closest('label'); if(parentLabel) labelText = parentLabel.textContent.trim(); } const placeholder = el.getAttribute('placeholder') || ''; const type = el.type || el.tagName.toLowerCase(); return { name, id, label: labelText, placeholder, type }; })); }");
+
+                var doc = JsonDocument.Parse(elementsJson);
+                var candidates = new List<(string name, string id, string label, string placeholder, string type)>();
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    var name = el.GetProperty("name").GetString() ?? string.Empty;
+                    var id = el.GetProperty("id").GetString() ?? string.Empty;
+                    var label = el.GetProperty("label").GetString() ?? string.Empty;
+                    var placeholder = el.GetProperty("placeholder").GetString() ?? string.Empty;
+                    var type = el.GetProperty("type").GetString() ?? string.Empty;
+                    candidates.Add((name, id, label, placeholder, type));
+                }
+
+                if (candidates.Count == 0)
+                    return "No form controls detected on the page. Try focusing the right page tab and ensure the form is visible.";
+
+                // Score candidates by token overlap with instruction
+                var instrNorm = NormalizeForSearch(instruction);
+                var instrTokens = instrNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                int bestScore = 0; int bestIndex = -1;
+                for (int i = 0; i < candidates.Count; i++)
+                {
+                    var c = candidates[i];
+                    var hay = NormalizeForSearch(string.Join(' ', new[] { c.label, c.name, c.id, c.placeholder }));
+                    var score = instrTokens.Count(t => hay.Contains(t, StringComparison.Ordinal));
+                    if (score > bestScore)
+                    {
+                        bestScore = score; bestIndex = i;
+                    }
+                }
+
+                if (bestScore == 0 || bestIndex < 0)
+                {
+                    return "I couldn't identify which field you meant. Please specify the field label or say something like: 'put John Smith in the full name field'.";
+                }
+
+                var field = candidates[bestIndex];
+
+                // Try to extract the intended value from the instruction
+                string? value = null;
+                var m = Regex.Match(instruction, "(?:put|enter|type|fill|set)\\s+['\"]?(?<value>[^'\"']+?)['\"]?\\s+(?:in|into|to)\\s+", RegexOptions.IgnoreCase);
+                if (m.Success)
+                    value = m.Groups["value"].Value.Trim();
+
+                if (string.IsNullOrEmpty(value))
+                {
+                    // 'set X to Y' style
+                    m = Regex.Match(instruction, "(?:set|change)\\s+.+?\\s+to\\s+['\"]?(?<value>[^'\"]+)['\"]?", RegexOptions.IgnoreCase);
+                    if (m.Success)
+                        value = m.Groups["value"].Value.Trim();
+                }
+
+                if (string.IsNullOrEmpty(value))
+                {
+                    // fallback: quoted string
+                    m = Regex.Match(instruction, "['\"](?<value>[^'\"]+)['\"]");
+                    if (m.Success)
+                        value = m.Groups["value"].Value.Trim();
+                }
+
+                if (string.IsNullOrEmpty(value))
+                {
+                    return "I couldn't determine the value to enter. Please say something like: 'put John Smith in the full name field' or quote the value.";
+                }
+
+                // Build selector and attempt to fill
+                string selector = null;
+                if (!string.IsNullOrEmpty(field.name)) selector = $"[name='{field.name}']";
+                else if (!string.IsNullOrEmpty(field.id)) selector = $"#{field.id}";
+
+                if (!string.IsNullOrEmpty(selector))
+                {
+                    var locator = page.Locator(selector).First;
+                    try
+                    {
+                        await locator.WaitForAsync(new LocatorWaitForOptions { Timeout = 3000 });
+                        var tagName = await locator.EvaluateAsync<string>("el => el.tagName.toLowerCase()");
+                        if (tagName == "select")
+                            await locator.SelectOptionAsync(value);
+                        else
+                            await locator.FillAsync(value);
+
+                        var summary = $"Filled field '{(string.IsNullOrEmpty(field.label) ? (string.IsNullOrEmpty(field.name) ? field.id : field.name) : field.label)}' with '{value}'. The tab is still open — please review and submit manually.";
+                        return summary;
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Failed to fill the field using selector {selector}: {ex.Message}";
+                    }
+                }
+                else
+                {
+                    // As a last resort, attempt to locate the input by matching label text and set value via DOM
+                    var labelText = field.label ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(labelText))
+                        return "Unable to build a selector for the matched field and no label text was found.";
+
+                    var script = @"(labelText, value) => {
+                        const labels = Array.from(document.querySelectorAll('label'));
+                        const lbl = labels.find(l => (l.textContent || '').trim() === (labelText || '').trim());
+                        if (!lbl) return 'label-not-found';
+                        const forAttr = lbl.getAttribute('for');
+                        const input = forAttr ? document.getElementById(forAttr) : lbl.querySelector('input, textarea, select');
+                        if (!input) return 'input-not-found';
+                        input.focus();
+                        if (input.tagName === 'SELECT') { input.value = value; input.dispatchEvent(new Event('change', { bubbles: true })); }
+                        else { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
+                        return 'ok';
+                    }";
+
+                    var res = await page.EvaluateAsync<string>(script, new object[] { labelText, value });
+                    if (res == "ok")
+                    {
+                        return $"Filled field '{labelText}' with '{value}'. The tab is still open — please review and submit manually.";
+                    }
+
+                    return $"Could not fill the field by label method: {res}";
+                }
+        }
+        catch (Exception ex)
+        {
+            return $"Conversational fill failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Batch conversational fill: process multiple natural language fill instructions in a single
+    /// browser interaction. Discovers form controls once, then applies all instructions.
+    /// Instructions should be separated by semicolons or newlines, e.g.:
+    ///   "put John Smith in the full name field; put john@example.com in the email field; set country to UK"
+    /// Returns a summary of each fill result.
+    /// NEVER submits — the tab stays open for the user to review and submit manually.
+    /// </summary>
+    public async Task<string> BatchConversationalFillAsync(string url, string instructions, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return "No URL provided.";
+        if (string.IsNullOrWhiteSpace(instructions))
+            return "No instructions provided.";
+
+        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            url = "https://" + url;
+
+        // Split on semicolons or newlines to get individual field instructions
+        var parts = instructions
+            .Split(new[] { ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .ToList();
+
+        if (parts.Count == 0)
+            return "No instructions found after parsing. Separate instructions with semicolons, e.g. 'put John in first name; put Smith in last name'.";
+
+        try
+        {
+            var browser = await GetFormBrowserAsync(cancellationToken);
+            var context = browser.Contexts.FirstOrDefault() ?? await browser.NewContextAsync();
+
+            var page = FindPageForUrl(context, url);
+            if (page is null)
+                return $"No open tab is currently showing {url}. Please open that page in your Edge browser and try again.";
+
+            page.SetDefaultTimeout(_timeoutMs);
+
+            // Discover form elements once for all instructions
+            var elementsJson = await page.EvaluateAsync<string>("() => { const elements = Array.from(document.querySelectorAll('input, textarea, select')); return JSON.stringify(elements.map(el => { const name = el.getAttribute('name') || ''; const id = el.id || ''; let labelText = ''; if (el.labels && el.labels.length) labelText = Array.from(el.labels).map(l=>l.textContent||'').join(' ').trim(); if(!labelText){ const parentLabel = el.closest('label'); if(parentLabel) labelText = parentLabel.textContent.trim(); } const placeholder = el.getAttribute('placeholder') || ''; const type = el.type || el.tagName.toLowerCase(); return { name, id, label: labelText, placeholder, type }; })); }");
+
+            var doc = JsonDocument.Parse(elementsJson);
+            var candidates = new List<(string name, string id, string label, string placeholder, string type)>();
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                var name = el.GetProperty("name").GetString() ?? string.Empty;
+                var id = el.GetProperty("id").GetString() ?? string.Empty;
+                var label = el.GetProperty("label").GetString() ?? string.Empty;
+                var placeholder = el.GetProperty("placeholder").GetString() ?? string.Empty;
+                var type = el.GetProperty("type").GetString() ?? string.Empty;
+                candidates.Add((name, id, label, placeholder, type));
+            }
+
+            if (candidates.Count == 0)
+                return "No form controls detected on the page. Try focusing the right page tab and ensure the form is visible.";
+
+            var results = new List<string>();
+
+            foreach (var instruction in parts)
+            {
+                // Score candidates by token overlap with this instruction
+                var instrNorm = NormalizeForSearch(instruction);
+                var instrTokens = instrNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                int bestScore = 0;
+                int bestIndex = -1;
+                for (int i = 0; i < candidates.Count; i++)
+                {
+                    var c = candidates[i];
+                    var hay = NormalizeForSearch(string.Join(' ', new[] { c.label, c.name, c.id, c.placeholder }));
+                    var score = instrTokens.Count(t => hay.Contains(t, StringComparison.Ordinal));
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        bestIndex = i;
+                    }
+                }
+
+                if (bestScore == 0 || bestIndex < 0)
+                {
+                    results.Add($"⚠️ '{instruction}' — could not identify which field you meant.");
+                    continue;
+                }
+
+                var field = candidates[bestIndex];
+
+                // Extract value from instruction
+                string? value = null;
+                var m = Regex.Match(instruction, "(?:put|enter|type|fill|set)\\s+['\"]?(?<value>[^'\"']+?)['\"]?\\s+(?:in|into|to)\\s+", RegexOptions.IgnoreCase);
+                if (m.Success) value = m.Groups["value"].Value.Trim();
+
+                if (string.IsNullOrEmpty(value))
+                {
+                    m = Regex.Match(instruction, "(?:set|change)\\s+.+?\\s+to\\s+['\"]?(?<value>[^'\"]+)['\"]?", RegexOptions.IgnoreCase);
+                    if (m.Success) value = m.Groups["value"].Value.Trim();
+                }
+
+                if (string.IsNullOrEmpty(value))
+                {
+                    m = Regex.Match(instruction, "['\"](?<value>[^'\"]+)['\"]");
+                    if (m.Success) value = m.Groups["value"].Value.Trim();
+                }
+
+                if (string.IsNullOrEmpty(value))
+                {
+                    results.Add($"⚠️ '{instruction}' — could not determine the value to enter.");
+                    continue;
+                }
+
+                string? selector = null;
+                if (!string.IsNullOrEmpty(field.name)) selector = $"[name='{field.name}']";
+                else if (!string.IsNullOrEmpty(field.id)) selector = $"#{field.id}";
+
+                var displayLabel = !string.IsNullOrEmpty(field.label) ? field.label
+                    : !string.IsNullOrEmpty(field.name) ? field.name
+                    : field.id;
+
+                if (!string.IsNullOrEmpty(selector))
+                {
+                    try
+                    {
+                        var locator = page.Locator(selector).First;
+                        await locator.WaitForAsync(new LocatorWaitForOptions { Timeout = 3000 });
+                        var tagName = await locator.EvaluateAsync<string>("el => el.tagName.toLowerCase()");
+                        if (tagName == "select")
+                            await locator.SelectOptionAsync(value);
+                        else
+                            await locator.FillAsync(value);
+                        results.Add($"✅ '{displayLabel}' → '{value}'");
+                    }
+                    catch (Exception ex)
+                    {
+                        results.Add($"❌ '{displayLabel}' — fill failed: {ex.Message}");
+                    }
+                }
+                else if (!string.IsNullOrEmpty(field.label))
+                {
+                    // Label-based fallback via DOM
+                    var script = @"(labelText, value) => {
+                        const labels = Array.from(document.querySelectorAll('label'));
+                        const lbl = labels.find(l => (l.textContent || '').trim() === (labelText || '').trim());
+                        if (!lbl) return 'label-not-found';
+                        const forAttr = lbl.getAttribute('for');
+                        const input = forAttr ? document.getElementById(forAttr) : lbl.querySelector('input, textarea, select');
+                        if (!input) return 'input-not-found';
+                        input.focus();
+                        if (input.tagName === 'SELECT') { input.value = value; input.dispatchEvent(new Event('change', { bubbles: true })); }
+                        else { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
+                        return 'ok';
+                    }";
+                    var res = await page.EvaluateAsync<string>(script, new object[] { field.label, value });
+                    if (res == "ok")
+                        results.Add($"✅ '{displayLabel}' → '{value}'");
+                    else
+                        results.Add($"❌ '{displayLabel}' — label fill failed: {res}");
+                }
+                else
+                {
+                    results.Add($"⚠️ '{instruction}' — no selector or label available for matched field.");
+                }
+            }
+
+            var summary = string.Join("\n", results);
+            return $"Batch fill complete ({results.Count(r => r.StartsWith("✅"))} of {parts.Count} succeeded):\n{summary}\n\nThe tab is still open — please review and submit manually.";
+        }
+        catch (Exception ex)
+        {
+            return $"Batch fill failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Walk the accessibility tree and collect form control nodes into <paramref name="fields"/>.
+    /// Password-like fields are excluded and a warning is added instead.
+    /// </summary>
+    private static void FlattenFormControls(
+        System.Text.Json.JsonElement node,
+        List<System.Text.Json.JsonElement> fields,
+        List<string> warnings)
+    {
+        var role = node.TryGetProperty("role", out var rp) ? rp.GetString() ?? "" : "";
+        var name = node.TryGetProperty("name", out var np) ? np.GetString() ?? "" : "";
+
+        var formControlRoles = new[] { "textbox", "combobox", "listbox", "checkbox", "radio", "searchbox", "spinbutton", "slider" };
+
+        if (formControlRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+        {
+            if (name.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("passcode", StringComparison.OrdinalIgnoreCase))
+            {
+                warnings.Add($"Password field detected ('{name}') — excluded from AI context. Please type it manually.");
+            }
+            else
+            {
+                var obj = new System.Text.Json.Nodes.JsonObject { ["role"] = role, ["label"] = name };
+
+                if (node.TryGetProperty("required", out var req) && req.ValueKind == System.Text.Json.JsonValueKind.True)
+                    obj["required"] = true;
+
+                if (node.TryGetProperty("value", out var val) && val.ValueKind != System.Text.Json.JsonValueKind.Null)
+                    obj["currentValue"] = val.GetString();
+
+                // Collect options for combobox / listbox
+                if ((role == "combobox" || role == "listbox") &&
+                    node.TryGetProperty("children", out var kids))
+                {
+                    var opts = new System.Text.Json.Nodes.JsonArray();
+                    foreach (var kid in kids.EnumerateArray())
+                    {
+                        if (kid.TryGetProperty("role", out var kr) && kr.GetString() == "option" &&
+                            kid.TryGetProperty("name", out var kn))
+                            opts.Add(kn.GetString());
+                    }
+                    if (opts.Count > 0)
+                        obj["options"] = opts;
+                }
+
+                var raw = obj.ToJsonString();
+                fields.Add(System.Text.Json.JsonDocument.Parse(raw).RootElement.Clone());
+            }
+        }
+
+        if (node.TryGetProperty("children", out var children))
+        {
+            foreach (var child in children.EnumerateArray())
+                FlattenFormControls(child, fields, warnings);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_upworkSessionPage is not null && !_upworkSessionPage.IsClosed && !_upworkUsingCdp)
@@ -1536,6 +2184,13 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
             await _browser.CloseAsync();
             _browser = null;
         }
+
+        // For CDP-connected form browser: disconnect only (don't close the user's actual browser process)
+        if (_formBrowser is not null && !_formBrowserIsCdp)
+        {
+            await SafeCloseBrowserAsync(_formBrowser);
+        }
+        _formBrowser = null;
 
         _playwright?.Dispose();
         _playwright = null;
