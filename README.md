@@ -345,6 +345,7 @@ dotnet run -- --cli "bob please play Ukraine the latest podcast"
 - `Open my Documents folder in File Explorer`
 - `Open Downloads\Invoices in File Explorer`
 - `Open the repo folder in File Explorer`
+- `From Telegram: ask the assistant to open Microsoft Edge and prepare to fill in forms. Then navigate to the URL and ask the assistant to fill in the form. Providing a screenshot is helpful when field names don't match exactly.`
 
 ## Upwork browser-assisted reply flow (draft-first)
 
