@@ -1870,7 +1870,7 @@ internal sealed class WebBrowserAssistantService : IAsyncDisposable
                 }
 
                 // Build selector and attempt to fill
-                string selector = null;
+                string? selector = null;
                 if (!string.IsNullOrEmpty(field.name)) selector = $"[name='{field.name}']";
                 else if (!string.IsNullOrEmpty(field.id)) selector = $"#{field.id}";
 

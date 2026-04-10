@@ -218,3 +218,7 @@ Start-Process -FilePath "C:\Program Files (x86)\Microsoft\Edge\Application\msedg
 ```
 
 Start-Process 'msedge' '--remote-debugging-port=9223 --user-data-dir="C:\Users\MPhil\AppData\Local\Microsoft\Edge\User Data"' 
+
+## Notes
+
+How to use: From Telegram, ask the assistant to open Microsoft Edge and prepare to fill in forms. Then navigate to the URL and ask the assistant to fill in the form. Providing a screenshot is helpful when field names don't match exactly.

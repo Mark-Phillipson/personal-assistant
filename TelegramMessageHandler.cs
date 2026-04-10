@@ -55,7 +55,7 @@ internal static class TelegramMessageHandler
                     ".env"
                 };
 
-                string found = null;
+                string? found = null;
                 foreach (var p in envPaths)
                 {
                     if (File.Exists(p))

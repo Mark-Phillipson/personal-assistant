@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using System.IO;
 
+#pragma warning disable CS7022
 class FormFillSmokeTest
 {
     static async Task<int> Main(string[] args)
@@ -9,7 +10,7 @@ class FormFillSmokeTest
         try
         {
             // Find repository root by walking up until the solution file exists
-            string repoRoot = Directory.GetCurrentDirectory();
+            string? repoRoot = Directory.GetCurrentDirectory();
             while (repoRoot != null && !File.Exists(Path.Combine(repoRoot, "personal-assistant.sln")))
             {
                 var parent = Directory.GetParent(repoRoot);
@@ -29,7 +30,7 @@ class FormFillSmokeTest
                 Path.Combine(repoRoot, "personal-assistant", "bin", "Debug", "net10.0", "win-x64", "personal-assistant.dll")
             };
 
-            string asmPath = null;
+            string? asmPath = null;
             foreach (var c in candidates)
             {
                 var full = Path.GetFullPath(c);
@@ -48,7 +49,7 @@ class FormFillSmokeTest
 
             // Find a candidate type that exposes the expected factory or methods
             var types = asm.GetTypes();
-            Type type = null;
+            Type? type = null;
             // Prefer explicitly named type
             type = types.FirstOrDefault(t => string.Equals(t.Name, "WebBrowserAssistantService", StringComparison.OrdinalIgnoreCase));
             if (type == null)
@@ -70,12 +71,12 @@ class FormFillSmokeTest
 
             Console.WriteLine("Discovered service type: " + type.FullName);
 
-            object svc = null;
+            object? svc = null;
             var fromEnv = type.GetMethod("FromEnvironment", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
             if (fromEnv != null)
             {
                 var parms = fromEnv.GetParameters();
-                var invokeArgs = new object[parms.Length];
+                var invokeArgs = new object?[parms.Length];
                 // Fill with nulls; many factory patterns accept optional config or environment parameters
                 for (int i = 0; i < parms.Length; i++) invokeArgs[i] = null;
                 svc = fromEnv.Invoke(null, invokeArgs);
@@ -86,7 +87,7 @@ class FormFillSmokeTest
                 var ctor = type.GetConstructor(Type.EmptyTypes);
                 if (ctor != null)
                 {
-                    svc = Activator.CreateInstance(type);
+                    svc = Activator.CreateInstance(type!);
                 }
             }
 
