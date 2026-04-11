@@ -35,9 +35,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - Exposes Voice Admin launcher tools to Copilot (requires `VOICE_ADMIN_DB_PATH`, legacy fallback `VOICE_LAUNCHER_DB_PATH`):
    - `search_voice_admin_launchers` — keyword search across Name, CommandLine, and CategoryName
    - `launch_voice_admin_launcher` — start a launcher entry by its numeric ID
-Exposes Voice Admin launcher tools and read-only todo inspection to Copilot (requires `VOICE_ADMIN_DB_PATH`, legacy fallback `VOICE_LAUNCHER_DB_PATH`):
-   - `search_voice_admin_launchers` — keyword search across Name, CommandLine, and CategoryName
-   - `launch_voice_admin_launcher` — start a launcher entry by its numeric ID
+- Exposes legacy read-only Voice Admin todo inspection to Copilot (requires `VOICE_ADMIN_DB_PATH`, legacy fallback `VOICE_LAUNCHER_DB_PATH`):
    - `list_voice_admin_open_todos` — (read-only) list incomplete, non-archived todos with TodoId, title, project/category, priority, and created date
 
 Note: Voice Admin *write* operations (adding/completing/assigning todos) are deprecated for personal todo workflows and are intentionally not exposed as assistant tools. For personal todos, prefer the `personal-todos` skill which stores todos as GitHub Issues (see below).

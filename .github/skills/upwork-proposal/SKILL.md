@@ -79,6 +79,10 @@ Mark P.
 ## Tailoring Guidance
 
 - For database migration work, emphasize SQL Server, T-SQL, data migration, schema design, reliability, and performance.
+- For Microsoft Access jobs where robustness matters, recommend SQL Server as the backend and position Access as an optional front-end for forms and reports rather than the primary datastore.
+- Never imply that Microsoft Access provides native AI features. If AI is relevant, state that AI functionality would be implemented in a .NET application, add-in, companion service, or extension layer that Access can call.
+- If proposing an Access add-in approach, describe it as technically viable but more complex to deploy and support than a standard .NET front end, especially because of Office bitness, trust settings, and COM/VSTO-style integration concerns.
+- When both Access familiarity and AI are relevant, prefer wording such as: SQL Server backend for robustness, .NET layer for business logic and AI, and Access only as an optional UI surface if that fits the client's workflow.
 - For web application work, emphasize ASP.NET MVC, Blazor, C#, API work, UX, and front-end delivery.
 - If a job says MAUI is preferred but alternatives are acceptable, proactively suggest Blazor Hybrid as a viable option and explain practical benefits in plain language.
 - When suggesting Blazor Hybrid, prefer concrete advantages such as: shared codebase across Windows/iOS/Android, native API access, easier local/offline data workflows, C#/Razor consistency, and a clearer path to web Blazor reuse.

@@ -1,6 +1,6 @@
 ---
-name: voice-admin-todo
-description: 'Manage and query Voice Admin launcher actions with read-only and launcher-focused actions. For personal todo management, prefer the personal-todos skill which uses GitHub Issues. This skill is focused on Voice Admin-specific interactions and read-only queries.'
+name: voice-admin-launcher
+description: 'Manage and query Voice Admin launcher actions with read-only, launcher-focused operations. Use this for Voice Admin launcher search and launch flows.'
 argument-hint: 'Ask about open launcher searches.'
 user-invocable: false
 ---
