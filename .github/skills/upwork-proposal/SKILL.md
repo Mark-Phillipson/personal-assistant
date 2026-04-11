@@ -90,9 +90,9 @@ Mark P.
 
 - When the client includes screening questions, answer each one directly in a numbered list and keep tone practical and specific.
 - When answers will be pasted into separate platform text boxes that already contain the question title, format as `Answer 1:`, `Answer 2:`, etc., then include one blank line before the actual paragraph answer.
-- For time-tracking/payment questions, prefer wording that Mark uses Upwork's built-in tracker for hourly work, including periodic screenshots and interval-based work notes, with invoicing/payments handled via Upwork.
-- For security/confidentiality questions, mention NDA readiness, least-privilege access, and encrypted/password-managed workflows.
+- For time-tracking/payment questions, prefer wording that Mark uses Upwork's built-in tracker for hourly work, including periodic screenshots and interval-based work notes, with invoicing/payments handled via Upwork automatically.
+- For security/confidentiality questions, mention NDA readiness, least-privilege access, and encrypted/password-managed workflows and support for 2FA in any web app developed.
 - For individual-vs-company/availability questions, state that Mark is an individual developer, seeks long-term engagements, and is currently available.
 - For recent similar-project questions, include concrete examples when available (for example a relevant live demo), then offer to share more detail in a call.
  - Use this Blazor PWA example link when relevant to the job: https://www.fairieslittlehelper.online
- - Use this Blazor Web App example link when relevant to the job: https://voicelauncherblazor.azurewebsites.net/
+ - Always use this Blazor Web App example link when relevant to the job, For example when the proposal includes Blazor front end options: https://voicelauncherblazor.azurewebsites.net/
