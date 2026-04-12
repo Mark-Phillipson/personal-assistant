@@ -13,6 +13,7 @@ internal sealed class GitHubTodosService
     private readonly string? _owner;
     private readonly string? _repo;
     private readonly HttpClient _http;
+    private readonly bool _autoCreate;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -20,11 +21,12 @@ internal sealed class GitHubTodosService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private GitHubTodosService(string? token, string? owner, string? repo)
+    private GitHubTodosService(string? token, string? owner, string? repo, bool autoCreate)
     {
         _token = token;
         _owner = owner;
         _repo = repo;
+        _autoCreate = autoCreate;
         _http = new HttpClient();
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("personal-assistant/1.0");
         if (!string.IsNullOrWhiteSpace(token))
@@ -48,6 +50,8 @@ internal sealed class GitHubTodosService
         var repoSlug = EnvironmentSettings.ReadOptionalString("GITHUB_TODOS_REPO")
                        ?? "Mark-Phillipson/Personal-Todos";
 
+        var autoCreate = EnvironmentSettings.ReadBool("GITHUB_TODOS_AUTO_CREATE", true);
+
         string? owner = null;
         string? repo = null;
 
@@ -58,8 +62,10 @@ internal sealed class GitHubTodosService
             repo = parts[1].Trim();
         }
 
-        return new GitHubTodosService(token, owner, repo);
+        return new GitHubTodosService(token, owner, repo, autoCreate);
     }
+
+    public bool AutoCreateEnabled => _autoCreate;
 
     public string GetSetupStatusText()
     {
@@ -68,7 +74,8 @@ internal sealed class GitHubTodosService
             return "GitHub Personal Todos is not configured. Set GITHUB_PERSONAL_TODOS_TOKEN (or GITHUB_TOKEN) and optionally GITHUB_TODOS_REPO (default: Mark-Phillipson/Personal-Todos) in your .env file.";
         }
 
-        return $"GitHub Personal Todos configured: repository={_owner}/{_repo}.";
+        var autoText = _autoCreate ? "auto-create enabled" : "auto-create disabled";
+        return $"GitHub Personal Todos configured: repository={_owner}/{_repo} ({autoText}).";
     }
 
     public async Task<string> ListOpenIssuesAsync(string? label = null, int maxResults = 20, bool htmlFormat = true, CancellationToken cancellationToken = default)

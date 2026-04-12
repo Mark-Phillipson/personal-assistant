@@ -115,6 +115,8 @@ Note: Voice Admin *write* operations (adding/completing/assigning todos) are dep
 
 Use `.env.example` as a template.
 
+- `GITHUB_TODOS_AUTO_CREATE` (optional, default `true`) When true, automatically create Personal Todos in the configured GitHub repo when asked to add a todo.
+
 If `personality.json` exists (or `ASSISTANT_PERSONALITY_CONFIG_PATH` points to a file), its values override environment defaults for startup personality.
 
 Example `personality.json`:
