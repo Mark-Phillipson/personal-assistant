@@ -1305,9 +1305,54 @@ internal static class TelegramMessageHandler
             title = ExtractTodoTitleFromText(text);
         }
 
-        // Ensure title length is reasonable
-        if (!string.IsNullOrWhiteSpace(title) && title.Length > 180)
-            title = title.Substring(0, 180).Trim() + "...";
+        // Heuristic: if we ended up using the full message as the title (or the title is very long),
+        // prefer to store the full message as the description and generate a concise title instead.
+        var sanitizedFull = text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            var usedFullAsTitle = string.Equals(title?.Trim(), sanitizedFull, StringComparison.Ordinal);
+            if (usedFullAsTitle || (title?.Length ?? 0) > 120)
+            {
+                description = sanitizedFull;
+
+                // Local helper to produce a short, readable title from a longer sentence.
+                static string ShortTitleFrom(string s, int maxLen = 60)
+                {
+                    if (string.IsNullOrWhiteSpace(s)) return "New todo";
+                    s = s.Trim();
+                    // Try first sentence
+                    var firstPunct = s.IndexOfAny(new[] { '.', '!', '?' });
+                    if (firstPunct > 0)
+                        s = s.Substring(0, firstPunct).Trim();
+
+                    // If still long, prefer text before common clause words
+                    var clauseDelims = new[] { " to ", " for ", " so that ", " because ", "," };
+                    foreach (var d in clauseDelims)
+                    {
+                        var idx = s.IndexOf(d, StringComparison.OrdinalIgnoreCase);
+                        if (idx > 0)
+                        {
+                            s = s.Substring(0, idx).Trim();
+                            break;
+                        }
+                    }
+
+                    if (s.Length > maxLen)
+                        s = s.Substring(0, maxLen).Trim();
+
+                    // Remove trailing non-word punctuation
+                    s = Regex.Replace(s, @"[\u2000-\u206F\p{P}\p{S}]+$", string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(s)) return "New todo";
+                    return s;
+                }
+
+                title = ShortTitleFrom(sanitizedFull, 60);
+            }
+        }
+
+        // Ensure title length is reasonable (keep titles short for GitHub Issues list readability)
+        if (!string.IsNullOrWhiteSpace(title) && title.Length > 60)
+            title = title.Substring(0, 60).Trim() + "...";
 
         // Ensure description length is reasonable
         if (!string.IsNullOrWhiteSpace(description) && description.Length > 500)
