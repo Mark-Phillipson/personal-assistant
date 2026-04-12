@@ -13,7 +13,7 @@ namespace PersonalAssistant.Tests
             var method = type.GetMethod("ExtractTodoDataFromText", BindingFlags.Static | BindingFlags.NonPublic);
             Assert.NotNull(method);
 
-n            var text = "Can we add a to do to add a clear button on this form";
+            var text = "Can we add a to do to add a clear button on this form";
             var result = method!.Invoke(null, new object[] { text });
             Assert.NotNull(result);
 
@@ -23,15 +23,15 @@ n            var text = "Can we add a to do to add a clear button on this form";
             Assert.NotNull(titleProp);
             Assert.NotNull(descProp);
 
-n            var title = (string?)titleProp!.GetValue(result);
+            var title = (string?)titleProp!.GetValue(result);
             var description = (string?)descProp!.GetValue(result);
 
-n            Assert.Equal(text.Trim(), description);
+            Assert.Equal(text.Trim(), description);
             Assert.NotEqual(description, title);
             Assert.True((title?.Length ?? 0) <= 60);
         }
 
-n        [Fact]
+        [Fact]
         public void GitHubTodosService_ReadsAutoCreateFlag_FromEnvironment()
         {
             try
@@ -40,10 +40,10 @@ n        [Fact]
                 Environment.SetEnvironmentVariable("GITHUB_TODOS_REPO", "owner/repo");
                 Environment.SetEnvironmentVariable("GITHUB_TODOS_AUTO_CREATE", "false");
 
-n                var svc = GitHubTodosService.FromEnvironment();
+                var svc = GitHubTodosService.FromEnvironment();
                 Assert.False(svc.AutoCreateEnabled);
 
-n                Environment.SetEnvironmentVariable("GITHUB_TODOS_AUTO_CREATE", "true");
+                Environment.SetEnvironmentVariable("GITHUB_TODOS_AUTO_CREATE", "true");
                 var svc2 = GitHubTodosService.FromEnvironment();
                 Assert.True(svc2.AutoCreateEnabled);
             }
