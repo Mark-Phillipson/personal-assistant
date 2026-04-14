@@ -77,6 +77,37 @@ var clipboardHistoryService = ClipboardHistoryService.FromEnvironment();
 var gitHubTodosService = GitHubTodosService.FromEnvironment();
 var telegramChatIdStore = TelegramChatIdStore.FromEnvironment();
 
+// CLI helpers for Gmail auth flows
+if (args.Any(arg => string.Equals(arg, "--print-gmail-consent-url", StringComparison.OrdinalIgnoreCase)))
+{
+    try
+    {
+        var url = await gmailService.GetConsentUrlAsync();
+        Console.WriteLine(url);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[gmail.auth] Failed to build consent URL: {ex.Message}");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
+if (args.Any(arg => string.Equals(arg, "--start-gmail-auth", StringComparison.OrdinalIgnoreCase)))
+{
+    try
+    {
+        await gmailService.StartInteractiveAuthAsync();
+        Console.WriteLine("Gmail interactive auth completed (credentials saved to token store).");
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[gmail.auth] Interactive auth failed: {ex.Message}");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
 // Initialize pronunciation dictionary service for TTS corrections.
 var pronunciationDictionaryPath = EnvironmentSettings.ReadOptionalString("TTS_PRONUNCIATION_DICT_PATH") 
     ?? Path.Combine(Environment.CurrentDirectory, "pronunciation-corrections.json");

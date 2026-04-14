@@ -1,5 +1,8 @@
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Gmail.v1;
+using Google.Apis.Auth.OAuth2.Flows;
+using Google.Apis.Auth.OAuth2.Responses;
+using Google.Apis.Auth.OAuth2.Requests;
 using Google.Apis.Gmail.v1.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
@@ -162,6 +165,68 @@ internal sealed class GmailAssistantService
             snippet = detail.Snippet,
             bodyPreview
         };
+    }
+
+    public async Task<string> GetConsentUrlAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_clientSecretPath) || !File.Exists(_clientSecretPath))
+        {
+            throw new InvalidOperationException(
+                $"GMAIL_CLIENT_SECRET_PATH is missing or points to a file that does not exist: '{_clientSecretPath}'.");
+        }
+
+        await using var stream = new FileStream(_clientSecretPath, FileMode.Open, FileAccess.Read);
+        var secrets = GoogleClientSecrets.FromStream(stream).Secrets;
+
+        var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
+        {
+            ClientSecrets = secrets,
+            Scopes = new[] { GmailService.Scope.GmailReadonly }
+        });
+
+        var receiver = new LocalServerCodeReceiver();
+        var authUrlObj = flow.CreateAuthorizationCodeRequest(receiver.RedirectUri);
+        // Build() may return a Uri or string depending on library version; ensure a string return
+        var built = authUrlObj.Build();
+        var authUrl = built is Uri uri ? uri.AbsoluteUri : built.ToString();
+        return authUrl;
+    }
+
+    /// <summary>
+    /// Starts an interactive OAuth flow using a local server code receiver and stores credentials in the token store.
+    /// This method will open the user's browser to complete the consent flow if needed.
+    /// </summary>
+    public async Task StartInteractiveAuthAsync()
+    {
+        if (!IsConfigured)
+        {
+            throw new InvalidOperationException("Gmail is not configured.");
+        }
+
+        if (string.IsNullOrWhiteSpace(_clientSecretPath) || !File.Exists(_clientSecretPath))
+        {
+            throw new InvalidOperationException(
+                $"GMAIL_CLIENT_SECRET_PATH is missing or points to a file that does not exist: '{_clientSecretPath}'.");
+        }
+
+        await using var stream = new FileStream(_clientSecretPath, FileMode.Open, FileAccess.Read);
+        var secrets = GoogleClientSecrets.FromStream(stream).Secrets;
+
+        var receiver = new LocalServerCodeReceiver();
+
+        var credential = await GoogleWebAuthorizationBroker.AuthorizeAsync(
+            secrets,
+            new[] { GmailService.Scope.GmailReadonly },
+            _expectedAccount ?? "default-user",
+            CancellationToken.None,
+            new FileDataStore(_tokenStorePath, true),
+            receiver);
+
+        _gmail = new GmailService(new BaseClientService.Initializer
+        {
+            HttpClientInitializer = credential,
+            ApplicationName = "PersonalAssistant.TelegramCopilot"
+        });
     }
 
     private async Task<GmailService> GetServiceAsync()
