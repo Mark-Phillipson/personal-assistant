@@ -32,3 +32,15 @@ Things to show on the next Voice Coding video:
     12. Upwork browser-assisted messaging (draft-first flow with CDP)
     13. NaturalCommands CLI execution (with timeout)
 
+## Voice Admin
+    1. Talon Commands (with search and filter)
+    2. Launcher editor (with search and filter)
+    3. Snippets/Custom intellisense editor (with search and filter)
+    5. Values editor (with search and filter)
+    6. Transactions editor (with search and filter)
+    7. Global Search (search across all of the above)
+    8. To Do List
+    9. Chatbot Experimental
+    10. Blazor Hybrid Windows Forms App (1, 2 and 3)
+
+    
