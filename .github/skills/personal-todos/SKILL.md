@@ -18,9 +18,10 @@ Use this skill for all personal todo interactions. Todos are stored as GitHub Is
 
 ### Adding a todo
 1. Call `add_personal_todo(title, body?, label?)`.
-2. `title` is required; `body` is optional detail/context; `label` is optional project/category.
-3. Confirm the created issue number and URL to the user.
-4. Do not chain `list_personal_todos` in the same turn unless the user asks.
+2. If the user does not explicitly specify a target repository or location for the todo, default to creating the issue in the Personal-Todos repository (`Mark-Phillipson/Personal-Todos`).
+3. `title` is required; `body` is optional detail/context; `label` is optional project/category.
+4. Confirm the created issue number and URL to the user.
+5. Do not chain `list_personal_todos` in the same turn unless the user asks.
 
 ### Title extraction guidance
 When the user provides a single freeform todo request (for example: "Buy printer ink and check the cartridge model, and also order labels for the office"), do not place the entire text into the `title` parameter. Instead:
