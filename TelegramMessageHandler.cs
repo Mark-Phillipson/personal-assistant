@@ -1601,7 +1601,9 @@ internal static class TelegramMessageHandler
         }
 
         var userWantsAudio = userRequestText is not null && IsAudioReplyRequested(userRequestText);
-        return userWantsAudio || !IsTelegramDesktopFocused();
+        // Only send synthesized WAV files when the user explicitly requests audio.
+        // Previously this also sent audio when Telegram wasn't focused; that behavior is disabled.
+        return userWantsAudio;
     }
 
     private static async Task SendReplyWithOptionalTelegramAudioAsync(
@@ -1667,9 +1669,9 @@ internal static class TelegramMessageHandler
         }
     }
 
-    // Speaks the text locally if Telegram Desktop is focused (user is at the PC),
-    // otherwise synthesizes to a WAV file and sends it to Telegram for remote listening.
-    // Always sends audio if the user explicitly requested it in their message.
+    // Speaks the text locally when possible (user at the PC).
+    // By default, do not send synthesized WAV files; only send audio when the user
+    // explicitly requests an audio reply in their message.
     private static async Task SpeakOrSendAudioAsync(
         long chatId,
         string text,
@@ -1684,7 +1686,7 @@ internal static class TelegramMessageHandler
         }
         else
         {
-            // Force synthesis: user explicitly requested audio, or they're away from the PC.
+            // Force synthesis: user explicitly requested audio.
             var tmpFile = await textToSpeechService.SynthesizePreviewToWavFileAsync(text, cancellationToken, force: true);
             if (!string.IsNullOrWhiteSpace(tmpFile))
             {
