@@ -5,12 +5,15 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
 
 internal static class TelegramMessageHandler
 {
     private static readonly ConcurrentDictionary<long, string> SessionToolSignatures = new();
+    private record ProposedTodo(string Title, string? Body, string? Label);
+    private static readonly ConcurrentDictionary<long, ProposedTodo> PendingTodoProposals = new();
     public static async Task HandleAsync(
         TelegramMessage message,
         string text,
@@ -41,6 +44,52 @@ internal static class TelegramMessageHandler
     {
         var chatId = message.Chat.Id;
         var profile = GetPersonalityForChat(chatId, personalityProfiles, defaultPersonality);
+
+        // If there's a pending proposed todo for this chat, allow quick confirm/edit/cancel commands.
+        if (PendingTodoProposals.TryGetValue(chatId, out var pendingProposal))
+        {
+            var replyText = text?.Trim() ?? string.Empty;
+            if (string.Equals(replyText, "confirm", StringComparison.OrdinalIgnoreCase) || string.Equals(replyText, "yes", StringComparison.OrdinalIgnoreCase) || string.Equals(replyText, "create", StringComparison.OrdinalIgnoreCase))
+            {
+                var result = await gitHubTodosService.AddTodoAsync(pendingProposal.Title, pendingProposal.Body, pendingProposal.Label, cancellationToken);
+                PendingTodoProposals.TryRemove(chatId, out _);
+                await telegram.SendMessageInChunksAsync(chatId, result, cancellationToken);
+                return;
+            }
+
+            if (string.Equals(replyText, "cancel", StringComparison.OrdinalIgnoreCase))
+            {
+                PendingTodoProposals.TryRemove(chatId, out _);
+                await telegram.SendMessageInChunksAsync(chatId, "Cancelled the proposed todo.", cancellationToken);
+                return;
+            }
+
+            if (replyText.StartsWith("edit title", StringComparison.OrdinalIgnoreCase) || replyText.StartsWith("title:", StringComparison.OrdinalIgnoreCase))
+            {
+                var sep = replyText.IndexOf(':');
+                var newTitle = sep >= 0 ? replyText[(sep + 1)..].Trim() : replyText["edit title".Length..].Trim();
+                if (string.IsNullOrWhiteSpace(newTitle))
+                {
+                    await telegram.SendMessageInChunksAsync(chatId, "Please provide a new title after 'edit title:'", cancellationToken);
+                    return;
+                }
+
+                var updated = pendingProposal with { Title = newTitle };
+                PendingTodoProposals[chatId] = updated;
+                await telegram.SendMessageInChunksAsync(chatId, $"Updated proposed title to:\n\n{newTitle}\n\nReply 'confirm' to create, 'edit body: <text>' to change the description, or 'cancel'.", cancellationToken);
+                return;
+            }
+
+            if (replyText.StartsWith("edit body", StringComparison.OrdinalIgnoreCase) || replyText.StartsWith("body:", StringComparison.OrdinalIgnoreCase))
+            {
+                var sep = replyText.IndexOf(':');
+                var newBody = sep >= 0 ? replyText[(sep + 1)..].Trim() : replyText["edit body".Length..].Trim();
+                var updated = pendingProposal with { Body = newBody };
+                PendingTodoProposals[chatId] = updated;
+                await telegram.SendMessageInChunksAsync(chatId, "Updated proposed description. Reply 'confirm' to create or 'edit title: <text>' to change the title.", cancellationToken);
+                return;
+            }
+        }
 
         // Redact attempts to read or display .env or secrets: replace values with [REDACTED]
         if (!string.IsNullOrWhiteSpace(text) && Regex.IsMatch(text, @"(\.|\b)(env|\.env|env file|show\s+env|show\s+\.env|display\s+env)\b", RegexOptions.IgnoreCase))
@@ -673,10 +722,28 @@ internal static class TelegramMessageHandler
         {
             if (LooksLikeTodoAddRequest(text))
             {
-                var todoData = ExtractTodoDataFromText(text);
+                // Try the legacy extraction first, but prefer the voice-aware parser when it produces a concise title/body.
+                var legacy = ExtractTodoDataFromText(text);
+                var normalized = VoiceInputNormalizer.NormalizeTranscript(text);
+                var (proposedTitle, proposedBody) = VoiceIssueParser.ExtractTitleBody(normalized);
+
+                // Decide which parse to use. Prefer the voice parser if it produced a short title and/or a body when legacy did not.
+                var useProposed = false;
+                if (!string.IsNullOrWhiteSpace(proposedTitle))
+                {
+                    if (proposedTitle.Length < (legacy.Title?.Length ?? int.MaxValue))
+                        useProposed = true;
+                    if (string.IsNullOrWhiteSpace(legacy.Description) && !string.IsNullOrWhiteSpace(proposedBody))
+                        useProposed = true;
+                }
+
+                var titleToUse = useProposed && !string.IsNullOrWhiteSpace(proposedTitle) ? proposedTitle : legacy.Title;
+                var descToUse = useProposed ? proposedBody : legacy.Description;
+                var projectToUse = legacy.Project;
+
                 if (gitHubTodosService.IsConfigured)
                 {
-                    var addResult = await gitHubTodosService.AddTodoAsync(todoData.Title, todoData.Description, todoData.Project, cancellationToken);
+                    var addResult = await gitHubTodosService.AddTodoAsync(titleToUse, descToUse, projectToUse, cancellationToken);
                     await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(addResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
                     return;
                 }
@@ -1616,6 +1683,15 @@ internal static class TelegramMessageHandler
         CancellationToken cancellationToken,
         string ttsErrorContext)
     {
+        // Detect structured todo proposals returned by guarded functions and present a confirmation flow.
+        if (TryExtractTodoProposalFromText(telegramText, out var proposal))
+        {
+            PendingTodoProposals[chatId] = proposal!;
+            var reply = $"I parsed your message into a proposed todo:\n\nTitle: {proposal!.Title}\n\nDescription: {proposal.Body}\n\nReply 'confirm' to create it, 'edit title: <text>' or 'edit body: <text>' to modify, or 'cancel'.";
+            await telegram.SendMessageInChunksAsync(chatId, reply, cancellationToken);
+            return;
+        }
+
         if (IsTextRepresentationOfAudioRequested(userRequestText ?? string.Empty))
         {
             await telegram.SendMessageInChunksAsync(chatId, telegramText, cancellationToken);
@@ -1643,6 +1719,46 @@ internal static class TelegramMessageHandler
                 await telegram.SendMessageInChunksAsync(chatId, telegramText, cancellationToken);
             }
         }
+    }
+
+    private static bool TryExtractTodoProposalFromText(string text, out ProposedTodo? proposal)
+    {
+        proposal = null;
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        int start = text.IndexOf('{');
+        while (start >= 0)
+        {
+            int end = text.IndexOf('}', start);
+            while (end >= 0)
+            {
+                var candidate = text.Substring(start, end - start + 1);
+                try
+                {
+                    using var doc = JsonDocument.Parse(candidate);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("requiresConfirmation", out var req) && req.ValueKind == JsonValueKind.True)
+                    {
+                        var proposedTitle = root.TryGetProperty("proposedTitle", out var pt) ? pt.GetString() ?? string.Empty : string.Empty;
+                        var proposedBody = root.TryGetProperty("proposedBody", out var pb) ? pb.GetString() : null;
+                        var label = root.TryGetProperty("label", out var pl) ? pl.GetString() : null;
+                        proposal = new ProposedTodo(proposedTitle, proposedBody, label);
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // ignore parse errors and try next candidate
+                }
+
+                end = text.IndexOf('}', end + 1);
+            }
+
+            start = text.IndexOf('{', start + 1);
+        }
+
+        return false;
     }
 
     private static bool IsTelegramDesktopFocused()

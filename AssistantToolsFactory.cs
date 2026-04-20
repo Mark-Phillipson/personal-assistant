@@ -664,9 +664,44 @@ internal static class AssistantToolsFactory
                     [Description("Todo title (required)")] string title,
                     [Description("Optional longer description or detail for the todo body")] string? body = null,
                     [Description("Optional label / project category to apply (e.g. Work, Personal, Finance)")] string? label = null) =>
-                    await gitHubTodosService.AddTodoAsync(title, body, label),
+                {
+                    // Heuristic guard: if the provided title looks like a raw voice transcript (very long, multiple sentences,
+                    // or contains markers like "with the following title"), return a proposal JSON instead of creating the issue.
+                    var normalized = VoiceInputNormalizer.NormalizeTranscript(title ?? string.Empty);
+                    var looksLikeTranscript = false;
+                    if ((normalized?.Length ?? 0) > 80)
+                        looksLikeTranscript = true;
+                    if (System.Text.RegularExpressions.Regex.IsMatch(normalized ?? string.Empty, "\\band the following description\\b|\\bwith the following title\\b|\\bdescription\\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                        looksLikeTranscript = true;
+                    var sentenceCount = (normalized ?? string.Empty).Split(new[] { '.', '!', '?' }, System.StringSplitOptions.RemoveEmptyEntries).Length;
+                    if (sentenceCount > 1)
+                        looksLikeTranscript = true;
+
+                    if (looksLikeTranscript && string.IsNullOrWhiteSpace(body))
+                    {
+                        var (proposedTitle, proposedBody) = VoiceIssueParser.ExtractTitleBody(normalized ?? string.Empty);
+                        var proposal = new { requiresConfirmation = true, proposedTitle = proposedTitle, proposedBody = proposedBody, label = label };
+                        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+                        return JsonSerializer.Serialize(proposal, options);
+                    }
+
+                    return await gitHubTodosService.AddTodoAsync(title, body, label);
+                },
                 "add_personal_todo",
                 "Add a new personal todo as a GitHub Issue in the Personal-Todos repository. If the user gives freeform text, generate a concise title (prefer under 60 chars) summarizing the action and place remaining details into the body. If the user already provides a short title and optional body, use them verbatim. Optionally include a label."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Raw transcript text from Whisper/Talon to parse into a proposed todo title/body")] string rawTranscript,
+                    [Description("Optional label / project category to apply (e.g. Work, Personal, Finance)")] string? label = null) =>
+                {
+                    var normalized = VoiceInputNormalizer.NormalizeTranscript(rawTranscript ?? string.Empty);
+                    var (title, body) = VoiceIssueParser.ExtractTitleBody(normalized);
+                    var payload = new { Title = title, Body = body, Label = label };
+                    var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+                    return JsonSerializer.Serialize(payload, options);
+                },
+                "add_personal_todo_via_voice",
+                "Parse a raw voice transcript into a proposed todo title and body. Returns a JSON object {title, body, label}. Do NOT create the issue; return the proposed title and body for user confirmation before calling add_personal_todo."),
             AIFunctionFactory.Create(
                 async (
                     [Description("Issue number from list_personal_todos (e.g. 3)")] int issueNumber,

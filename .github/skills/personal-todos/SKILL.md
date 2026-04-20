@@ -54,3 +54,16 @@ Rationale: GitHub issue titles should be short and searchable while the body hol
 - Personal todos are separate from Voice Admin todos. Do not use Voice Admin todo tools for personal todos.
 - For Telegram, default to `htmlFormat=true` to get preformatted table output with `<pre>` blocks.
 - Provide the issue URL when adding or updating a todo, so the user can open it directly if needed.
+
+### Voice input guidance
+
+- When the user provides voice transcripts (e.g., Whisper/Talon Mix Mode), expect short fragments, misplaced punctuation, and filler words.
+- The assistant should call `add_personal_todo_via_voice(rawTranscript, label?)` to obtain a proposed `title` and `body` in JSON form. The voice parsing function MUST NOT create the GitHub issue.
+- After receiving the proposed `title` and `body`, present them to the user for confirmation or a brief edit (accept / edit title / edit body / cancel). Only call `add_personal_todo(title, body, label?)` after explicit confirmation from the user.
+- Use heuristics to extract titles: prefer short, searchable titles (<= 60 chars) and place remaining detail in the body. If the transcript contains explicit markers like "title" and "description", extract accordingly.
+- Examples:
+	- Transcript: "Create another issue in the... Github Todos With the following title. Windows notifications. And the following description. We need to get to the... Windows notifications working in the /help"
+		- Proposed title: "Windows notifications"
+		- Proposed body: "We need to get to the Windows notifications working in the /help"
+
+Rationale: Voice transcripts are often fragmentary; parsing + confirmation ensures short searchable titles and preserves full context in the issue body.
