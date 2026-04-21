@@ -189,6 +189,17 @@ internal sealed class GmailAssistantService
         // Build() may return a Uri or string depending on library version; ensure a string return
         var built = authUrlObj.Build();
         var authUrl = built is Uri uri ? uri.AbsoluteUri : built.ToString();
+
+        // Ensure offline access and explicit consent so a refresh token is returned
+        if (!authUrl.Contains("access_type=", StringComparison.OrdinalIgnoreCase))
+        {
+            authUrl += (authUrl.Contains("?") ? "&" : "?") + "access_type=offline";
+        }
+        if (!authUrl.Contains("prompt=", StringComparison.OrdinalIgnoreCase))
+        {
+            authUrl += "&prompt=consent";
+        }
+
         return authUrl;
     }
 
@@ -255,7 +266,7 @@ internal sealed class GmailAssistantService
 
             var credential = await GoogleWebAuthorizationBroker.AuthorizeAsync(
                 secrets,
-                [GmailService.Scope.GmailReadonly],
+                new[] { GmailService.Scope.GmailReadonly },
                 _expectedAccount ?? "default-user",
                 CancellationToken.None,
                 new FileDataStore(_tokenStorePath, true));

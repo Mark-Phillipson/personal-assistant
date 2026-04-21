@@ -78,6 +78,46 @@ var gitHubTodosService = GitHubTodosService.FromEnvironment();
 var telegramChatIdStore = TelegramChatIdStore.FromEnvironment();
 
 // CLI helpers for Gmail auth flows
+if (args.Any(arg => string.Equals(arg, "--list-gmail-unread", StringComparison.OrdinalIgnoreCase)))
+{
+    try
+    {
+        var listObj = await gmailService.ListUnreadMessagesAsync(10, null, true);
+        Console.WriteLine(JsonSerializer.Serialize(listObj, new JsonSerializerOptions { WriteIndented = true }));
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[gmail] Failed to list unread messages: {ex.Message}");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
+if (args.Any(arg => string.Equals(arg, "--read-gmail-message", StringComparison.OrdinalIgnoreCase)))
+{
+    try
+    {
+        var idx = Array.FindIndex(args, a => string.Equals(a, "--read-gmail-message", StringComparison.OrdinalIgnoreCase));
+        string messageId = null;
+        if (idx >= 0 && args.Length > idx + 1) messageId = args[idx + 1];
+        if (string.IsNullOrWhiteSpace(messageId))
+        {
+            Console.Error.WriteLine("[gmail] --read-gmail-message requires a messageId argument.");
+            Environment.ExitCode = 1;
+            return;
+        }
+        var detail = await gmailService.ReadMessageAsync(messageId);
+        Console.WriteLine(JsonSerializer.Serialize(detail, new JsonSerializerOptions { WriteIndented = true }));
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[gmail] Failed to read message: {ex.Message}");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
+// CLI helpers for Gmail auth flows
 if (args.Any(arg => string.Equals(arg, "--print-gmail-consent-url", StringComparison.OrdinalIgnoreCase)))
 {
     try
