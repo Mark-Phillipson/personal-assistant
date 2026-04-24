@@ -77,6 +77,57 @@ var clipboardHistoryService = ClipboardHistoryService.FromEnvironment();
 var gitHubTodosService = GitHubTodosService.FromEnvironment();
 var telegramChatIdStore = TelegramChatIdStore.FromEnvironment();
 
+// CLI helper: open last 10 clipboard history entries in VS Code
+if (args.Any(arg => string.Equals(arg, "--open-clipboard-history", StringComparison.OrdinalIgnoreCase)))
+{
+    try
+    {
+        var scriptPath = Path.Combine(Environment.CurrentDirectory, "tools", "open-clipboard-history.ps1");
+        if (!File.Exists(scriptPath))
+        {
+            Console.Error.WriteLine($"[clipboard] Script not found: {scriptPath}");
+            Environment.ExitCode = 1;
+            return;
+        }
+
+        // Prefer pwsh, fall back to powershell
+        var started = false;
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "pwsh",
+                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\"",
+                UseShellExecute = false
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            proc?.WaitForExit();
+            Environment.ExitCode = proc?.ExitCode ?? 0;
+            started = true;
+        }
+        catch { }
+
+        if (!started)
+        {
+            var psi2 = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell",
+                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\"",
+                UseShellExecute = false
+            };
+            using var proc2 = System.Diagnostics.Process.Start(psi2);
+            proc2?.WaitForExit();
+            Environment.ExitCode = proc2?.ExitCode ?? 0;
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[clipboard] Failed to run script: {ex.Message}");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
 // CLI helpers for Gmail auth flows
 if (args.Any(arg => string.Equals(arg, "--list-gmail-unread", StringComparison.OrdinalIgnoreCase)))
 {
