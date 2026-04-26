@@ -5,7 +5,7 @@ This file provides project-specific guidelines for using GitHub Copilot in this 
 
 ## Project Context
 - .NET 10 Telegram-based personal assistant using GitHub Copilot SDK
-- Integrates with Gmail and Google Calendar via OAuth
+- Integrates with Gmail (read only access) and Google Calendar via OAuth
 - Handles environment variables for secrets and configuration
 
 ## Copilot Usage Guidelines
