@@ -2,62 +2,132 @@
 name: cdp-browser-fill
 description: 'Fill web forms via Chrome DevTools Protocol (CDP) over WebSocket from PowerShell on Windows. Use when Playwright is not available and the task is to populate form fields in a running Edge or Chrome browser tab.'
 argument-hint: 'Describe which tab and what values to fill, or provide the URL and field values.'
+name: playwright-browser-fill
+description: 'Fill web forms using Playwright (.NET) by attaching to a running Chromium/Edge instance over CDP or launching with a user profile. Prefer this when Playwright is available.'
+argument-hint: 'Provide URL and selector/value pairs; optional remote debugging port (default 9222).'
 user-invocable: true
 ---
 
-# CDP Browser Form Fill (Windows / PowerShell)
+# Playwright Browser Fill (Windows / .NET)
 
-Fill web forms in a live browser tab using the Chrome DevTools Protocol directly from PowerShell — no Playwright or Node.js required.
+This skill replaces low-level CDP messaging with a Playwright (.NET) workflow that can attach to an existing Chromium/Edge instance over the Chrome DevTools Protocol (CDP) or launch a browser that uses a user profile. Playwright gives more robust selectors, automatic waiting, and simpler high-level operations.
 
-## Step 0 — Browser Pre-flight ⚠️ REQUIRED
+**When to use:**
+- Use Playwright `.ConnectOverCDPAsync(...)` to attach to a running browser that was started with `--remote-debugging-port` (this preserves logged-in sessions if the browser was launched with the same profile).
+- If you cannot attach, launch a Playwright browser with a `userDataDir` that points to a profile copy (avoid launching the same profile while an interactive browser is running).
 
-**Before doing anything else**, tell the user:
+## Pre-flight — start the target browser with CDP
 
-> **Please close all Microsoft Edge windows now, then launch the remote debugging version of Edge.**
-> You can launch it from:
-> - **Your desktop** — there should be a shortcut labelled something like *"Edge Remote Debugging"*
-> - **The Voice Admin launches table** — search for *"edge remote"* or *"remote debug"* and launch that entry, in the work links category.
-
-Wait for the user to confirm Edge is open before continuing.
-
----
-
-**Why this matters:** If a normal Edge instance is already running, it occupies the debugging port and the automation silently fails — all field fills return `false` and no error is shown.
-
-Once the user confirms, verify the debugging port is live:
+1. Close all Edge/Chrome windows.
+2. Launch Edge/Chrome with remote debugging enabled. Example Edge command (PowerShell):
 
 ```powershell
-# Confirm the debug port is responding
-try {
-    $check = Invoke-RestMethod -Uri "http://127.0.0.1:9222/json/version" -TimeoutSec 3
-    Write-Output "Edge remote debugging is active: $($check.Browser)"
-} catch {
-    Write-Output "⚠️  Port 9222 not responding. Ask the user to relaunch the remote debugging Edge shortcut."
+& 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe' --remote-debugging-port=9222
+```
+
+If you want to reuse your normal profile and stay logged in, ensure you start the browser using the same profile (and that no other browser instance is running that keeps the profile locked). The repository's existing "Edge Remote Debugging" shortcut typically does this — use that.
+
+Confirm the remote debugging endpoint is available:
+
+```powershell
+$info = Invoke-RestMethod -Uri http://127.0.0.1:9222/json/version -UseBasicParsing
+$info.webSocketDebuggerUrl
+```
+
+The returned `webSocketDebuggerUrl` (example: `ws://127.0.0.1:9222/devtools/browser/<id>`) is the endpoint Playwright can use to attach.
+
+## Install Playwright (.NET)
+
+From your project folder:
+
+```powershell
+dotnet add package Microsoft.Playwright
+dotnet tool install --global Microsoft.Playwright.CLI   # optional
+playwright install
+```
+
+You can also trigger binaries installation at runtime with:
+
+```csharp
+await Microsoft.Playwright.Playwright.InstallAsync();
+```
+
+## Example — Attach to a running browser and fill fields (C#)
+
+Create a small `.NET` console app and use the endpoint found above. This example connects to the running browser, finds or creates a page, and fills inputs using Playwright's selector API.
+
+```csharp
+using System;
+using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Microsoft.Playwright;
+
+class PlaywrightAttachExample
+{
+    public static async Task Main(string[] args)
+    {
+        // Optionally pass the CDP webSocket URL as the first arg.
+        var endpoint = args.Length > 0 ? args[0] : await GetWebSocketEndpointAsync();
+
+        using var playwright = await Playwright.CreateAsync();
+
+        // Attach to the running Chromium/Edge instance over CDP
+        var browser = await playwright.Chromium.ConnectOverCDPAsync(endpoint);
+
+        // Try to reuse an existing page, otherwise create one
+        var page = browser.Contexts.SelectMany(c => c.Pages).FirstOrDefault();
+        if (page == null)
+        {
+            var context = browser.Contexts.FirstOrDefault() ?? await browser.NewContextAsync();
+            page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync();
+        }
+
+        // Example: navigate (optional) and fill a selector
+        if (args.Length > 1) await page.GotoAsync(args[1]);
+
+        // Example fill operations (change selectors to match target page)
+        await page.FillAsync("input[name=\"email\"]", "you@example.com");
+        await page.FillAsync("input[name=\"password\"]", "hunter2");
+        await page.ClickAsync("button[type=submit]");
+
+        Console.WriteLine("Form fill completed (attached). Leave browser open to keep session).");
+    }
+
+    static async Task<string> GetWebSocketEndpointAsync()
+    {
+        using var client = new HttpClient();
+        var json = await client.GetStringAsync("http://127.0.0.1:9222/json/version");
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.GetProperty("webSocketDebuggerUrl").GetString();
+    }
 }
 ```
 
-If the port check fails, remind the user again:
+Notes:
+- `ConnectOverCDPAsync` accepts either a `ws://...` `webSocketDebuggerUrl` or the HTTP CDP endpoint; use the `webSocketDebuggerUrl` returned by `/json/version` for reliability.
+- Do not call `browser.CloseAsync()` if you want to preserve the running user's session; disposing Playwright objects is fine but closing the underlying browser will end the session.
 
-> The remote debugging port isn't open. Please fully close Edge and relaunch it using the **desktop shortcut** or the **Voice Admin launches table** entry for remote debugging Edge.
+## Quick PowerShell helper (find endpoint)
+
+```powershell
+#$ws = (Invoke-RestMethod -Uri http://127.0.0.1:9222/json/version -UseBasicParsing).webSocketDebuggerUrl
+#dotnet run --project .\PlaywrightAttachExample\PlaywrightAttachExample.csproj $ws https://example.com/login
+```
+
+## VS Code integrated browser
+
+The VS Code "Integrated Browser" or some preview extensions do not always expose a CDP endpoint. Playwright needs a real Chromium/Edge process launched with `--remote-debugging-port`. If you want to automate a VS Code preview, check whether that extension exposes a CDP port or consider launching a normal Edge/Chrome instance with the desired profile.
+
+## Troubleshooting & tips
+- If `ConnectOverCDPAsync` fails, confirm the `webSocketDebuggerUrl` is reachable from the machine and that the browser was started with the debugging port.
+- Reusing an interactive profile is possible but delicate: prefer to start the browser for automation with the same `user-data-dir` only when no other process holds the profile lock.
+- If you control launching the browser from code, `playwright.Chromium.LaunchPersistentContextAsync(userDataDir, options)` can start a browser using a persistent profile and give you full control.
 
 ---
 
-## Step 1 — Discover the Tab
-
-Scan ports 9222–9232 to find the tab. Always use a loop — the port can vary.
-
-```powershell
-$wsUrl = $null
-$tabTitle = $null
-for ($p = 9222; $p -le 9232; $p++) {
-    try {
-        $list = Invoke-RestMethod -Uri "http://127.0.0.1:$p/json/list" -TimeoutSec 2 -ErrorAction Stop
-        # Match by partial URL or title — adjust filter as needed
-        $tab = $list | Where-Object { $_.url -like '*YOUR_URL_FRAGMENT*' } | Select-Object -First 1
-        if ($tab) {
-            $wsUrl = $tab.webSocketDebuggerUrl
-            $tabTitle = $tab.title
-            Write-Output "Found tab: $tabTitle on port $p"
+If you want, I can (1) add the console app sample as a runnable project in `scripts/` and (2) try a local run to verify the attach flow on your machine — which would require you to confirm Edge is started with remote debugging. Which would you like next?
             break
         }
     } catch {}
@@ -244,3 +314,34 @@ function setReact(el, val) {
 - [ ] Fill JS uses exact attribute values
 - [ ] `input` and `change` events dispatched after setting value
 - [ ] All fields returned `true` in fill results
+
+## Session Notes — Integrated Browser Test (2026-05-02)
+
+Summary of what we learned during a live test of the Upwork messages composer using VS Code's Integrated Browser and Playwright:
+
+- **Integrated browser limitations:** The VS Code integrated browser does not expose a CDP endpoint — prefer attaching Playwright to a real Edge/Chrome instance launched with `--remote-debugging-port=9222`. The integrated browser can still navigate and render, but automation that requires CDP (or a persistent profile attach) will fail.
+- **Login redirect handling:** Attempting to open a message-room URL redirected to Upwork's login page if not signed in. Ensure a logged-in session exists in the target browser/profile before attempting to fill message drafts.
+- **Composer selector strategy used:** We searched for these selectors (in order) and used the first match:
+    - `textarea`
+    - `input[type="text"]`
+    - `[contenteditable="true"]`
+    - `div[role="textbox"]`
+    - `[aria-label*="message"]`
+    - `[placeholder*="message"]`
+    - `[data-test="message-composer"]`
+    If a single selector didn't match, fall back to scanning all `[contenteditable="true"]` elements and choose the visible one.
+- **Filling approach:** Clear the element, focus it, then:
+    1. Set `value` or `innerText` to empty.
+    2. Dispatch `input` and `change` events.
+    3. Use `page.keyboard.type(...)` to insert the draft (helps frameworks pick up changes reliably).
+    4. Dispatch `input`/`change` again and optionally `blur`.
+- **Framework compatibility:** For React/Vue-managed inputs, prefer the native setter pattern shown in the skill (use Object.getOwnPropertyDescriptor to set and dispatch input events).
+- **Network and GraphQL errors:** During the session Upwork returned some GraphQL 404/403 and third-party resource failures. Automation must tolerate partial failures (suggestions may be unavailable).
+- **Safety / non-send guarantee:** The script deliberately avoided invoking the send action. When automating message compose, never call click/send unless explicitly commanded.
+- **Example test draft used:** `Test draft: Hello from Copilot — this is a test message. DO NOT SEND.`
+
+Recommended next steps:
+
+- Add the Playwright script from `scripts/PlaywrightAttachExample` to this repo (if not present) and include a `--dry-run` mode that fills a composer but never presses send.
+- Document the recommended `--remote-debugging-port=9222` workflow and provide a shortcut or script to launch Edge with a safe persistent profile for automation.
+
