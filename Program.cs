@@ -149,7 +149,7 @@ if (args.Any(arg => string.Equals(arg, "--read-gmail-message", StringComparison.
     try
     {
         var idx = Array.FindIndex(args, a => string.Equals(a, "--read-gmail-message", StringComparison.OrdinalIgnoreCase));
-        string messageId = null;
+        string? messageId = null;
         if (idx >= 0 && args.Length > idx + 1) messageId = args[idx + 1];
         if (string.IsNullOrWhiteSpace(messageId))
         {

@@ -743,6 +743,12 @@ internal static class TelegramMessageHandler
 
                 if (gitHubTodosService.IsConfigured)
                 {
+                    if (string.IsNullOrWhiteSpace(titleToUse))
+                    {
+                        await telegram.SendMessageInChunksAsync(chatId, "Sorry, I couldn't extract a title for the todo. Please rephrase or provide a short title.", cancellationToken);
+                        return;
+                    }
+
                     var addResult = await gitHubTodosService.AddTodoAsync(titleToUse, descToUse, projectToUse, cancellationToken);
                     await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(addResult, EmojiPalette.Confirm, profile.UseEmoji), cancellationToken);
                     return;

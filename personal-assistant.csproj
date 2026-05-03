@@ -36,4 +36,8 @@
     <None Include=".env" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="scripts\**\*.cs" />
+    <None Include="scripts\**\*" />
+  </ItemGroup>
 </Project>

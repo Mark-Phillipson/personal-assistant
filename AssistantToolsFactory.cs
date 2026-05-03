@@ -685,6 +685,9 @@ internal static class AssistantToolsFactory
                         return JsonSerializer.Serialize(proposal, options);
                     }
 
+                    if (string.IsNullOrWhiteSpace(title))
+                        return "Error: title is required to create a todo.";
+                    
                     return await gitHubTodosService.AddTodoAsync(title, body, label);
                 },
                 "add_personal_todo",
