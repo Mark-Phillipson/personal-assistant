@@ -1,8 +1,5 @@
 ---
 name: cdp-browser-fill
-description: 'Fill web forms via Chrome DevTools Protocol (CDP) over WebSocket from PowerShell on Windows. Use when Playwright is not available and the task is to populate form fields in a running Edge or Chrome browser tab.'
-argument-hint: 'Describe which tab and what values to fill, or provide the URL and field values.'
-name: playwright-browser-fill
 description: 'Fill web forms using Playwright (.NET) by attaching to a running Chromium/Edge instance over CDP or launching with a user profile. Prefer this when Playwright is available.'
 argument-hint: 'Provide URL and selector/value pairs; optional remote debugging port (default 9222).'
 user-invocable: true
