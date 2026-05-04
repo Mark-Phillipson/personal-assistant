@@ -191,7 +191,7 @@ public sealed class GoogleCalendarAssistantService
             var tokenRequest = new Dictionary<string, string>
             {
                 { "client_id", clientSecrets.ClientId },
-                { "device_code", deviceCode },
+                { "device_code", deviceCode! },
                 { "grant_type", "urn:ietf:params:oauth:grant-type:device_code" }
             };
             if (!string.IsNullOrEmpty(clientSecrets.ClientSecret))

@@ -20,7 +20,7 @@ namespace PersonalAssistant.Tests
             if (method == null)
                 throw new InvalidOperationException("ShouldSendTelegramAudio method not found on TelegramMessageHandler.");
 
-            return (bool)method.Invoke(null, new object[] { input });
+            return (bool)method.Invoke(null, new object?[] { input })!;
         }
 
         [Fact]
