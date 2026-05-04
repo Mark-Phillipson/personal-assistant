@@ -45,6 +45,13 @@ internal static class TelegramMessageHandler
         var chatId = message.Chat.Id;
         var profile = GetPersonalityForChat(chatId, personalityProfiles, defaultPersonality);
 
+        // Wire up the calendar auth notifier so the device-code URL/code is sent back
+        // to this chat rather than being written only to the (invisible) process console.
+        calendarService.AuthorizationNotifier = async (_, formattedMessage) =>
+        {
+            await telegram.SendMessageInChunksAsync(chatId, formattedMessage, cancellationToken);
+        };
+
         // If there's a pending proposed todo for this chat, allow quick confirm/edit/cancel commands.
         if (PendingTodoProposals.TryGetValue(chatId, out var pendingProposal))
         {
