@@ -20,10 +20,18 @@ internal static class TelegramMessageHandler
     {
         if (string.IsNullOrWhiteSpace(text))
             return string.Empty;
-
         // Decode any HTML entities that may be present in calendar event summaries/descriptions
-        // (Google Calendar sometimes returns HTML-encoded content). Trim to clean up whitespace.
-        return WebUtility.HtmlDecode(text).Trim();
+        // (Google Calendar sometimes returns HTML-encoded content).
+        var decoded = WebUtility.HtmlDecode(text).Trim();
+
+        // Replace common break tags with newlines, then strip any remaining HTML tags.
+        decoded = Regex.Replace(decoded, "<\\s*br\\s*/?>", "\n", RegexOptions.IgnoreCase);
+        decoded = Regex.Replace(decoded, "<[^>]+>", string.Empty, RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
+        // Collapse whitespace (including newlines) to single spaces for compact labels.
+        var singleLine = Regex.Replace(decoded, "\\s+", " ").Trim();
+
+        return singleLine;
     }
     public static async Task HandleAsync(
         TelegramMessage message,
