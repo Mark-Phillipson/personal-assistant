@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Net;
 using System.Text.Json;
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
@@ -14,6 +15,16 @@ internal static class TelegramMessageHandler
     private static readonly ConcurrentDictionary<long, string> SessionToolSignatures = new();
     private record ProposedTodo(string Title, string? Body, string? Label);
     private static readonly ConcurrentDictionary<long, ProposedTodo> PendingTodoProposals = new();
+
+    private static string NormalizeEventText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        // Decode any HTML entities that may be present in calendar event summaries/descriptions
+        // (Google Calendar sometimes returns HTML-encoded content). Trim to clean up whitespace.
+        return WebUtility.HtmlDecode(text).Trim();
+    }
     public static async Task HandleAsync(
         TelegramMessage message,
         string text,
@@ -81,7 +92,7 @@ internal static class TelegramMessageHandler
                 }
 
                 var eventItems = events.Select(ev => (
-                    label: TelegramRichTextFormatter.Bold(ev.Summary ?? "Event"),
+                    label: TelegramRichTextFormatter.Bold(NormalizeEventText(ev.Summary ?? "Event")),
                     secondary: $"Start: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"
                 )).ToList();
 
@@ -392,7 +403,7 @@ internal static class TelegramMessageHandler
                     else
                     {
                         var eventItems = events.Select(ev => (
-                            label: TelegramRichTextFormatter.Bold(ev.Summary ?? "Event"),
+                            label: TelegramRichTextFormatter.Bold(NormalizeEventText(ev.Summary ?? "Event")),
                             secondary: $"Start: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"
                         )).ToList();
                         var eventList = TelegramRichTextFormatter.LabeledList("📅 Upcoming Events", eventItems);
@@ -1252,12 +1263,12 @@ internal static class TelegramMessageHandler
                 }
 
                 var eventItems = events.Select(ev => (
-                    label: TelegramRichTextFormatter.Bold(ev.Summary ?? "Event"),
+                    label: TelegramRichTextFormatter.Bold(NormalizeEventText(ev.Summary ?? "Event")),
                     secondary: $"Start: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"
                 )).ToList();
 
                 var eventList = TelegramRichTextFormatter.LabeledList("📅 Upcoming Events", eventItems);
-                var speech = string.Join(", ", events.Select(ev => $"{ev.Summary} at {ev.Start?.DateTimeDateTimeOffset}"));
+                var speech = string.Join(", ", events.Select(ev => $"{NormalizeEventText(ev.Summary ?? "Event")} at {ev.Start?.DateTimeDateTimeOffset}"));
 
                 await SendReplyWithOptionalTelegramAudioAsync(
                     chatId,
