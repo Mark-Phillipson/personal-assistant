@@ -45,6 +45,51 @@ internal static class TelegramMessageHandler
         var chatId = message.Chat.Id;
         var profile = GetPersonalityForChat(chatId, personalityProfiles, defaultPersonality);
 
+        // Do not store a chat-specific authorization callback on the singleton calendar service.
+        // Per-user notification routing must be provided per operation rather than via shared
+        // mutable process-wide state.
+
+        // Auto-detect freeform calendar queries (non-slash messages) and short-circuit
+        // them to the calendar service to avoid model latency for common requests.
+        if (!string.IsNullOrWhiteSpace(text) && !text.StartsWith('/') && LooksLikeCalendarRequest(text))
+        {
+            try
+            {
+                if (!calendarService.IsConfigured)
+                {
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        EmojiPalette.Wrap(calendarService.GetSetupStatusText(), EmojiPalette.Warning, profile.UseEmoji),
+                        cancellationToken);
+                    return;
+                }
+
+                var events = await calendarService.ListUpcomingEventsAsync(5);
+                if (events.Count == 0)
+                {
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        EmojiPalette.Wrap("No upcoming events found.", EmojiPalette.Calendar, profile.UseEmoji),
+                        cancellationToken);
+                    return;
+                }
+
+                var eventItems = events.Select(ev => (
+                    label: TelegramRichTextFormatter.Bold(ev.Summary ?? "Event"),
+                    secondary: $"Start: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"
+                )).ToList();
+
+                var eventList = TelegramRichTextFormatter.LabeledList("📅 Upcoming Events", eventItems);
+                await telegram.SendMessageInChunksAsync(chatId, eventList, cancellationToken);
+                return;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[calendar.autodetect.error] chat={chatId} {ex.Message}");
+                // fall through to normal handling if auto-detect fails
+            }
+        }
+
         // If there's a pending proposed todo for this chat, allow quick confirm/edit/cancel commands.
         if (PendingTodoProposals.TryGetValue(chatId, out var pendingProposal))
         {
@@ -246,6 +291,7 @@ internal static class TelegramMessageHandler
                 assistantTools,
                 profile,
                 knownFolderExplorerService,
+                calendarService,
                 voiceAdminService,
                 textToSpeechService,
                 conversationHistories,
@@ -542,6 +588,7 @@ internal static class TelegramMessageHandler
                         assistantTools,
                         profile,
                         knownFolderExplorerService,
+                        calendarService,
                         voiceAdminService,
                         textToSpeechService,
                         conversationHistories,
@@ -1150,6 +1197,7 @@ internal static class TelegramMessageHandler
         ICollection<AIFunction> assistantTools,
         PersonalityProfile profile,
         KnownFolderExplorerService knownFolderExplorerService,
+        GoogleCalendarAssistantService calendarService,
         VoiceAdminService voiceAdminService,
         TextToSpeechService textToSpeechService,
         ConcurrentDictionary<long, List<string>> conversationHistories,
@@ -1158,6 +1206,72 @@ internal static class TelegramMessageHandler
         var messageOptions = new MessageOptions { Prompt = commandPayload };
 
         RecordConversationHistory(chatId, "User", commandPayload, conversationHistories);
+
+        // Fast-path: simple calendar/listing requests should be handled locally to avoid
+        // Copilot/model latency. This returns a quick calendar summary without waiting
+        // for the model when a calendar intent is detected.
+        try
+        {
+            if (LooksLikeCalendarRequest(commandPayload))
+            {
+                if (!calendarService.IsConfigured)
+                {
+                    var msg = "Google Calendar integration is not configured. Use /calendar-status for setup instructions.";
+                    await SendReplyWithOptionalTelegramAudioAsync(
+                        chatId,
+                        EmojiPalette.Wrap(msg, EmojiPalette.Warning, profile.UseEmoji),
+                        msg,
+                        commandPayload,
+                        telegram,
+                        textToSpeechService,
+                        cancellationToken,
+                        $"[calendar.fastpath.notconfigured] chat={chatId}");
+                    return;
+                }
+
+                var events = await calendarService.ListUpcomingEventsAsync(5);
+                if (events.Count == 0)
+                {
+                    var noMsg = "No upcoming events found.";
+                    await SendReplyWithOptionalTelegramAudioAsync(
+                        chatId,
+                        EmojiPalette.Wrap(noMsg, EmojiPalette.Calendar, profile.UseEmoji),
+                        noMsg,
+                        commandPayload,
+                        telegram,
+                        textToSpeechService,
+                        cancellationToken,
+                        $"[calendar.fastpath.none] chat={chatId}");
+                    return;
+                }
+
+                var eventItems = events.Select(ev => (
+                    label: TelegramRichTextFormatter.Bold(ev.Summary ?? "Event"),
+                    secondary: $"Start: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"
+                )).ToList();
+
+                var eventList = TelegramRichTextFormatter.LabeledList("📅 Upcoming Events", eventItems);
+                var speech = string.Join(", ", events.Select(ev => $"{ev.Summary} at {ev.Start?.DateTimeDateTimeOffset}"));
+
+                await SendReplyWithOptionalTelegramAudioAsync(
+                    chatId,
+                    eventList,
+                    speech,
+                    commandPayload,
+                    telegram,
+                    textToSpeechService,
+                    cancellationToken,
+                    $"[calendar.fastpath.success] chat={chatId}");
+
+                RecordConversationHistory(chatId, "Assistant", eventList, conversationHistories);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[calendar.fastpath.error] chat={chatId} {ex.Message}");
+            // Fall through to AI fallback if local handling fails.
+        }
 
         var content = await SendWithSessionRecoveryAsync(
             chatId,
@@ -1212,6 +1326,41 @@ internal static class TelegramMessageHandler
             RegexOptions.IgnoreCase);
 
         return mentionsTodo && asksToList;
+    }
+
+    private static bool LooksLikeCalendarRequest(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var mentionsCalendar = Regex.IsMatch(text, "\\b(calendar|calendars|events?|appointments?|meetings|schedule)\\b", RegexOptions.IgnoreCase);
+        if (!mentionsCalendar)
+            return false;
+
+        // Avoid routing create/update/delete calendar actions down the list/show fast-path.
+        var mentionsCreateOrUpdate = Regex.IsMatch(
+            text,
+            "\\b(add|create|book|schedule|set up|plan|move|reschedule|update|edit|change|cancel|delete|remove)\\b",
+            RegexOptions.IgnoreCase);
+        if (mentionsCreateOrUpdate)
+            return false;
+
+        var asksToList = Regex.IsMatch(
+            text,
+            "\\b(" +
+            "list|show|display|" +
+            "what(?:'s| is)\\s+(?:on\\s+)?(?:(?:my\\s+)?)?(?:calendar|schedule)|" +
+            "what\\s+do\\s+i\\s+have|" +
+            "do\\s+i\\s+have\\s+anything|" +
+            "upcoming|" +
+            "today(?:'s)?\\s+(?:calendar|schedule|events?|appointments?|meetings)|" +
+            "tomorrow(?:'s)?\\s+(?:calendar|schedule|events?|appointments?|meetings)|" +
+            "this\\s+week(?:'s)?\\s+(?:calendar|schedule|events?|appointments?|meetings)|" +
+            "next\\s+week(?:'s)?\\s+(?:calendar|schedule|events?|appointments?|meetings)" +
+            ")\\b",
+            RegexOptions.IgnoreCase);
+
+        return asksToList;
     }
 
     private static bool LooksLikeModelStatusRequest(string text)
