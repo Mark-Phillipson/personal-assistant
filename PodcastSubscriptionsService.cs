@@ -38,12 +38,12 @@ internal sealed class PodcastSubscriptionsService
     {
         if (_subscriptions.Subscriptions.Count == 0)
         {
-            return "No podcasts subscribed. Use `/add-podcast <name> <search-term>` to add one.";
+            return "No podcasts subscribed. Use `/add_podcast <name> <search-term>` to add one.";
         }
 
         var podcastNames = _subscriptions.Subscriptions.Select(p => p.Name);
         var formatted = TelegramRichTextFormatter.List("🎵 Subscribed Podcasts", podcastNames);
-        formatted += "\n\nUse <code>/play-podcast &lt;name&gt; [N]</code> to play the latest (or Nth latest) episode.";
+        formatted += "\n\nUse <code>/play_podcast &lt;name&gt; [N]</code> to play the latest (or Nth latest) episode.";
         
         return formatted;
     }

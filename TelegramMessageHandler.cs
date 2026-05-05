@@ -160,7 +160,7 @@ internal static class TelegramMessageHandler
         }
 
         // TTS service isolate route
-        if (text.Equals("tts test", StringComparison.OrdinalIgnoreCase) || text.Equals("/tts-test", StringComparison.OrdinalIgnoreCase))
+        if (text.Equals("tts test", StringComparison.OrdinalIgnoreCase) || text.Equals("/tts_test", StringComparison.OrdinalIgnoreCase))
         {
             const string testPhrase = "This is a text to speech service test. If you hear this, Text To Speech is working.";
             await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap("Running TTS test...", EmojiPalette.Rocket, profile.UseEmoji), cancellationToken);
@@ -305,28 +305,28 @@ internal static class TelegramMessageHandler
                         return;
                     }
 
-                case "/gmail-status":
+                case "/gmail_status":
                     await telegram.SendMessageInChunksAsync(
                         chatId,
                         EmojiPalette.Wrap(gmailService.GetSetupStatusText(), EmojiPalette.Email, profile.UseEmoji),
                         cancellationToken);
                     return;
 
-                case "/calendar-status":
+                case "/calendar_status":
                     await telegram.SendMessageInChunksAsync(
                         chatId,
                         EmojiPalette.Wrap(calendarService.GetSetupStatusText(), EmojiPalette.Calendar, profile.UseEmoji),
                         cancellationToken);
                     return;
 
-                case "/clipboard-status":
+                case "/clipboard_status":
                     await telegram.SendMessageInChunksAsync(
                         chatId,
                         EmojiPalette.Wrap(clipboardService.GetSetupStatusText(), EmojiPalette.Confirm, profile.UseEmoji),
                         cancellationToken);
                     return;
 
-                case "/calendar-events":
+                case "/calendar_events":
                     if (!calendarService.IsConfigured)
                     {
                         await telegram.SendMessageInChunksAsync(
@@ -359,7 +359,7 @@ internal static class TelegramMessageHandler
 
                     return;
 
-                case "/calendar-create":
+                case "/calendar_create":
                     if (!calendarService.IsConfigured)
                     {
                         await telegram.SendMessageInChunksAsync(
@@ -563,7 +563,7 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
-                case "/play-podcast":
+                case "/play_podcast":
                     await HandlePlayPodcastCommandAsync(
                         chatId,
                         text,
@@ -574,7 +574,7 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
-                case "/add-podcast":
+                case "/add_podcast":
                     await HandleAddPodcastCommandAsync(
                         chatId,
                         text,
@@ -584,20 +584,20 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
-                case "/pron-add":
+                case "/pron_add":
                     commandPayload = ExtractCommandPayload(text);
                     if (!TryParsePronunciationPayload(commandPayload, out var addWord, out var addReplacement, out var addIpa))
                     {
                         await telegram.SendMessageInChunksAsync(
                             chatId,
-                            EmojiPalette.Wrap("Usage: /pron-add <word> as <replacement> [ipa <ipa>]  (or /pron-add <word>=<replacement> [ipa <ipa>])", EmojiPalette.Warning, profile.UseEmoji),
+                            EmojiPalette.Wrap("Usage: /pron_add <word> as <replacement> [ipa <ipa>]  (or /pron_add <word>=<replacement> [ipa <ipa>])", EmojiPalette.Warning, profile.UseEmoji),
                             cancellationToken);
                         return;
                     }
 
                     var addSsmlPhoneme = BuildSsmlPhoneme(addWord, addIpa);
                     var addContext = addIpa is null
-                        ? "Added from Telegram /pron-add command."
+                        ? "Added from Telegram /pron_add command."
                         : $"Added from Telegram /pron-add command. IPA: {addIpa}";
 
                     await pronunciationService.AddCorrectionAsync(
@@ -613,13 +613,13 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
-                case "/pron-remove":
+                case "/pron_remove":
                     commandPayload = ExtractCommandPayload(text);
                     if (string.IsNullOrWhiteSpace(commandPayload))
                     {
                         await telegram.SendMessageInChunksAsync(
                             chatId,
-                            EmojiPalette.Wrap("Usage: /pron-remove <word>", EmojiPalette.Warning, profile.UseEmoji),
+                            EmojiPalette.Wrap("Usage: /pron_remove <word>", EmojiPalette.Warning, profile.UseEmoji),
                             cancellationToken);
                         return;
                     }
@@ -631,7 +631,7 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
-                case "/pron-list":
+                case "/pron_list":
                     var pronunciationList = await BuildPronunciationListAsync(pronunciationService, 40);
                     await telegram.SendMessageInChunksAsync(
                         chatId,
@@ -639,13 +639,13 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
-                case "/clipboard-search":
+                case "/clipboard_search":
                     var keyword = ExtractCommandPayload(text);
                     if (string.IsNullOrWhiteSpace(keyword))
                     {
                         await telegram.SendMessageInChunksAsync(
                             chatId,
-                            EmojiPalette.Wrap("Usage: /clipboard-search <keyword>", EmojiPalette.Search, profile.UseEmoji),
+                            EmojiPalette.Wrap("Usage: /clipboard_search <keyword>", EmojiPalette.Search, profile.UseEmoji),
                             cancellationToken);
                         return;
                     }
@@ -657,7 +657,7 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
-                case "/clipboard-today":
+                case "/clipboard_today":
                     var todayResult = await clipboardHistoryService.GetTodayEntriesAsync(cancellationToken, asHtmlTable: true);
                     await telegram.SendMessageInChunksAsync(
                         chatId,
@@ -1911,24 +1911,24 @@ internal static class TelegramMessageHandler
 
     private static string BuildHelpText(PersonalityProfile profile)
     {
-        var commandRows = new[]
+            var commandRows = new[]
         {
             FormatCommandLine("/start", "welcome message", EmojiPalette.Wave, profile.UseEmoji),
             FormatCommandLine("/help", "show commands", EmojiPalette.Commands, profile.UseEmoji),
             FormatCommandLine("/reset", "reset your Copilot session", EmojiPalette.Confirm, profile.UseEmoji),
-            FormatCommandLine("/gmail-status", "check Gmail setup", EmojiPalette.Email, profile.UseEmoji),
-            FormatCommandLine("/calendar-status", "check Google Calendar setup", EmojiPalette.Calendar, profile.UseEmoji),
-            FormatCommandLine("/clipboard-status", "check clipboard setup", EmojiPalette.Confirm, profile.UseEmoji),
-            FormatCommandLine("/clipboard-search <keyword>", "search clipboard history", EmojiPalette.Search, profile.UseEmoji),
-            FormatCommandLine("/clipboard-today", "view today's clipboard history", EmojiPalette.Search, profile.UseEmoji),
-            FormatCommandLine("/calendar-events", "list upcoming Google Calendar events", EmojiPalette.Calendar, profile.UseEmoji),
-            FormatCommandLine("/calendar-create", "create a new Google Calendar event", EmojiPalette.Calendar, profile.UseEmoji),
+            FormatCommandLine("/gmail_status", "check Gmail setup", EmojiPalette.Email, profile.UseEmoji),
+            FormatCommandLine("/calendar_status", "check Google Calendar setup", EmojiPalette.Calendar, profile.UseEmoji),
+            FormatCommandLine("/clipboard_status", "check clipboard setup", EmojiPalette.Confirm, profile.UseEmoji),
+            FormatCommandLine("/clipboard_search <keyword>", "search clipboard history", EmojiPalette.Search, profile.UseEmoji),
+            FormatCommandLine("/clipboard_today", "view today's clipboard history", EmojiPalette.Search, profile.UseEmoji),
+            FormatCommandLine("/calendar_events", "list upcoming Google Calendar events", EmojiPalette.Calendar, profile.UseEmoji),
+            FormatCommandLine("/calendar_create", "create a new Google Calendar event", EmojiPalette.Calendar, profile.UseEmoji),
             FormatCommandLine("/podcasts", "list subscribed podcasts", EmojiPalette.Music, profile.UseEmoji),
-            FormatCommandLine("/play-podcast <name> [N]", "play Nth latest episode (default 1)", EmojiPalette.Music, profile.UseEmoji),
-            FormatCommandLine("/add-podcast <name> <search>", "add podcast subscription", EmojiPalette.Music, profile.UseEmoji),
-            FormatCommandLine("/pron-add <word> as <replacement> [ipa <ipa>]", "add pronunciation correction for TTS", EmojiPalette.Confirm, profile.UseEmoji),
-            FormatCommandLine("/pron-remove <word>", "remove pronunciation correction", EmojiPalette.Confirm, profile.UseEmoji),
-            FormatCommandLine("/pron-list", "list pronunciation corrections", EmojiPalette.Commands, profile.UseEmoji),
+            FormatCommandLine("/play_podcast <name> [N]", "play Nth latest episode (default 1)", EmojiPalette.Music, profile.UseEmoji),
+            FormatCommandLine("/add_podcast <name> <search>", "add podcast subscription", EmojiPalette.Music, profile.UseEmoji),
+            FormatCommandLine("/pron_add <word> as <replacement> [ipa <ipa>]", "add pronunciation correction for TTS", EmojiPalette.Confirm, profile.UseEmoji),
+            FormatCommandLine("/pron_remove <word>", "remove pronunciation correction", EmojiPalette.Confirm, profile.UseEmoji),
+            FormatCommandLine("/pron_list", "list pronunciation corrections", EmojiPalette.Commands, profile.UseEmoji),
             FormatCommandLine("/weather", "open BBC Weather for Maidstone, Kent", EmojiPalette.Search, profile.UseEmoji),
             FormatCommandLine("/dadjoke [keyword]", "get a random dad joke (optional keyword)", EmojiPalette.Happy, profile.UseEmoji),
             FormatCommandLine("/natural <command>", "run a NaturalCommands command locally", EmojiPalette.Rocket, profile.UseEmoji),
@@ -2259,7 +2259,7 @@ internal static class TelegramMessageHandler
         {
             await telegram.SendMessageInChunksAsync(
                 chatId,
-                EmojiPalette.Wrap("Usage: /play-podcast <podcast-name> [episode-number]", EmojiPalette.Music, profile.UseEmoji),
+                EmojiPalette.Wrap("Usage: /play_podcast <podcast-name> [episode-number]", EmojiPalette.Music, profile.UseEmoji),
                 cancellationToken);
             return;
         }
@@ -2324,7 +2324,7 @@ internal static class TelegramMessageHandler
         {
             await telegram.SendMessageInChunksAsync(
                 chatId,
-                EmojiPalette.Wrap("Usage: /add-podcast <podcast-name> <search-term>", EmojiPalette.Music, profile.UseEmoji),
+                EmojiPalette.Wrap("Usage: /add_podcast <podcast-name> <search-term>", EmojiPalette.Music, profile.UseEmoji),
                 cancellationToken);
             return;
         }

@@ -9,10 +9,10 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 
 - In Telegram mode: receives Telegram messages via long polling, maintains one Copilot session per Telegram chat, forwards Telegram photos/documents to Copilot as attachments, and sends responses back to Telegram.
 - In CLI mode: runs a single local request (use `--cli "<prompt>"` or `ASSISTANT_TRANSPORT=cli`).
-- Supports `/start`, `/help`, `/reset`, and `/gmail-status`.
+- Supports `/start`, `/help`, `/reset`, and `/gmail_status`.
 - Supports `/personality` to tune tone and emoji behavior per Telegram chat.
 - Supports `/natural` and `/nc` to run local NaturalCommands CLI actions.
-- Supports clipboard actions through a dedicated tool and `/clipboard-status` diagnostics.
+- Supports clipboard actions through a dedicated tool and `/clipboard_status` diagnostics.
 - Can list and send local files from your user folders as Telegram attachments.
 - Exposes Gmail tools to Copilot:
   - `gmail_setup_status`
@@ -160,7 +160,7 @@ The app uses `gmail.readonly` scope only.
 7. Optionally set:
    - `CALENDAR_EXPECTED_ACCOUNT_EMAIL=your@email.com`
    - `CALENDAR_TOKEN_STORE_PATH=.calendar-token-store`
-8. Start the assistant and use `/calendar-status` or `/calendar-events`. The first Calendar call opens a browser for OAuth consent.
+8. Start the assistant and use `/calendar_status` or `/calendar_events`. The first Calendar call opens a browser for OAuth consent.
 
 The app uses `calendar` scope only.
 
@@ -216,13 +216,13 @@ The skill automatically triggers when pronunciation intent is detected and provi
 1. **Identify the problem:** Report a mispronounced word to the assistant (e.g., "The bot says 'todo' wrong").
 2. **Get guidance:** The pronunciation skill will provide IPA and SSML recommendations.
 3. **Add correction directly in Telegram (no restart required):**
-   - `/pron-add <word> as <replacement>`
-   - `/pron-add <word> as <replacement> ipa <ipa>`
-   - `/pron-add <word>=<replacement>`
+   - `/pron_add <word> as <replacement>`
+   - `/pron_add <word> as <replacement> ipa <ipa>`
+   - `/pron_add <word>=<replacement>`
    - conversational voice/text examples: `add pronunciation Tonbridge as Tunbridge` or `pronounce Ightham as Eyetum ipa ˈaɪtəm`
 4. **Review/maintain corrections:**
-   - `/pron-list`
-   - `/pron-remove <word>`
+   - `/pron_list`
+   - `/pron_remove <word>`
 5. **Optional file editing:** You can still edit `pronunciation-corrections.json` directly for bulk changes.
 
 ### Examples
@@ -308,17 +308,17 @@ dotnet run -- --cli "bob please play Ukraine the latest podcast"
 - Per Spotify's current developer docs, official Web API and Web Playback SDK usage require a Premium account, so this project does not try to control Spotify playback through the API on a free account.
 - Actual playback behavior still depends on your logged-in Spotify browser/app session and any free-tier playback restrictions.
 
-## Telegram usage examples
+-## Telegram usage examples
 
-- `/gmail-status`
+- `/gmail_status`
 - `Check my unread Gmail emails`
 - `Read the first unread email and summarize it`
-- `/calendar-status`
-- `/calendar-events`
-- `/calendar-create`
+- `/calendar_status`
+- `/calendar_events`
+- `/calendar_create`
 - `/natural show desktop`
 - `/nc show desktop`
-- `/clipboard-status`
+- `/clipboard_status`
 - `Copy this exact text to my clipboard: Hello from Bob`
 - `What is in this screenshot?` with a screenshot attached
 - `Summarize this PDF` with a PDF attached

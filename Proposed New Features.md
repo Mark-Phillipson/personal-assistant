@@ -144,11 +144,11 @@ The user wants to add a podcast subscription management feature to the personal 
 ## Design Decisions
 - **Subscriptions are global** (not per-chat like personality profiles)
 - **Persist new subscriptions** to `podcasts.json` so they survive app restarts
-- **Episode number semantics**: `/play-podcast dotnet rocks 5` = search YouTube for "dotnet rocks episode 5"
+-- **Episode number semantics**: `/play_podcast dotnet rocks 5` = search YouTube for "dotnet rocks episode 5"
 - **Episode 1** = latest (search with just the term); **Episode N > 1** = append "episode N" to help YouTube ranking
 - **Immutable record-based model** to match existing PersonalityProfile pattern
 - **Two Copilot tools** for natural language support (list subscriptions, play episode)
-- **Three Telegram commands**: `/podcasts`, `/play-podcast`, `/add-podcast`
+- **Three Telegram commands**: `/podcasts`, `/play_podcast`, `/add_podcast`
 
 ## Implementation Files
 
@@ -206,12 +206,12 @@ The user wants to add a podcast subscription management feature to the personal 
    - Add parameter to `HandleAsync()` method: `PodcastSubscriptionsService podcastSubscriptionsService`
    - Add three new case statements in the command switch (before `default`):
      - **case "/podcasts"**: Call `podcastSubscriptionsService.ListAllSubscriptions()`, format with music emoji, send to chat
-     - **case "/play-podcast"**: Parse arguments: `text.Split()` for `<name>` and optional `[episodeNumber]`; lookup subscription; call `webBrowserService.PlayTopYouTubeResultAsync(query, podcastMode: true)`; handle/log errors
-     - **case "/add-podcast"**: Parse arguments for name and search term; call `await podcastSubscriptionsService.AddSubscriptionAsync(name, searchTerm)`; confirm to user
+    - **case "/play_podcast"**: Parse arguments: `text.Split()` for `<name>` and optional `[episodeNumber]`; lookup subscription; call `webBrowserService.PlayTopYouTubeResultAsync(query, podcastMode: true)`; handle/log errors
+    - **case "/add_podcast"**: Parse arguments for name and search term; call `await podcastSubscriptionsService.AddSubscriptionAsync(name, searchTerm)`; confirm to user
    - Update `BuildHelpText()` method to include three new command rows:
      - `/podcasts` — list subscribed podcasts (🎵)
-     - `/play-podcast <name> [N]` — play Nth latest episode, default 1 (🎵)
-     - `/add-podcast <name> <search>` — add podcast subscription (🎵)
+    - `/play_podcast <name> [N]` — play Nth latest episode, default 1 (🎵)
+    - `/add_podcast <name> <search>` — add podcast subscription (🎵)
 
 ## Implementation Sequence
 1. Create PodcastSubscription.cs with immutable records and factory method
@@ -224,9 +224,9 @@ The user wants to add a podcast subscription management feature to the personal 
 
 ## Testing Verification
 - `/podcasts` displays both initial podcasts
-- `/play-podcast Ukraine the Latest from the Telegraph` plays latest episode
-- `/play-podcast dotnet rocks 3` plays "dotnet rocks episode 3" on YouTube
-- `/add-podcast MyPodcast my podcast search term` adds to service AND persists to JSON
+- `/play_podcast Ukraine the Latest from the Telegraph` plays latest episode
+- `/play_podcast dotnet rocks 3` plays "dotnet rocks episode 3" on YouTube
+- `/add_podcast MyPodcast my podcast search term` adds to service AND persists to JSON
 - After restart, newly added podcast appears in `/podcasts`
 - Copilot tool `list_subscribed_podcasts` returns all subscriptions
 - Copilot tool `play_podcast_episode` with natural language like "play Ireland the Latest from the Telegraph" works
