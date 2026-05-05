@@ -5,6 +5,7 @@ using Google.Apis.Calendar.v3.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -21,6 +22,7 @@ public sealed class GoogleCalendarAssistantService
     private readonly string? _clientSecretPath;
     private readonly string _tokenStorePath;
     private readonly string? _expectedAccount;
+    private static readonly ConcurrentDictionary<string, (DateTime Expiry, IList<Event> Events)> _cache = new();
 
     /// <summary>
     /// Optional callback invoked when device-code authorization is required.
@@ -261,44 +263,84 @@ public sealed class GoogleCalendarAssistantService
 
     public async Task<IList<Event>> ListUpcomingEventsAsync(int maxResults = 5)
     {
+        var cacheSeconds = EnvironmentSettings.ReadInt("CALENDAR_CACHE_SECONDS", fallback: 30, min: 1, max: 3600);
+        var cacheKey = $"events:{_expectedAccount ?? "user"}:{maxResults}";
+        if (_cache.TryGetValue(cacheKey, out var cached) && cached.Expiry > DateTime.UtcNow)
+        {
+            return cached.Events;
+        }
+
         var service = await GetServiceAsync();
 
         var selectedCalendars = await ListSelectedCalendarsAsync(service);
         var collected = new List<Event>();
 
-        foreach (var calendar in selectedCalendars)
+        var requestTimeoutSeconds = EnvironmentSettings.ReadInt("CALENDAR_REQUEST_TIMEOUT_SECONDS", fallback: 10, min: 1, max: 120);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        var tasks = selectedCalendars.Select(async calendar =>
         {
-            var request = service.Events.List(calendar.Id);
-            request.TimeMinDateTimeOffset = DateTimeOffset.UtcNow;
-            request.ShowDeleted = false;
-            request.SingleEvents = true;
-            request.MaxResults = Math.Clamp(maxResults, 1, 20);
-            request.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
-
-            var events = await request.ExecuteAsync();
-            if (events.Items is null)
+            try
             {
-                continue;
-            }
+                var request = service.Events.List(calendar.Id);
+                request.TimeMinDateTimeOffset = DateTimeOffset.UtcNow;
+                request.ShowDeleted = false;
+                request.SingleEvents = true;
+                request.MaxResults = Math.Clamp(maxResults, 1, 20);
+                request.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
 
-            foreach (var calendarEvent in events.Items)
-            {
-                if (!calendar.IsPrimary)
+                var execTask = request.ExecuteAsync();
+                var completed = await Task.WhenAny(execTask, Task.Delay(TimeSpan.FromSeconds(requestTimeoutSeconds)));
+                if (completed != execTask)
                 {
-                    var summary = string.IsNullOrWhiteSpace(calendarEvent.Summary) ? "(No title)" : calendarEvent.Summary;
-                    calendarEvent.Summary = $"[{calendar.Name}] {summary}";
+                    Console.WriteLine($"[calendar] request for '{calendar.Id}' timed out after {requestTimeoutSeconds}s");
+                    return Enumerable.Empty<Event>();
                 }
 
-                collected.Add(calendarEvent);
+                var events = await execTask;
+                if (events.Items is null)
+                {
+                    return Enumerable.Empty<Event>();
+                }
+
+                foreach (var calendarEvent in events.Items)
+                {
+                    if (!calendar.IsPrimary)
+                    {
+                        var summary = string.IsNullOrWhiteSpace(calendarEvent.Summary) ? "(No title)" : calendarEvent.Summary;
+                        calendarEvent.Summary = $"[{calendar.Name}] {summary}";
+                    }
+                }
+
+                return events.Items.AsEnumerable();
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[calendar] error fetching events for '{calendar.Id}': {ex.Message}");
+                return Enumerable.Empty<Event>();
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
+        foreach (var r in results)
+        {
+            collected.AddRange(r);
         }
 
-        return collected
+        sw.Stop();
+        Console.WriteLine($"[calendar] fetched events from {selectedCalendars.Count} calendars in {sw.ElapsedMilliseconds}ms");
+
+        var finalList = collected
             .GroupBy(GetEventKey)
             .Select(group => group.First())
             .OrderBy(GetEventStart)
             .Take(Math.Clamp(maxResults, 1, 20))
             .ToList();
+
+        _cache[cacheKey] = (DateTime.UtcNow.AddSeconds(cacheSeconds), finalList);
+
+        return finalList;
     }
 
     private async Task<IList<(string Id, string Name, bool IsPrimary)>> ListSelectedCalendarsAsync(CalendarService service)
