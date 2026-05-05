@@ -45,12 +45,9 @@ internal static class TelegramMessageHandler
         var chatId = message.Chat.Id;
         var profile = GetPersonalityForChat(chatId, personalityProfiles, defaultPersonality);
 
-        // Wire up the calendar auth notifier so the device-code URL/code is sent back
-        // to this chat rather than being written only to the (invisible) process console.
-        calendarService.AuthorizationNotifier = async (_, formattedMessage) =>
-        {
-            await telegram.SendMessageInChunksAsync(chatId, formattedMessage, cancellationToken);
-        };
+        // Do not store a chat-specific authorization callback on the singleton calendar service.
+        // Per-user notification routing must be provided per operation rather than via shared
+        // mutable process-wide state.
 
         // Auto-detect freeform calendar queries (non-slash messages) and short-circuit
         // them to the calendar service to avoid model latency for common requests.
@@ -1340,7 +1337,29 @@ internal static class TelegramMessageHandler
         if (!mentionsCalendar)
             return false;
 
-        var asksToList = Regex.IsMatch(text, "\\b(list|show|what|'s|today|tomorrow|upcoming|this week|next week|schedule)\\b", RegexOptions.IgnoreCase);
+        // Avoid routing create/update/delete calendar actions down the list/show fast-path.
+        var mentionsCreateOrUpdate = Regex.IsMatch(
+            text,
+            "\\b(add|create|book|schedule|set up|plan|move|reschedule|update|edit|change|cancel|delete|remove)\\b",
+            RegexOptions.IgnoreCase);
+        if (mentionsCreateOrUpdate)
+            return false;
+
+        var asksToList = Regex.IsMatch(
+            text,
+            "\\b(" +
+            "list|show|display|" +
+            "what(?:'s| is)\\s+(?:on\\s+)?(?:(?:my\\s+)?)?(?:calendar|schedule)|" +
+            "what\\s+do\\s+i\\s+have|" +
+            "do\\s+i\\s+have\\s+anything|" +
+            "upcoming|" +
+            "today(?:'s)?\\s+(?:calendar|schedule|events?|appointments?|meetings)|" +
+            "tomorrow(?:'s)?\\s+(?:calendar|schedule|events?|appointments?|meetings)|" +
+            "this\\s+week(?:'s)?\\s+(?:calendar|schedule|events?|appointments?|meetings)|" +
+            "next\\s+week(?:'s)?\\s+(?:calendar|schedule|events?|appointments?|meetings)" +
+            ")\\b",
+            RegexOptions.IgnoreCase);
+
         return asksToList;
     }
 
