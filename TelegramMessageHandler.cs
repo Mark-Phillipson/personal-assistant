@@ -100,7 +100,7 @@ internal static class TelegramMessageHandler
                 }
 
                 var eventItems = events.Select(ev => (
-                    label: TelegramRichTextFormatter.Bold(NormalizeEventText(ev.Summary ?? "Event")),
+                    label: NormalizeEventText(ev.Summary ?? "Event"),
                     secondary: $"Start: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"
                 )).ToList();
 
@@ -411,7 +411,7 @@ internal static class TelegramMessageHandler
                     else
                     {
                         var eventItems = events.Select(ev => (
-                            label: TelegramRichTextFormatter.Bold(NormalizeEventText(ev.Summary ?? "Event")),
+                            label: NormalizeEventText(ev.Summary ?? "Event"),
                             secondary: $"Start: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"
                         )).ToList();
                         var eventList = TelegramRichTextFormatter.LabeledList("📅 Upcoming Events", eventItems);
@@ -1271,7 +1271,7 @@ internal static class TelegramMessageHandler
                 }
 
                 var eventItems = events.Select(ev => (
-                    label: TelegramRichTextFormatter.Bold(NormalizeEventText(ev.Summary ?? "Event")),
+                    label: NormalizeEventText(ev.Summary ?? "Event"),
                     secondary: $"Start: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"
                 )).ToList();
 
