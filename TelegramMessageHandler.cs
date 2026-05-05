@@ -52,6 +52,47 @@ internal static class TelegramMessageHandler
             await telegram.SendMessageInChunksAsync(chatId, formattedMessage, cancellationToken);
         };
 
+        // Auto-detect freeform calendar queries (non-slash messages) and short-circuit
+        // them to the calendar service to avoid model latency for common requests.
+        if (!string.IsNullOrWhiteSpace(text) && !text.StartsWith('/') && LooksLikeCalendarRequest(text))
+        {
+            try
+            {
+                if (!calendarService.IsConfigured)
+                {
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        EmojiPalette.Wrap(calendarService.GetSetupStatusText(), EmojiPalette.Warning, profile.UseEmoji),
+                        cancellationToken);
+                    return;
+                }
+
+                var events = await calendarService.ListUpcomingEventsAsync(5);
+                if (events.Count == 0)
+                {
+                    await telegram.SendMessageInChunksAsync(
+                        chatId,
+                        EmojiPalette.Wrap("No upcoming events found.", EmojiPalette.Calendar, profile.UseEmoji),
+                        cancellationToken);
+                    return;
+                }
+
+                var eventItems = events.Select(ev => (
+                    label: TelegramRichTextFormatter.Bold(ev.Summary ?? "Event"),
+                    secondary: $"Start: {ev.Start?.DateTimeDateTimeOffset}\nEnd: {ev.End?.DateTimeDateTimeOffset}"
+                )).ToList();
+
+                var eventList = TelegramRichTextFormatter.LabeledList("📅 Upcoming Events", eventItems);
+                await telegram.SendMessageInChunksAsync(chatId, eventList, cancellationToken);
+                return;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[calendar.autodetect.error] chat={chatId} {ex.Message}");
+                // fall through to normal handling if auto-detect fails
+            }
+        }
+
         // If there's a pending proposed todo for this chat, allow quick confirm/edit/cancel commands.
         if (PendingTodoProposals.TryGetValue(chatId, out var pendingProposal))
         {
