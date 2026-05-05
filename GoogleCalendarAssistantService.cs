@@ -5,6 +5,7 @@ using Google.Apis.Calendar.v3.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -21,11 +22,14 @@ public sealed class GoogleCalendarAssistantService
     private readonly string? _clientSecretPath;
     private readonly string _tokenStorePath;
     private readonly string? _expectedAccount;
+    private static readonly ConcurrentDictionary<string, (DateTime Expiry, IList<Event> Events)> _cache = new();
 
     /// <summary>
     /// Optional callback invoked when device-code authorization is required.
-    /// Receives (verificationUrl, userCode). Use this to route the prompt to the
-    /// channel that triggered the request (e.g., Telegram) instead of the console.
+    /// Receives (verificationUrl, message), where <c>message</c> is a preformatted
+    /// prompt ready to display to the user. Use this to route the authorization
+    /// instructions to the channel that triggered the request (for example, Telegram)
+    /// instead of writing them to the console.
     /// </summary>
     public Func<string, string, Task>? AuthorizationNotifier { get; set; }
 
@@ -84,53 +88,139 @@ public sealed class GoogleCalendarAssistantService
         var clientSecrets = GoogleClientSecrets.FromStream(stream).Secrets;
         var scopes = new[] { CalendarService.Scope.Calendar };
 
+        static string? NormalizeEmail(string? value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+
+        static string? TryGetEmailFromIdToken(string? idToken)
+        {
+            if (string.IsNullOrWhiteSpace(idToken))
+                return null;
+
+            try
+            {
+                var parts = idToken.Split('.');
+                if (parts.Length < 2 || string.IsNullOrWhiteSpace(parts[1]))
+                    return null;
+
+                var payload = parts[1]
+                    .Replace('-', '+')
+                    .Replace('_', '/');
+
+                switch (payload.Length % 4)
+                {
+                    case 2:
+                        payload += "==";
+                        break;
+                    case 3:
+                        payload += "=";
+                        break;
+                }
+
+                var json = Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+                using var doc = JsonDocument.Parse(json);
+                return doc.RootElement.TryGetProperty("email", out var emailElement)
+                    ? NormalizeEmail(emailElement.GetString())
+                    : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static async Task<Google.Apis.Auth.OAuth2.Responses.TokenResponse> ReadTokenResponseAsync(string tokenFile)
+        {
+            var tokenJson = await File.ReadAllTextAsync(tokenFile);
+            var token = new Google.Apis.Auth.OAuth2.Responses.TokenResponse();
+            using var doc = JsonDocument.Parse(tokenJson);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("access_token", out var at)) token.AccessToken = at.GetString();
+            if (root.TryGetProperty("refresh_token", out var rt)) token.RefreshToken = rt.GetString();
+            if (root.TryGetProperty("expires_in", out var ei) && ei.TryGetInt32(out var eiVal)) token.ExpiresInSeconds = eiVal;
+            if (root.TryGetProperty("scope", out var sc)) token.Scope = sc.GetString();
+            if (root.TryGetProperty("token_type", out var tt)) token.TokenType = tt.GetString();
+            if (root.TryGetProperty("id_token", out var idt)) token.IdToken = idt.GetString();
+            return token;
+        }
+
+        var expectedAccountEmail = NormalizeEmail(Environment.GetEnvironmentVariable("CALENDAR_EXPECTED_ACCOUNT_EMAIL"));
+
         // Try to reuse a cached token file (if present)
         try
         {
             if (Directory.Exists(_tokenStorePath))
             {
-                var tokenFile = Directory.EnumerateFiles(_tokenStorePath)
-                    .FirstOrDefault(f => Path.GetFileName(f).StartsWith("Google.Apis.Auth.OAuth2.Responses.TokenResponse-"));
-                if (tokenFile is not null)
+                const string tokenFilePrefix = "Google.Apis.Auth.OAuth2.Responses.TokenResponse-";
+                var tokenFiles = Directory.EnumerateFiles(_tokenStorePath)
+                    .Where(f => Path.GetFileName(f).StartsWith(tokenFilePrefix, StringComparison.Ordinal))
+                    .OrderBy(f => f, StringComparer.Ordinal)
+                    .ToList();
+
+                if (tokenFiles.Count > 0)
                 {
-                    var tokenJson = await File.ReadAllTextAsync(tokenFile);
-                    var token = new Google.Apis.Auth.OAuth2.Responses.TokenResponse();
-                    using (var doc = JsonDocument.Parse(tokenJson))
+                    var tokenCandidates = new List<(string FilePath, string UserId, string? AccountEmail, Google.Apis.Auth.OAuth2.Responses.TokenResponse Token)>();
+                    foreach (var candidateFile in tokenFiles)
                     {
-                        var root = doc.RootElement;
-                        if (root.TryGetProperty("access_token", out var at)) token.AccessToken = at.GetString();
-                        if (root.TryGetProperty("refresh_token", out var rt)) token.RefreshToken = rt.GetString();
-                        if (root.TryGetProperty("expires_in", out var ei) && ei.TryGetInt32(out var eiVal)) token.ExpiresInSeconds = eiVal;
-                        if (root.TryGetProperty("scope", out var sc)) token.Scope = sc.GetString();
-                        if (root.TryGetProperty("token_type", out var tt)) token.TokenType = tt.GetString();
-                        if (root.TryGetProperty("id_token", out var idt)) token.IdToken = idt.GetString();
+                        var token = await ReadTokenResponseAsync(candidateFile);
+                        var userId = Path.GetFileName(candidateFile).Substring(tokenFilePrefix.Length);
+                        var accountEmail = TryGetEmailFromIdToken(token.IdToken) ?? NormalizeEmail(userId);
+                        tokenCandidates.Add((candidateFile, userId, accountEmail, token));
                     }
 
-                    var userId = Path.GetFileName(tokenFile).Substring("Google.Apis.Auth.OAuth2.Responses.TokenResponse-".Length);
-                    var dataStore = new FileDataStore(_tokenStorePath, true);
-                    var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
-                    {
-                        ClientSecrets = clientSecrets,
-                        Scopes = scopes,
-                        DataStore = dataStore
-                    });
+                    (string FilePath, string UserId, string? AccountEmail, Google.Apis.Auth.OAuth2.Responses.TokenResponse Token)? selectedCandidate = null;
 
-                    var credential = new UserCredential(flow, userId, token);
-
-                    // Attempt to refresh if we have a refresh token
-                    if (!string.IsNullOrEmpty(credential.Token?.RefreshToken))
+                    if (!string.IsNullOrEmpty(expectedAccountEmail))
                     {
-                        try { await credential.RefreshTokenAsync(CancellationToken.None); }
-                        catch { /* ignore refresh errors and fall back to interactive/device flow */ }
+                        var matches = tokenCandidates
+                            .Where(c => string.Equals(c.AccountEmail, expectedAccountEmail, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(NormalizeEmail(c.UserId), expectedAccountEmail, StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+
+                        if (matches.Count == 1)
+                        {
+                            selectedCandidate = matches[0];
+                        }
+                        else if (matches.Count > 1)
+                        {
+                            throw new InvalidOperationException($"Multiple cached Google Calendar tokens matched CALENDAR_EXPECTED_ACCOUNT_EMAIL '{expectedAccountEmail}'. Clear old cached tokens in '{_tokenStorePath}' and re-authenticate.");
+                        }
+                    }
+                    else if (tokenCandidates.Count == 1)
+                    {
+                        selectedCandidate = tokenCandidates[0];
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Multiple cached Google Calendar tokens were found in '{_tokenStorePath}'. Set CALENDAR_EXPECTED_ACCOUNT_EMAIL to the intended Google account email or clear old cached tokens before continuing.");
                     }
 
-                    _calendar = new CalendarService(new BaseClientService.Initializer
+                    if (selectedCandidate is not null)
                     {
-                        HttpClientInitializer = credential,
-                        ApplicationName = "Personal Assistant Calendar Integration"
-                    });
+                        var dataStore = new FileDataStore(_tokenStorePath, true);
+                        var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
+                        {
+                            ClientSecrets = clientSecrets,
+                            Scopes = scopes,
+                            DataStore = dataStore
+                        });
 
-                    return _calendar;
+                        var credential = new UserCredential(flow, selectedCandidate.Value.UserId, selectedCandidate.Value.Token);
+
+                        // Attempt to refresh if we have a refresh token
+                        if (!string.IsNullOrEmpty(credential.Token?.RefreshToken))
+                        {
+                            try { await credential.RefreshTokenAsync(CancellationToken.None); }
+                            catch { /* ignore refresh errors and fall back to interactive/device flow */ }
+                        }
+
+                        _calendar = new CalendarService(new BaseClientService.Initializer
+                        {
+                            HttpClientInitializer = credential,
+                            ApplicationName = "Personal Assistant Calendar Integration"
+                        });
+
+                        return _calendar;
+                    }
                 }
             }
         }
@@ -177,9 +267,11 @@ public sealed class GoogleCalendarAssistantService
 
         if (AuthorizationNotifier is not null)
         {
-            var msg = $"🔐 *Google Calendar authorization required*\n\n" +
-                      $"1. Open: {verificationUrl}\n" +
-                      $"2. Enter code: `{userCode}`\n\n" +
+            var encodedVerificationUrl = System.Net.WebUtility.HtmlEncode(verificationUrl ?? string.Empty);
+            var encodedUserCode = System.Net.WebUtility.HtmlEncode(userCode ?? string.Empty);
+            var msg = $"🔐 <b>Google Calendar authorization required</b>\n\n" +
+                      $"1. Open: {encodedVerificationUrl}\n" +
+                      $"2. Enter code: <code>{encodedUserCode}</code>\n\n" +
                       $"I'll keep polling and will confirm once you've granted access.";
             await AuthorizationNotifier(verificationUrl ?? string.Empty, msg);
         }
@@ -261,44 +353,84 @@ public sealed class GoogleCalendarAssistantService
 
     public async Task<IList<Event>> ListUpcomingEventsAsync(int maxResults = 5)
     {
+        var cacheSeconds = EnvironmentSettings.ReadInt("CALENDAR_CACHE_SECONDS", fallback: 30, min: 1, max: 3600);
+        var cacheKey = $"events:{_expectedAccount ?? "user"}:{maxResults}";
+        if (_cache.TryGetValue(cacheKey, out var cached) && cached.Expiry > DateTime.UtcNow)
+        {
+            return cached.Events;
+        }
+
         var service = await GetServiceAsync();
 
         var selectedCalendars = await ListSelectedCalendarsAsync(service);
         var collected = new List<Event>();
 
-        foreach (var calendar in selectedCalendars)
+        var requestTimeoutSeconds = EnvironmentSettings.ReadInt("CALENDAR_REQUEST_TIMEOUT_SECONDS", fallback: 10, min: 1, max: 120);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        var tasks = selectedCalendars.Select(async calendar =>
         {
-            var request = service.Events.List(calendar.Id);
-            request.TimeMinDateTimeOffset = DateTimeOffset.UtcNow;
-            request.ShowDeleted = false;
-            request.SingleEvents = true;
-            request.MaxResults = Math.Clamp(maxResults, 1, 20);
-            request.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
-
-            var events = await request.ExecuteAsync();
-            if (events.Items is null)
+            try
             {
-                continue;
-            }
+                var request = service.Events.List(calendar.Id);
+                request.TimeMinDateTimeOffset = DateTimeOffset.UtcNow;
+                request.ShowDeleted = false;
+                request.SingleEvents = true;
+                request.MaxResults = Math.Clamp(maxResults, 1, 20);
+                request.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
 
-            foreach (var calendarEvent in events.Items)
-            {
-                if (!calendar.IsPrimary)
+                var execTask = request.ExecuteAsync();
+                var completed = await Task.WhenAny(execTask, Task.Delay(TimeSpan.FromSeconds(requestTimeoutSeconds)));
+                if (completed != execTask)
                 {
-                    var summary = string.IsNullOrWhiteSpace(calendarEvent.Summary) ? "(No title)" : calendarEvent.Summary;
-                    calendarEvent.Summary = $"[{calendar.Name}] {summary}";
+                    Console.WriteLine($"[calendar] request for '{calendar.Id}' timed out after {requestTimeoutSeconds}s");
+                    return Enumerable.Empty<Event>();
                 }
 
-                collected.Add(calendarEvent);
+                var events = await execTask;
+                if (events.Items is null)
+                {
+                    return Enumerable.Empty<Event>();
+                }
+
+                foreach (var calendarEvent in events.Items)
+                {
+                    if (!calendar.IsPrimary)
+                    {
+                        var summary = string.IsNullOrWhiteSpace(calendarEvent.Summary) ? "(No title)" : calendarEvent.Summary;
+                        calendarEvent.Summary = $"[{calendar.Name}] {summary}";
+                    }
+                }
+
+                return events.Items.AsEnumerable();
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[calendar] error fetching events for '{calendar.Id}': {ex.Message}");
+                return Enumerable.Empty<Event>();
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
+        foreach (var r in results)
+        {
+            collected.AddRange(r);
         }
 
-        return collected
+        sw.Stop();
+        Console.WriteLine($"[calendar] fetched events from {selectedCalendars.Count} calendars in {sw.ElapsedMilliseconds}ms");
+
+        var finalList = collected
             .GroupBy(GetEventKey)
             .Select(group => group.First())
             .OrderBy(GetEventStart)
             .Take(Math.Clamp(maxResults, 1, 20))
             .ToList();
+
+        _cache[cacheKey] = (DateTime.UtcNow.AddSeconds(cacheSeconds), finalList);
+
+        return finalList;
     }
 
     private async Task<IList<(string Id, string Name, bool IsPrimary)>> ListSelectedCalendarsAsync(CalendarService service)
