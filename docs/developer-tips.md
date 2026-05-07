@@ -14,6 +14,13 @@ Telegram commands
 - `/devtips mode [dotnet|general]` — set preferred tip category for this chat.
 - `/devtips audio [on|off]` — enable/disable WAV audio delivery for this chat (audio requires TTS enabled and Azure speech credentials).
 
+- `/devtips schedule <show|hourly|fixed <minutes>|times <hh:mm[,hh:mm]>|random <min> <max>` — configure when tips are announced. Examples:
+	- `/devtips schedule show` — show current schedule.
+	- `/devtips schedule hourly` — announce at the top of each hour.
+	- `/devtips schedule fixed 30` — announce every 30 minutes (interval-based).
+	- `/devtips schedule times 09:15,18:30` — announce at 09:15 and 18:30 local time each day.
+	- `/devtips schedule random 15 120` — announce at random intervals between 15 and 120 minutes.
+
 Notes
 - By default, Telegram subscribers receive text messages. Audio delivery is optional per subscriber.
 - Tips are filtered by tag to avoid non-.NET language tips.

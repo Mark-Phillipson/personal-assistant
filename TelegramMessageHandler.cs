@@ -375,7 +375,7 @@ internal static class TelegramMessageHandler
                         var payload = ExtractCommandPayload(text)?.Trim() ?? string.Empty;
                         if (string.IsNullOrWhiteSpace(payload))
                         {
-                            await telegram.SendMessageInChunksAsync(chatId, "Usage: /devtips on|off|status|now|mode [dotnet|general]|audio [on|off]", cancellationToken);
+                            await telegram.SendMessageInChunksAsync(chatId, "Usage: /devtips on|off|status|now|mode [dotnet|general]|audio [on|off]|schedule <show|hourly|fixed <minutes>|times <hh:mm[,hh:mm]>|random <min> <max>", cancellationToken);
                             return;
                         }
 
@@ -428,6 +428,89 @@ internal static class TelegramMessageHandler
                                 await developerTipsService.SetSendAudioForChatAsync(chatId, sendAudio, cancellationToken);
                                 await telegram.SendMessageInChunksAsync(chatId, $"Developer tips audio {(sendAudio ? "enabled" : "disabled")} for this chat.", cancellationToken);
                                 return;
+
+                            case "schedule":
+                                {
+                                    if (string.IsNullOrWhiteSpace(arg))
+                                    {
+                                        await telegram.SendMessageInChunksAsync(chatId, "Usage: /devtips schedule <show|hourly|fixed <minutes>|times <hh:mm[,hh:mm]>|random <min> <max>", cancellationToken);
+                                        return;
+                                    }
+
+                                    var schedParts = arg.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                                    var schedCmd = schedParts[0].ToLowerInvariant();
+                                    var schedArg = schedParts.Length > 1 ? schedParts[1] : string.Empty;
+
+                                    switch (schedCmd)
+                                    {
+                                        case "show":
+                                        case "status":
+                                            await telegram.SendMessageInChunksAsync(chatId, developerTipsService.GetScheduleDescription(), cancellationToken);
+                                            return;
+
+                                        case "hourly":
+                                            await developerTipsService.SetScheduleHourlyAsync(cancellationToken: cancellationToken);
+                                            await telegram.SendMessageInChunksAsync(chatId, "Schedule set: hourly (top of the hour).", cancellationToken);
+                                            return;
+
+                                        case "fixed":
+                                            if (!int.TryParse(schedArg, out var mins) || mins <= 0)
+                                            {
+                                                await telegram.SendMessageInChunksAsync(chatId, "Usage: /devtips schedule fixed <minutes>", cancellationToken);
+                                                return;
+                                            }
+
+                                            await developerTipsService.SetScheduleFixedAsync(mins, cancellationToken);
+                                            await telegram.SendMessageInChunksAsync(chatId, $"Schedule set: every {mins} minute(s).", cancellationToken);
+                                            return;
+
+                                        case "times":
+                                            {
+                                                if (string.IsNullOrWhiteSpace(schedArg))
+                                                {
+                                                    await telegram.SendMessageInChunksAsync(chatId, "Usage: /devtips schedule times <hh:mm[,hh:mm]>", cancellationToken);
+                                                    return;
+                                                }
+
+                                                var tokens = schedArg.Replace(',', ' ').Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                                                var parsed = new List<TimeSpan>();
+                                                foreach (var t in tokens)
+                                                {
+                                                    if (TimeSpan.TryParse(t, out var ts)) parsed.Add(ts);
+                                                    else if (TimeSpan.TryParseExact(t, "hh\\:mm", null, out ts)) parsed.Add(ts);
+                                                }
+
+                                                if (!parsed.Any())
+                                                {
+                                                    await telegram.SendMessageInChunksAsync(chatId, "No valid times parsed. Use HH:MM format, e.g. 09:15,18:30", cancellationToken);
+                                                    return;
+                                                }
+
+                                                await developerTipsService.SetScheduleTimesAsync(parsed, cancellationToken);
+                                                await telegram.SendMessageInChunksAsync(chatId, $"Schedule set to times: {string.Join(", ", parsed.Select(p => p.ToString("hh\\:mm"))) }.", cancellationToken);
+                                                return;
+                                            }
+
+                                        case "random":
+                                            {
+                                                var rngArg = schedArg.Replace('-', ' ');
+                                                var partsR = rngArg.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                                                if (partsR.Length < 2 || !int.TryParse(partsR[0], out var minM) || !int.TryParse(partsR[1], out var maxM))
+                                                {
+                                                    await telegram.SendMessageInChunksAsync(chatId, "Usage: /devtips schedule random <minMinutes> <maxMinutes>", cancellationToken);
+                                                    return;
+                                                }
+
+                                                await developerTipsService.SetScheduleRandomAsync(minM, maxM, cancellationToken);
+                                                await telegram.SendMessageInChunksAsync(chatId, $"Schedule set: random between {minM} and {maxM} minutes.", cancellationToken);
+                                                return;
+                                            }
+
+                                        default:
+                                            await telegram.SendMessageInChunksAsync(chatId, "Unknown schedule command. Use /devtips schedule <show|hourly|fixed|times|random>", cancellationToken);
+                                            return;
+                                    }
+                                }
 
                             default:
                                 await telegram.SendMessageInChunksAsync(chatId, "Unknown /devtips command. Use /devtips on|off|status|now|mode|audio", cancellationToken);
@@ -2159,6 +2242,7 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/podcasts", "list subscribed podcasts", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/play_podcast <name> [N]", "play Nth latest episode (default 1)", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/add_podcast <name> <search>", "add podcast subscription", EmojiPalette.Music, profile.UseEmoji),
+            FormatCommandLine("/devtips on|off|status|now|mode|audio|schedule", "developer tips controls", EmojiPalette.Rocket, profile.UseEmoji),
             FormatCommandLine("/pron_add <word> as <replacement> [ipa <ipa>]", "add pronunciation correction for TTS", EmojiPalette.Confirm, profile.UseEmoji),
             FormatCommandLine("/pron_remove <word>", "remove pronunciation correction", EmojiPalette.Confirm, profile.UseEmoji),
             FormatCommandLine("/pron_list", "list pronunciation corrections", EmojiPalette.Commands, profile.UseEmoji),

@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Globalization;
+using System.Linq;
 
 internal sealed class DeveloperTipsService
 {
@@ -32,14 +34,48 @@ internal sealed class DeveloperTipsService
     {
         try
         {
-            if (!File.Exists(_tipsFilePath))
+            var tipsPath = _tipsFilePath;
+
+            if (!File.Exists(tipsPath))
             {
-                // no-op: caller may add a tips file later; keep empty list
-                _tips = new List<Tip>();
-                return;
+                // Try a few fallback locations so the feature works when running from the repo root
+                var candidates = new List<string>
+                {
+                    Path.Combine(Directory.GetCurrentDirectory(), "documents", "developer-tips.json"),
+                    Path.Combine(AppContext.BaseDirectory, "documents", "developer-tips.json")
+                };
+
+                // Walk up from the current directory looking for a documents folder
+                string? probe = Directory.GetCurrentDirectory();
+                for (var i = 0; i < 6 && probe is not null; i++)
+                {
+                    candidates.Add(Path.Combine(probe, "documents", "developer-tips.json"));
+                    var parent = Directory.GetParent(probe);
+                    probe = parent?.FullName;
+                }
+
+                // Walk up from the AppContext.BaseDirectory too
+                probe = AppContext.BaseDirectory;
+                for (var i = 0; i < 6 && probe is not null; i++)
+                {
+                    candidates.Add(Path.Combine(probe, "documents", "developer-tips.json"));
+                    var parent = Directory.GetParent(probe);
+                    probe = parent?.FullName;
+                }
+
+                var found = candidates.FirstOrDefault(File.Exists);
+                if (found is null)
+                {
+                    // no-op: caller may add a tips file later; keep empty list
+                    _tips = new List<Tip>();
+                    Console.Error.WriteLine("[devtips] tips file not found; looked in multiple locations.");
+                    return;
+                }
+
+                tipsPath = found;
             }
 
-            var json = await File.ReadAllTextAsync(_tipsFilePath, cancellationToken).ConfigureAwait(false);
+            var json = await File.ReadAllTextAsync(tipsPath, cancellationToken).ConfigureAwait(false);
             var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var items = JsonSerializer.Deserialize<List<Tip>>(json, opts);
             _tips = items ?? new List<Tip>();
@@ -121,10 +157,13 @@ internal sealed class DeveloperTipsService
 
     private TimeSpan ComputeDelayUntilNext(CancellationToken cancellationToken)
     {
+        // Determine scheduling mode
+        var mode = _state?.ScheduleMode?.ToLowerInvariant();
         var frequency = (_state?.FrequencyMinutes).GetValueOrDefault(60);
         if (frequency <= 0) frequency = 60;
 
-        if (frequency == 60)
+        // Hourly anchored behaviour (default)
+        if (string.IsNullOrWhiteSpace(mode) || mode == "hourly")
         {
             var now = DateTime.Now;
             var next = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0).AddHours(1);
@@ -133,6 +172,59 @@ internal sealed class DeveloperTipsService
             return delay;
         }
 
+        // Fixed interval (minutes)
+        if (mode == "fixed")
+        {
+            return TimeSpan.FromMinutes(frequency);
+        }
+
+        // Specific times of day
+        if (mode == "times")
+        {
+            try
+            {
+                var now = DateTime.Now;
+                var times = (_state?.TimesOfDay ?? new List<string>())
+                    .Select(s =>
+                    {
+                        if (TimeSpan.TryParseExact(s, "hh\\:mm", CultureInfo.InvariantCulture, out var ts)) return ts;
+                        if (TimeSpan.TryParse(s, CultureInfo.InvariantCulture, out ts)) return ts;
+                        return (TimeSpan?)null;
+                    })
+                    .Where(ts => ts.HasValue)
+                    .Select(ts => ts!.Value)
+                    .ToList();
+
+                if (!times.Any()) return TimeSpan.FromMinutes(1);
+
+                var nextDates = times.Select(t => new DateTime(now.Year, now.Month, now.Day).Add(t))
+                    .Select(dt => dt <= now ? dt.AddDays(1) : dt)
+                    .OrderBy(dt => dt)
+                    .ToList();
+
+                var next = nextDates.First();
+                var delay = next - now;
+                if (delay < TimeSpan.Zero) delay = TimeSpan.FromMinutes(1);
+                return delay;
+            }
+            catch
+            {
+                return TimeSpan.FromMinutes(1);
+            }
+        }
+
+        // Random interval between min/max minutes
+        if (mode == "random")
+        {
+            var min = _state?.RandomMinMinutes.GetValueOrDefault(15) ?? 15;
+            var max = _state?.RandomMaxMinutes.GetValueOrDefault(60) ?? 60;
+            if (min <= 0) min = 1;
+            if (max < min) max = min;
+            var minutes = _rng.Next(min, max + 1);
+            return TimeSpan.FromMinutes(minutes);
+        }
+
+        // Fallback to fixed frequency
         return TimeSpan.FromMinutes(frequency);
     }
 
@@ -295,6 +387,12 @@ internal sealed class DeveloperTipsService
         }
 
         var category = sub?.Category ?? "general";
+        // Ensure tips are loaded; try to reload if empty.
+        if (_tips is null || _tips.Count == 0)
+        {
+            await LoadTipsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         var tip = PickRandomTipForCategory(category);
         if (tip is null)
         {
@@ -333,6 +431,78 @@ internal sealed class DeveloperTipsService
         }
     }
 
+    // Scheduling APIs
+    public async Task SetScheduleHourlyAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_sync)
+        {
+            _state.ScheduleMode = "hourly";
+            _state.FrequencyMinutes = 60;
+        }
+
+        await SaveStateAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SetScheduleFixedAsync(int minutes, CancellationToken cancellationToken = default)
+    {
+        if (minutes <= 0) minutes = 1;
+        lock (_sync)
+        {
+            _state.ScheduleMode = "fixed";
+            _state.FrequencyMinutes = minutes;
+        }
+
+        await SaveStateAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SetScheduleTimesAsync(IEnumerable<TimeSpan> times, CancellationToken cancellationToken = default)
+    {
+        lock (_sync)
+        {
+            _state.ScheduleMode = "times";
+            _state.TimesOfDay = times.Select(ts => ts.ToString("hh\\:mm")).ToList();
+        }
+
+        await SaveStateAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SetScheduleRandomAsync(int minMinutes, int maxMinutes, CancellationToken cancellationToken = default)
+    {
+        if (minMinutes <= 0) minMinutes = 1;
+        if (maxMinutes < minMinutes) maxMinutes = minMinutes;
+
+        lock (_sync)
+        {
+            _state.ScheduleMode = "random";
+            _state.RandomMinMinutes = minMinutes;
+            _state.RandomMaxMinutes = maxMinutes;
+        }
+
+        await SaveStateAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public string GetScheduleDescription()
+    {
+        lock (_sync)
+        {
+            var mode = _state.ScheduleMode ?? "hourly";
+            switch (mode.ToLowerInvariant())
+            {
+                case "hourly":
+                    return $"Schedule: hourly (top of the hour). FrequencyMinutes={_state.FrequencyMinutes}";
+                case "fixed":
+                    return $"Schedule: fixed interval every {_state.FrequencyMinutes} minute(s).";
+                case "times":
+                    var times = _state.TimesOfDay?.Count > 0 ? string.Join(", ", _state.TimesOfDay) : "none";
+                    return $"Schedule: specific times of day: {times}.";
+                case "random":
+                    return $"Schedule: random between {_state.RandomMinMinutes} and {_state.RandomMaxMinutes} minutes.";
+                default:
+                    return $"Schedule: unknown mode '{mode}'.";
+            }
+        }
+    }
+
     private record Tip([property: JsonPropertyName("id")] string Id, [property: JsonPropertyName("text")] string Text, [property: JsonPropertyName("tags")] List<string> Tags);
     private class SubscriberEntry
     {
@@ -347,5 +517,9 @@ internal sealed class DeveloperTipsService
         [JsonPropertyName("subscribers")] public List<SubscriberEntry> Subscribers { get; set; } = new();
         [JsonPropertyName("lastAnnouncedUtc")] public DateTime? LastAnnouncedUtc { get; set; }
         [JsonPropertyName("frequencyMinutes")] public int FrequencyMinutes { get; set; } = 60;
+        [JsonPropertyName("scheduleMode")] public string? ScheduleMode { get; set; }
+        [JsonPropertyName("timesOfDay")] public List<string> TimesOfDay { get; set; } = new();
+        [JsonPropertyName("randomMinMinutes")] public int? RandomMinMinutes { get; set; }
+        [JsonPropertyName("randomMaxMinutes")] public int? RandomMaxMinutes { get; set; }
     }
 }
