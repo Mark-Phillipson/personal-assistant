@@ -24,4 +24,254 @@
     "text": "Add small unit tests for tricky edge cases — they pay off during refactors.",
     "tags": ["general"]
   }
+  {
+    "id": "dotnet-004",
+    "text": "Enable nullable reference types and fix warnings to reduce NullReferenceException risk.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-005",
+    "text": "Prefer async all the way: avoid mixing sync and async to prevent deadlocks.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-006",
+    "text": "Use dependency injection to decouple services and make testing simpler.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-007",
+    "text": "Prefer `ReadOnlySpan<T>` and `ReadOnlyMemory<T>` when parsing inputs to reduce allocations.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-008",
+    "text": "Cache expensive computations with `MemoryCache` and choose appropriate expirations.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-009",
+    "text": "Use `FileStream` with `FileOptions.SequentialScan` for large file reads to optimize I/O.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-010",
+    "text": "Avoid LINQ in hot paths—measure performance and prefer loops where needed.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-011",
+    "text": "Implement `IAsyncDisposable` for async cleanup and use `await using` where appropriate.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-012",
+    "text": "Prefer `System.Text.Json` for most workloads; use `Newtonsoft.Json` only when needed.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-013",
+    "text": "Pass `CancellationToken` through async APIs and honour it in long-running operations.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-014",
+    "text": "Avoid capturing large objects in closures; keep lambdas small to reduce allocations.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-015",
+    "text": "Use structs for small, immutable value types to avoid unnecessary heap allocations.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-016",
+    "text": "Profile before optimizing—use `dotnet-counters` and `dotnet-trace` to find hotspots.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-017",
+    "text": "Expose interfaces for public services to make mocking and testing easier.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-018",
+    "text": "Use `ConfigureAwait(false)` in libraries to avoid coupling to a synchronization context.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-019",
+    "text": "Prefer `foreach` for readability; switch to indexed loops in proven hot paths.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-020",
+    "text": "Use `HttpClientFactory` to manage `HttpClient` lifetimes and avoid socket exhaustion.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-021",
+    "text": "Use minimal APIs for tiny services and keep controllers when you need MVC features.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-022",
+    "text": "Keep DTOs explicit; avoid leaking domain entities across process or network boundaries.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-023",
+    "text": "Use `CancellationTokenSource.CreateLinkedTokenSource` when combining cancellation signals.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-024",
+    "text": "Use compiled `Regex` (`RegexOptions.Compiled`) for frequently-run patterns.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-025",
+    "text": "Keep secrets out of code—use environment variables or a secret store for credentials.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-026",
+    "text": "Pin package versions in CI to ensure reproducible builds and fewer surprises.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-027",
+    "text": "Use the `[LoggerMessage]` source generator for high-performance structured logging.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-028",
+    "text": "Use `Span<T>` when parsing buffers to avoid copying and reduce GC pressure.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-029",
+    "text": "Validate inputs early and return clear errors instead of letting exceptions propagate.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-030",
+    "text": "Enable HTTPS and HSTS for public ASP.NET Core endpoints by default.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-031",
+    "text": "Use `DataAnnotations` or `FluentValidation` for request validation; keep controllers thin.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-032",
+    "text": "Use `System.Threading.Channels` for producer/consumer patterns with backpressure.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-033",
+    "text": "Add health checks to expose liveness and readiness endpoints for orchestration.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "general-003",
+    "text": "Write unit tests for edge cases you discovered once; they guard against regressions.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-004",
+    "text": "Use code reviews to share knowledge and catch logic mistakes early.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-005",
+    "text": "Automate repetitive tasks with scripts to free time for design and debugging.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-006",
+    "text": "Keep commit messages concise and descriptive; reference issue IDs when applicable.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-007",
+    "text": "Prefer small pull requests — they are easier to review and faster to merge.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-008",
+    "text": "Document APIs with examples showing success and error cases for faster adoption.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-009",
+    "text": "Use continuous integration to run tests and linters on every push.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-010",
+    "text": "Measure performance with realistic workloads rather than micro-benchmarks alone.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-011",
+    "text": "Keep configuration in environment variables or a managed secret store, not in code.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-012",
+    "text": "Use feature flags to roll out changes gradually and enable safe rollbacks.",
+    "tags": ["general"]
+  },
+  {
+  "id": "general-013",
+  "text": "Practice the Boy Scout Rule: leave the codebase cleaner than you found it.",
+  "tags": ["general"]
+  },
+  {
+    "id": "general-014",
+    "text": "Prefer explicit, readable code over clever one-liners for long-term maintenance.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-015",
+    "text": "Refactor small pieces frequently to keep technical debt manageable.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-016",
+    "text": "Log structured data (fields) rather than plain text to improve observability.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-017",
+    "text": "Use linters and static analysis in CI to enforce style and catch bugs early.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-018",
+    "text": "Provide reproducible development setups (containers or scripts) so others can run your project.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-019",
+    "text": "Break large tasks into small increments and get feedback early and often.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-020",
+    "text": "Keep dependencies minimal and update them regularly to receive security fixes.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-021",
+    "text": "Use design by contract where helpful: validate preconditions and document invariants.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-022",
+    "text": "Prefer simple data models and evolve them only when requirements demand more complexity.",
+    "tags": ["general"]
+  }
 ]
