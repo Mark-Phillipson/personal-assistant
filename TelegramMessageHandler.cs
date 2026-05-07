@@ -59,6 +59,7 @@ internal static class TelegramMessageHandler
         PronunciationDictionaryService pronunciationService,
         KnownFolderExplorerService knownFolderExplorerService,
         ConcurrentDictionary<long, List<string>> conversationHistories,
+        DeveloperTipsService developerTipsService,
         CancellationToken cancellationToken)
     {
         var chatId = message.Chat.Id;
@@ -367,6 +368,71 @@ internal static class TelegramMessageHandler
                             "Dad joke speak failed");
 
                         return;
+                    }
+
+                case "/devtips":
+                    {
+                        var payload = ExtractCommandPayload(text)?.Trim() ?? string.Empty;
+                        if (string.IsNullOrWhiteSpace(payload))
+                        {
+                            await telegram.SendMessageInChunksAsync(chatId, "Usage: /devtips on|off|status|now|mode [dotnet|general]|audio [on|off]", cancellationToken);
+                            return;
+                        }
+
+                        var parts = payload.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        var cmd = parts[0].ToLowerInvariant();
+                        var arg = parts.Length > 1 ? parts[1].ToLowerInvariant() : string.Empty;
+
+                        switch (cmd)
+                        {
+                            case "on":
+                                var category = string.IsNullOrWhiteSpace(arg) ? "general" : arg;
+                                await developerTipsService.EnableForChatAsync(chatId, category, sendAudio: false, cancellationToken: cancellationToken);
+                                await telegram.SendMessageInChunksAsync(chatId, $"Developer tips enabled for this chat (category: {category}).", cancellationToken);
+                                return;
+
+                            case "off":
+                                await developerTipsService.DisableForChatAsync(chatId, cancellationToken);
+                                await telegram.SendMessageInChunksAsync(chatId, "Developer tips disabled for this chat.", cancellationToken);
+                                return;
+
+                            case "status":
+                                var status = developerTipsService.GetStatusForChat(chatId);
+                                await telegram.SendMessageInChunksAsync(chatId, status, cancellationToken);
+                                return;
+
+                            case "now":
+                                await telegram.SendMessageInChunksAsync(chatId, "Forcing an immediate developer tip...", cancellationToken);
+                                await developerTipsService.ForceAnnounceForChatAsync(chatId, cancellationToken);
+                                return;
+
+                            case "mode":
+                                if (string.IsNullOrWhiteSpace(arg) || (arg != "dotnet" && arg != "general"))
+                                {
+                                    await telegram.SendMessageInChunksAsync(chatId, "Usage: /devtips mode [dotnet|general]", cancellationToken);
+                                    return;
+                                }
+
+                                await developerTipsService.SetCategoryForChatAsync(chatId, arg, cancellationToken);
+                                await telegram.SendMessageInChunksAsync(chatId, $"Developer tips category set to {arg}.", cancellationToken);
+                                return;
+
+                            case "audio":
+                                if (string.IsNullOrWhiteSpace(arg) || (arg != "on" && arg != "off"))
+                                {
+                                    await telegram.SendMessageInChunksAsync(chatId, "Usage: /devtips audio [on|off]", cancellationToken);
+                                    return;
+                                }
+
+                                var sendAudio = arg == "on";
+                                await developerTipsService.SetSendAudioForChatAsync(chatId, sendAudio, cancellationToken);
+                                await telegram.SendMessageInChunksAsync(chatId, $"Developer tips audio {(sendAudio ? "enabled" : "disabled")} for this chat.", cancellationToken);
+                                return;
+
+                            default:
+                                await telegram.SendMessageInChunksAsync(chatId, "Unknown /devtips command. Use /devtips on|off|status|now|mode|audio", cancellationToken);
+                                return;
+                        }
                     }
 
                 case "/gmail_status":

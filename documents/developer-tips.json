@@ -1,0 +1,27 @@
+[
+  {
+    "id": "dotnet-001",
+    "text": "Prefer `IAsyncEnumerable<T>` for streaming sequences instead of returning large in-memory collections.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-002",
+    "text": "Use `ConfigureAwait(false)` in library code to avoid capturing synchronization context.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "dotnet-003",
+    "text": "Favor `Span<T>`/`Memory<T>` for high-performance parsing to avoid allocations.",
+    "tags": ["dotnet"]
+  },
+  {
+    "id": "general-001",
+    "text": "Write small focused functions: single responsibility makes testing and maintenance easier.",
+    "tags": ["general"]
+  },
+  {
+    "id": "general-002",
+    "text": "Add small unit tests for tricky edge cases — they pay off during refactors.",
+    "tags": ["general"]
+  }
+]

@@ -503,6 +503,9 @@ static async Task RunTelegramAsync(
     var receiveBackoffSeconds = EnvironmentSettings.ReadInt("TELEGRAM_ERROR_BACKOFF_SECONDS", fallback: 3, min: 1, max: 30);
 
     using var telegram = new TelegramApiClient(telegramToken);
+    var developerTipsService = new DeveloperTipsService(textToSpeechService, telegram);
+    // Start background announcer (runs until cancellation)
+    _ = Task.Run(() => developerTipsService.StartAsync(cancellationToken));
     var sessions = new ConcurrentDictionary<long, CopilotSession>();
     var conversationHistories = new ConcurrentDictionary<long, List<string>>();
     var personalityProfiles = new ConcurrentDictionary<long, PersonalityProfile>();
@@ -561,36 +564,37 @@ static async Task RunTelegramAsync(
 
                 await telegramChatIdStore.SaveAsync(incomingMessage.Chat.Id);
 
-                try
-                {
-                    await TelegramMessageHandler.HandleAsync(
-                        incomingMessage,
-                        incomingText,
-                        telegram,
-                        telegramAttachmentService,
-                        copilotClient,
-                        sessions,
-                        personalityProfiles,
-                        assistantTools,
-                        defaultPersonality,
-                        environmentPersonality,
-                        gmailService,
-                        calendarService,
-                        naturalCommandsService,
-                        clipboardService,
-                        tickerNotificationService,
-                        dadJokeService,
-                        webBrowserService,
-                        voiceAdminService,
-                        GitHubTodosService.FromEnvironment(),
-                        podcastSubscriptionsService,
-                        clipboardHistoryService,
-                        textToSpeechService,
-                        pronunciationService,
-                        knownFolderExplorerService,
-                        conversationHistories,
-                        cancellationToken);
-                }
+                    try
+                    {
+                        await TelegramMessageHandler.HandleAsync(
+                            incomingMessage,
+                            incomingText,
+                            telegram,
+                            telegramAttachmentService,
+                            copilotClient,
+                            sessions,
+                            personalityProfiles,
+                            assistantTools,
+                            defaultPersonality,
+                            environmentPersonality,
+                            gmailService,
+                            calendarService,
+                            naturalCommandsService,
+                            clipboardService,
+                            tickerNotificationService,
+                            dadJokeService,
+                            webBrowserService,
+                            voiceAdminService,
+                            GitHubTodosService.FromEnvironment(),
+                            podcastSubscriptionsService,
+                            clipboardHistoryService,
+                            textToSpeechService,
+                            pronunciationService,
+                            knownFolderExplorerService,
+                            conversationHistories,
+                            developerTipsService,
+                            cancellationToken);
+                    }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     throw;
