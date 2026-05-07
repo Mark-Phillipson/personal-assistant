@@ -24,6 +24,7 @@
     "text": "Add small unit tests for tricky edge cases — they pay off during refactors.",
     "tags": ["general"]
   }
+  ,
   {
     "id": "dotnet-004",
     "text": "Enable nullable reference types and fix warnings to reduce NullReferenceException risk.",
