@@ -230,7 +230,8 @@ internal sealed class DeveloperTipsService
 
     private async Task AnnounceAllAsync(CancellationToken cancellationToken)
     {
-        Tip? localTip = PickRandomTipForCategory("general");
+        var lastTipId = _state.LastTipId;
+        Tip? localTip = PickRandomTipForCategory("general", lastTipId);
         if (localTip is not null)
         {
             try
@@ -250,11 +251,13 @@ internal sealed class DeveloperTipsService
             _state.LastAnnouncedUtc = DateTime.UtcNow;
         }
 
+        string? batchSelectedTipId = localTip?.Id;
+
         foreach (var sub in subs)
         {
             try
             {
-                var tip = PickRandomTipForCategory(sub.Category ?? "general") ?? localTip;
+            var tip = PickRandomTipForCategory(sub.Category ?? "general", lastTipId) ?? localTip;
                 if (tip is null) continue;
 
                 var message = $"Developer tip:\n\n{tip.Text}";
@@ -294,13 +297,25 @@ internal sealed class DeveloperTipsService
             }
         }
 
+        // Persist the last tip id for next-announcement duplicate avoidance
+        try
+        {
+            lock (_sync)
+            {
+                if (!string.IsNullOrWhiteSpace(batchSelectedTipId))
+                {
+                    _state.LastTipId = batchSelectedTipId;
+                }
+            }
+        }
+        catch { }
+
         await SaveStateAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private Tip? PickRandomTipForCategory(string category)
+    private Tip? PickRandomTipForCategory(string category, string? excludeTipId = null)
     {
         if (_tips is null || _tips.Count == 0) return null;
-
         var candidates = _tips.Where(t => t.Tags?.Contains(category, StringComparer.OrdinalIgnoreCase) ?? false).ToList();
         if (!candidates.Any())
         {
@@ -309,6 +324,13 @@ internal sealed class DeveloperTipsService
         }
 
         if (!candidates.Any()) return null;
+
+        if (!string.IsNullOrWhiteSpace(excludeTipId))
+        {
+            var filtered = candidates.Where(t => !string.Equals(t.Id, excludeTipId, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (filtered.Any()) candidates = filtered;
+            // if filtering removes all candidates, fall back to original candidates so we can still return something
+        }
 
         var idx = _rng.Next(candidates.Count);
         return candidates[idx];
@@ -393,7 +415,7 @@ internal sealed class DeveloperTipsService
             await LoadTipsAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        var tip = PickRandomTipForCategory(category);
+        var tip = PickRandomTipForCategory(category, _state.LastTipId);
         if (tip is null)
         {
             await _telegram.SendMessageInChunksAsync(chatId, "No tips available.", cancellationToken).ConfigureAwait(false);
@@ -401,6 +423,16 @@ internal sealed class DeveloperTipsService
         }
 
         var message = $"Developer tip:\n\n{tip.Text}";
+
+        // Speak locally as well for immediate forced announcements.
+        try
+        {
+            await _tts.TrySpeakPreviewAsync(message, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[devtips.tts.error] force chat={chatId} {ex.Message}");
+        }
 
         if (sub?.SendAudio ?? false)
         {
@@ -429,6 +461,17 @@ internal sealed class DeveloperTipsService
         {
             await _telegram.SendMessageInChunksAsync(chatId, message, cancellationToken).ConfigureAwait(false);
         }
+
+        // Persist last tip id so future announcements avoid repeating it
+        try
+        {
+            lock (_sync)
+            {
+                _state.LastTipId = tip.Id;
+            }
+            await SaveStateAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch { }
     }
 
     // Scheduling APIs
@@ -521,5 +564,6 @@ internal sealed class DeveloperTipsService
         [JsonPropertyName("timesOfDay")] public List<string> TimesOfDay { get; set; } = new();
         [JsonPropertyName("randomMinMinutes")] public int? RandomMinMinutes { get; set; }
         [JsonPropertyName("randomMaxMinutes")] public int? RandomMaxMinutes { get; set; }
+        [JsonPropertyName("lastTipId")] public string? LastTipId { get; set; }
     }
 }
