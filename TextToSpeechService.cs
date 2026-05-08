@@ -72,7 +72,6 @@ internal sealed class TextToSpeechService
             Log("[tts.debug] early return: table content");
             return;
         }
-
         var snippet = ExtractPreviewText(text, _maxPreviewWords);
         Log($"[tts.debug] extracted snippet ({snippet?.Length} chars): '{snippet}'");
         if (string.IsNullOrWhiteSpace(snippet))
@@ -81,7 +80,7 @@ internal sealed class TextToSpeechService
             return;
         }
 
-        // Apply pronunciation corrections if service is available.
+        // Apply pronunciation corrections if service is available (only to the preview snippet).
         if (_pronunciationService != null)
         {
             var (correctedSnippet, appliedCorrections) = _pronunciationService.ApplyCorrections(snippet);
@@ -91,6 +90,9 @@ internal sealed class TextToSpeechService
                 snippet = correctedSnippet;
             }
         }
+
+        // If caller supplied full SSML (starts with <speak>), bypass the normal extraction and use the raw SSML as the speech input.
+        var inputIsSsml = !string.IsNullOrWhiteSpace(text) && text.TrimStart().StartsWith("<speak", StringComparison.OrdinalIgnoreCase);
 
         if (string.IsNullOrWhiteSpace(_azureSpeechKey))
         {
@@ -111,7 +113,7 @@ internal sealed class TextToSpeechService
 
             using var audioConfig = AudioConfig.FromDefaultSpeakerOutput();
             using var synthesizer = new SpeechSynthesizer(speechConfig, audioConfig);
-            var speechInput = BuildSpeechInput(snippet, _azureSpeechVoice);
+            var speechInput = inputIsSsml ? BuildSpeechInput(text, _azureSpeechVoice) : BuildSpeechInput(snippet, _azureSpeechVoice);
 
             Log($"[tts.info] Synthesizing {(speechInput.IsSsml ? "ssml" : "text")} ({speechInput.Content.Length} chars) with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
 
@@ -158,7 +160,9 @@ internal sealed class TextToSpeechService
             return null;
         }
 
-        var speechText = ExtractSpeechText(text, null);
+        var inputIsSsml = !string.IsNullOrWhiteSpace(text) && text.TrimStart().StartsWith("<speak", StringComparison.OrdinalIgnoreCase);
+
+        var speechText = inputIsSsml ? text : ExtractSpeechText(text, null);
         Log($"[tts.debug] synth-to-file extracted text ({speechText?.Length} chars): '{speechText}'");
         if (string.IsNullOrWhiteSpace(speechText))
         {
@@ -166,8 +170,8 @@ internal sealed class TextToSpeechService
             return null;
         }
 
-        // Apply pronunciation corrections if service is available.
-        if (_pronunciationService != null)
+        // Apply pronunciation corrections if service is available (skip if caller provided SSML).
+        if (!inputIsSsml && _pronunciationService != null)
         {
             var (correctedText, appliedCorrections) = _pronunciationService.ApplyCorrections(speechText);
             if (appliedCorrections.Any())
@@ -322,6 +326,11 @@ internal sealed class TextToSpeechService
 
     private static SpeechInput BuildSpeechInput(string text, string voiceName)
     {
+        if (!string.IsNullOrWhiteSpace(text) && text.TrimStart().StartsWith("<speak", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SpeechInput(text, IsSsml: true);
+        }
+
         if (string.IsNullOrWhiteSpace(text))
         {
             return new SpeechInput(string.Empty, IsSsml: false);

@@ -236,7 +236,8 @@ internal sealed class DeveloperTipsService
         {
             try
             {
-                await _tts.TrySpeakPreviewAsync(localTip.Text, cancellationToken).ConfigureAwait(false);
+                var ssml = BuildAnnouncementSsml(localTip.Text);
+                await _tts.TrySpeakPreviewAsync(ssml, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -264,7 +265,8 @@ internal sealed class DeveloperTipsService
 
                 if (sub.SendAudio)
                 {
-                    var wav = await _tts.SynthesizePreviewToWavFileAsync(message, cancellationToken).ConfigureAwait(false);
+                    var ssmlForSubscriber = BuildAnnouncementSsml(tip.Text);
+                    var wav = await _tts.SynthesizePreviewToWavFileAsync(ssmlForSubscriber, cancellationToken).ConfigureAwait(false);
                     if (!string.IsNullOrWhiteSpace(wav) && File.Exists(wav))
                     {
                         try
@@ -424,10 +426,11 @@ internal sealed class DeveloperTipsService
 
         var message = $"Developer tip:\n\n{tip.Text}";
 
-        // Speak locally as well for immediate forced announcements.
+        // Speak locally as well for immediate forced announcements (with time intro).
         try
         {
-            await _tts.TrySpeakPreviewAsync(message, cancellationToken).ConfigureAwait(false);
+            var ssml = BuildAnnouncementSsml(tip.Text);
+            await _tts.TrySpeakPreviewAsync(ssml, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -436,7 +439,7 @@ internal sealed class DeveloperTipsService
 
         if (sub?.SendAudio ?? false)
         {
-            var wav = await _tts.SynthesizePreviewToWavFileAsync(message, cancellationToken).ConfigureAwait(false);
+            var wav = await _tts.SynthesizePreviewToWavFileAsync(BuildAnnouncementSsml(tip.Text), cancellationToken).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(wav) && File.Exists(wav))
             {
                 try
@@ -544,6 +547,26 @@ internal sealed class DeveloperTipsService
                     return $"Schedule: unknown mode '{mode}'.";
             }
         }
+    }
+
+    private static string EscapeForSsml(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return string.Empty;
+        return input
+            .Replace("&", "&amp;", StringComparison.Ordinal)
+            .Replace("<", "&lt;", StringComparison.Ordinal)
+            .Replace(">", "&gt;", StringComparison.Ordinal)
+            .Replace("\"", "&quot;", StringComparison.Ordinal)
+            .Replace("'", "&apos;", StringComparison.Ordinal);
+    }
+
+    private string BuildAnnouncementSsml(string tipText)
+    {
+        var time = DateTime.Now.ToString("h:mm tt", CultureInfo.CurrentCulture);
+        var escapedTip = EscapeForSsml(tipText ?? string.Empty);
+        // Short pause (700ms) after the time announcement, then speak the tip.
+        var ssml = $"<speak version=\"1.0\" xml:lang=\"en-GB\">Time Is {EscapeForSsml(time)} Developer Tip Incoming.<break time=\"700ms\"/>{escapedTip}</speak>";
+        return ssml;
     }
 
     private record Tip([property: JsonPropertyName("id")] string Id, [property: JsonPropertyName("text")] string Text, [property: JsonPropertyName("tags")] List<string> Tags);
