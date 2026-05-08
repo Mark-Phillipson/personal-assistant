@@ -564,8 +564,11 @@ internal sealed class DeveloperTipsService
     {
         var time = DateTime.Now.ToString("h:mm tt", CultureInfo.CurrentCulture);
         var escapedTip = EscapeForSsml(tipText ?? string.Empty);
+        var voice = EnvironmentSettings.ReadString("AZURE_SPEECH_VOICE", "en-GB-RyanNeural");
+        var safeVoice = EscapeForSsml(voice);
         // Short pause (700ms) after the time announcement, then speak the tip.
-        var ssml = $"<speak version=\"1.0\" xml:lang=\"en-GB\">Time Is {EscapeForSsml(time)} Developer Tip Incoming.<break time=\"700ms\"/>{escapedTip}</speak>";
+        var content = $"Time Is {EscapeForSsml(time)} Developer Tip Incoming.<break time=\"700ms\"/>{escapedTip}";
+        var ssml = $"<speak version=\"1.0\" xml:lang=\"en-GB\"><voice name=\"{safeVoice}\">{content}</voice></speak>";
         return ssml;
     }
 
