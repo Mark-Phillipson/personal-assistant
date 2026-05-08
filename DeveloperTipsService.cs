@@ -567,7 +567,8 @@ internal sealed class DeveloperTipsService
         var voice = EnvironmentSettings.ReadString("AZURE_SPEECH_VOICE", "en-GB-RyanNeural");
         var safeVoice = EscapeForSsml(voice);
         // Short pause (700ms) after the time announcement, then speak the tip.
-        var content = $"Time Is {EscapeForSsml(time)} Developer Tip Incoming.<break time=\"700ms\"/>{escapedTip}";
+        // Slow down the spoken tip using prosody and include a small gap after the intro
+        var content = $"Time Is {EscapeForSsml(time)} Developer Tip Incoming.<break time=\"700ms\"/> <prosody rate=\"-15%\">{escapedTip}</prosody>";
         var ssml = $"<speak version=\"1.0\" xml:lang=\"en-GB\"><voice name=\"{safeVoice}\">{content}</voice></speak>";
         return ssml;
     }
