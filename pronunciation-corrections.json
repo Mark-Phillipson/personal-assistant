@@ -121,5 +121,16 @@
       "usageCount": 0,
       "enabled": true
     }
+,
+    {
+      "originalWord": "Refactor",
+      "replacement": "Refactor",
+      "ssmlPhoneme": "<phoneme alphabet='ipa' ph='riːˈfæktər'>refactor</phoneme>",
+      "context": "Pronunciation correction: say 'REE-fac-tor' with stress on second syllable; used for code refactoring.",
+      "dateAdded": "2026-05-08T10:02:45Z",
+      "lastModified": null,
+      "usageCount": 0,
+      "enabled": true
+    }
   ]
 }

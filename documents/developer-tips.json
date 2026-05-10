@@ -274,5 +274,40 @@
     "id": "general-022",
     "text": "Prefer simple data models and evolve them only when requirements demand more complexity.",
     "tags": ["general"]
+  },
+  {
+    "id": "vscode-001",
+    "text": "Use Ctrl+P to quickly open files in Visual Studio Code.",
+    "tags": ["vscode","general"]
+  },
+  {
+    "id": "vscode-002",
+    "text": "Enable editor.formatOnSave to keep code consistently formatted.",
+    "tags": ["vscode","general"]
+  },
+  {
+    "id": "voice-001",
+    "text": "When writing by voice, speak punctuation and explicit edit commands for reliability.",
+    "tags": ["voice","vscode"]
+  },
+  {
+    "id": "voice-002",
+    "text": "Use short phrases and explicit commands (e.g., 'new line', 'select sentence') for voice editing.",
+    "tags": ["voice","vscode"]
+  },
+  {
+    "id": "copilot-001",
+    "text": "Treat Copilot suggestions as drafts—review, test, and adapt before committing.",
+    "tags": ["copilot","vscode"]
+  },
+  {
+    "id": "dotnet-034",
+    "text": "For .NET in VS Code, install the C# extension and enable OmniSharp modern .NET support.",
+    "tags": ["dotnet","vscode"]
+  },
+  {
+    "id": "dotnet-035",
+    "text": "Use `dotnet watch` with VS Code's integrated terminal for rapid edit-compile cycles.",
+    "tags": ["dotnet"]
   }
 ]
