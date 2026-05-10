@@ -17,7 +17,7 @@
 
   <ItemGroup>
     <PackageReference Include="DotNetEnv" Version="3.1.1" />
-    <PackageReference Include="GitHub.Copilot.SDK" Version="0.1.32" />
+    <PackageReference Include="GitHub.Copilot.SDK" Version="0.3.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.3" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.0" />
     <PackageReference Include="Google.Apis.Auth" Version="1.73.0" />
@@ -25,6 +25,8 @@
     <PackageReference Include="Google.Apis.Gmail.v1" Version="1.73.0.4029" />
     <PackageReference Include="Microsoft.Playwright" Version="1.51.0" />
     <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.32.1" />
+    <!-- Explicitly pin a patched Nerdbank.MessagePack to mitigate transitive advisory GHSA-2cwq-pwfr-wcw3 -->
+    <PackageReference Include="Nerdbank.MessagePack" Version="1.1.62" />
   </ItemGroup>
 
   <ItemGroup>
