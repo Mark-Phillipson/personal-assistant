@@ -228,10 +228,11 @@ internal sealed class DeveloperTipsService
         return TimeSpan.FromMinutes(frequency);
     }
 
-    private async Task AnnounceAllAsync(CancellationToken cancellationToken)
+        private async Task AnnounceAllAsync(CancellationToken cancellationToken)
     {
         var lastTipId = _state.LastTipId;
-        Tip? localTip = PickRandomTipForCategory("general", lastTipId);
+        // For top-of-hour announcements prefer tips from any category (prefer non-general tags)
+        Tip? localTip = PickRandomTipForTopOfHour(lastTipId);
         if (localTip is not null)
         {
             try
@@ -332,6 +333,24 @@ internal sealed class DeveloperTipsService
             var filtered = candidates.Where(t => !string.Equals(t.Id, excludeTipId, StringComparison.OrdinalIgnoreCase)).ToList();
             if (filtered.Any()) candidates = filtered;
             // if filtering removes all candidates, fall back to original candidates so we can still return something
+        }
+
+        var idx = _rng.Next(candidates.Count);
+        return candidates[idx];
+    }
+
+    private Tip? PickRandomTipForTopOfHour(string? excludeTipId = null)
+    {
+        if (_tips is null || _tips.Count == 0) return null;
+
+        // Prefer tips that include tags other than 'general' so top-of-hour feels varied.
+        var nonGeneral = _tips.Where(t => (t.Tags?.Any(tag => !string.Equals(tag, "general", StringComparison.OrdinalIgnoreCase)) ?? false)).ToList();
+        var candidates = nonGeneral.Any() ? nonGeneral : _tips.ToList();
+
+        if (!string.IsNullOrWhiteSpace(excludeTipId))
+        {
+            var filtered = candidates.Where(t => !string.Equals(t.Id, excludeTipId, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (filtered.Any()) candidates = filtered;
         }
 
         var idx = _rng.Next(candidates.Count);

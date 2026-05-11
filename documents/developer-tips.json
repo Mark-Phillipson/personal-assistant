@@ -275,4 +275,10 @@
     "text": "Prefer simple data models and evolve them only when requirements demand more complexity.",
     "tags": ["general"]
   }
+,
+  {
+    "id": "all-001",
+    "text": "Top-of-hour checklist: VS Code — use the Command Palette and keyboard shortcuts; Voice — speak short, named commands and confirm auto-generated titles; Copilot — review suggestions and run unit tests before accepting; .NET — if you see apphost lock issues use `dotnet build -p:UseAppHost=false` and pin security-sensitive packages.",
+    "tags": ["general", "dotnet", "vscode", "copilot", "voice"]
+  }
 ]
