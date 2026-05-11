@@ -237,7 +237,9 @@ internal sealed class DeveloperTipsService
         {
             try
             {
-                var ssml = BuildAnnouncementSsml(localTip.Text);
+                // Random pause between 500ms and 1200ms for top-of-hour announcement
+                var pauseMs = _rng.Next(500, 1201);
+                var ssml = BuildAnnouncementSsml(localTip.Text, pauseMs);
                 await _tts.TrySpeakPreviewAsync(ssml, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -319,12 +321,11 @@ internal sealed class DeveloperTipsService
     private Tip? PickRandomTipForCategory(string category, string? excludeTipId = null)
     {
         if (_tips is null || _tips.Count == 0) return null;
-        var candidates = _tips.Where(t => t.Tags?.Contains(category, StringComparer.OrdinalIgnoreCase) ?? false).ToList();
-        if (!candidates.Any())
-        {
-            // fallback to any tip tagged general
-            candidates = _tips.Where(t => t.Tags?.Contains("general", StringComparer.OrdinalIgnoreCase) ?? false).ToList();
-        }
+        // Include tips that match the requested category OR are tagged as "general"
+        var candidates = _tips
+            .Where(t => t.Tags?.Any(tag => string.Equals(tag, category, StringComparison.OrdinalIgnoreCase)
+                                           || string.Equals(tag, "general", StringComparison.OrdinalIgnoreCase)) ?? false)
+            .ToList();
 
         if (!candidates.Any()) return null;
 
@@ -579,15 +580,15 @@ internal sealed class DeveloperTipsService
             .Replace("'", "&apos;", StringComparison.Ordinal);
     }
 
-    private string BuildAnnouncementSsml(string tipText)
+    private string BuildAnnouncementSsml(string tipText, int? pauseMs = null)
     {
         var time = DateTime.Now.ToString("h:mm tt", CultureInfo.CurrentCulture);
         var escapedTip = EscapeForSsml(tipText ?? string.Empty);
         var voice = EnvironmentSettings.ReadString("AZURE_SPEECH_VOICE", "en-GB-RyanNeural");
         var safeVoice = EscapeForSsml(voice);
-        // Short pause (700ms) after the time announcement, then speak the tip.
-        // Slow down the spoken tip using prosody and include a small gap after the intro
-        var content = $"Time Is {EscapeForSsml(time)} Developer Tip Incoming.<break time=\"700ms\"/> <prosody rate=\"-15%\">{escapedTip}</prosody>";
+        // Use provided pause (ms) or default to 700ms
+        var pause = pauseMs ?? 700;
+        var content = $"Time Is {EscapeForSsml(time)} Developer Tip Incoming.<break time=\"{pause}ms\"/> <prosody rate=\"-15%\">{escapedTip}</prosody>";
         var ssml = $"<speak version=\"1.0\" xml:lang=\"en-GB\"><voice name=\"{safeVoice}\">{content}</voice></speak>";
         return ssml;
     }

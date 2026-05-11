@@ -25,6 +25,8 @@
     <PackageReference Include="Google.Apis.Gmail.v1" Version="1.73.0.4029" />
     <PackageReference Include="Microsoft.Playwright" Version="1.51.0" />
     <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.32.1" />
+    <!-- Explicitly pin a patched Nerdbank.MessagePack to mitigate transitive advisory GHSA-2cwq-pwfr-wcw3 -->
+    <PackageReference Include="Nerdbank.MessagePack" Version="1.1.62" />
   </ItemGroup>
 
   <ItemGroup>

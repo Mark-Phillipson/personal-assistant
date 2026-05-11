@@ -13,6 +13,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.5.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.0" />
+    <!-- Ensure tests pick up patched Nerdbank.MessagePack to avoid transitive vulnerable version -->
+    <PackageReference Include="Nerdbank.MessagePack" Version="1.1.62" />
   </ItemGroup>
 
   <ItemGroup>
