@@ -44,6 +44,26 @@ if (!string.IsNullOrWhiteSpace(modelFromDotEnv))
     Environment.SetEnvironmentVariable("ASSISTANT_MODEL", modelFromDotEnv.Trim());
 }
 
+// Single-instance guard: ensure only one process runs.
+// Configure name via ASSISTANT_SINGLE_INSTANCE_MUTEX_NAME env var (optional).
+var singleInstanceMutexName = EnvironmentSettings.ReadOptionalString("ASSISTANT_SINGLE_INSTANCE_MUTEX_NAME") ?? "Global\\personal-assistant-single-instance";
+System.Threading.Mutex? singleInstanceMutex = null;
+try
+{
+    var createdNew = false;
+    singleInstanceMutex = new System.Threading.Mutex(true, singleInstanceMutexName, out createdNew);
+    if (!createdNew)
+    {
+        Console.Error.WriteLine($"Another instance of personal-assistant is already running (mutex='{singleInstanceMutexName}'). Exiting.");
+        return;
+    }
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"[single-instance] Failed to create/open mutex '{singleInstanceMutexName}': {ex.Message}. Continuing without single-instance guard.");
+    singleInstanceMutex = null;
+}
+
 var environmentPersonality = PersonalityProfile.FromEnvironment();
 var defaultPersonality = PersonalityProfile.LoadFromEnvironmentOrJson(environmentPersonality);
 
@@ -332,6 +352,12 @@ finally
     catch (Exception ex)
     {
         Console.Error.WriteLine($"[command-api] shutdown error: {ex.Message}");
+    }
+
+    if (singleInstanceMutex != null)
+    {
+        try { singleInstanceMutex.ReleaseMutex(); } catch { }
+        try { singleInstanceMutex.Dispose(); } catch { }
     }
 }
 
