@@ -199,6 +199,40 @@ if (args.Any(arg => string.Equals(arg, "--start-gmail-auth", StringComparison.Or
     return;
 }
 
+// CLI helpers for Google Calendar auth flows
+if (args.Any(arg => string.Equals(arg, "--start-calendar-auth", StringComparison.OrdinalIgnoreCase)))
+{
+    try
+    {
+        await calendarService.StartInteractiveAuthAsync();
+        Console.WriteLine("Google Calendar interactive auth completed (credentials saved to token store).");
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[calendar.auth] Interactive auth failed: {ex.Message}");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
+if (args.Any(arg => string.Equals(arg, "--create-calendar-test-event", StringComparison.OrdinalIgnoreCase)))
+{
+    try
+    {
+        var start = new DateTime(2026, 5, 20, 14, 30, 0, DateTimeKind.Unspecified);
+        var end = start.AddHours(1);
+        var reminders = new List<Google.Apis.Calendar.v3.Data.EventReminder> { new Google.Apis.Calendar.v3.Data.EventReminder { Method = "popup", Minutes = 15 } };
+        var ev = await calendarService.CreateEventAsync("User Interview", "Request type: User Interview\nReminder requested: 15 minutes before start", start, end, reminders);
+        Console.WriteLine($"Calendar event created: {ev.HtmlLink ?? ev.Id}");
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[calendar] Failed to create test event: {ex.Message}");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
 // Initialize pronunciation dictionary service for TTS corrections.
 var pronunciationDictionaryPath = EnvironmentSettings.ReadOptionalString("TTS_PRONUNCIATION_DICT_PATH") 
     ?? Path.Combine(Environment.CurrentDirectory, "pronunciation-corrections.json");

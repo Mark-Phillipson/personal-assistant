@@ -502,7 +502,7 @@ public sealed class GoogleCalendarAssistantService
         return $"{id}|{iCalUid}|{startDateTime}|{startDate}|{summary}";
     }
 
-    public async Task<Event> CreateEventAsync(string summary, string description, DateTime start, DateTime end)
+    public async Task<Event> CreateEventAsync(string summary, string description, DateTime start, DateTime end, IList<EventReminder>? reminders = null)
     {
         var service = await GetServiceAsync();
 
@@ -523,7 +523,26 @@ public sealed class GoogleCalendarAssistantService
             Start = new EventDateTime { DateTimeDateTimeOffset = startOffset, TimeZone = timeZoneId },
             End = new EventDateTime { DateTimeDateTimeOffset = endOffset, TimeZone = timeZoneId }
         };
+
+        if (reminders is not null)
+        {
+            newEvent.Reminders = new Event.RemindersData
+            {
+                UseDefault = false,
+                Overrides = reminders
+            };
+        }
+
         var request = service.Events.Insert(newEvent, "primary");
         return await request.ExecuteAsync();
+    }
+
+    public async Task StartInteractiveAuthAsync()
+    {
+        if (!IsConfigured)
+            throw new InvalidOperationException("Google Calendar is not configured.");
+
+        // Trigger GetServiceAsync to force authentication flow (device-code or browser-based).
+        await GetServiceAsync();
     }
 }

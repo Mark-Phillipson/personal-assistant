@@ -351,6 +351,77 @@ internal static class TelegramMessageHandler
                         cancellationToken);
                     return;
 
+                case "/authorize":
+                case "/refresh_google":
+                    {
+                        await telegram.SendMessageInChunksAsync(chatId, "Starting Google authorization for Gmail and Calendar. Follow the instructions that appear in your browser or in this chat.", cancellationToken);
+
+                        // Gmail authorization (may open a browser on the host machine)
+                        if (gmailService.IsConfigured)
+                        {
+                            try
+                            {
+                                await telegram.SendMessageInChunksAsync(chatId, "Starting Gmail interactive auth (a browser may open on the host machine).", cancellationToken);
+                                await gmailService.StartInteractiveAuthAsync();
+                                await telegram.SendMessageInChunksAsync(chatId, "Gmail authorization completed.", cancellationToken);
+                            }
+                            catch (Exception ex)
+                            {
+                                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap($"Gmail authorization failed: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+                            }
+                        }
+                        else
+                        {
+                            await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(gmailService.GetSetupStatusText(), EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+                        }
+
+                        // Calendar authorization (device-code instructions will be posted in this chat)
+                        if (calendarService.IsConfigured)
+                        {
+                            try
+                            {
+                                await telegram.SendMessageInChunksAsync(chatId, "Starting Calendar authorization (you will receive a verification URL and code here if device-code flow is used).", cancellationToken);
+                                await calendarService.StartInteractiveAuthAsync();
+                                await telegram.SendMessageInChunksAsync(chatId, "Calendar authorization completed.", cancellationToken);
+                            }
+                            catch (Exception ex)
+                            {
+                                await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap($"Calendar authorization failed: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+                            }
+                        }
+                        else
+                        {
+                            await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(calendarService.GetSetupStatusText(), EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+                        }
+
+                        return;
+                    }
+
+                case "/create_event":
+                    {
+                        if (!calendarService.IsConfigured)
+                        {
+                            await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap(calendarService.GetSetupStatusText(), EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+                            return;
+                        }
+
+                        try
+                        {
+                            var start = new DateTime(2026, 5, 20, 14, 30, 0, DateTimeKind.Unspecified);
+                            var end = start.AddHours(1);
+                            var reminders = new List<Google.Apis.Calendar.v3.Data.EventReminder> { new Google.Apis.Calendar.v3.Data.EventReminder { Method = "popup", Minutes = 15 } };
+                            var ev = await calendarService.CreateEventAsync("User Interview", "Request type: User Interview\nReminder requested: 15 minutes before the start", start, end, reminders);
+                            var link = ev.HtmlLink ?? ev.Id ?? "(no link)";
+                            await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap($"Created calendar event: {link}", EmojiPalette.Calendar, profile.UseEmoji), cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            await telegram.SendMessageInChunksAsync(chatId, EmojiPalette.Wrap($"Failed to create event: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji), cancellationToken);
+                        }
+
+                        return;
+                    }
+
                 case "/dadjoke":
                     {
                         var searchTerm = ExtractCommandPayload(text);
