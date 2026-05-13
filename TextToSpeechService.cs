@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Threading;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 
@@ -16,6 +17,7 @@ internal sealed class TextToSpeechService
     private static readonly Regex MarkdownFormattingRegex = new(@"\*\*(?<bold>.+?)\*\*|\*(?<italic>.+?)\*", RegexOptions.Singleline | RegexOptions.Compiled);
 
     private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "tts-debug.log");
+    private static readonly SemaphoreSlim SynthesisLock = new SemaphoreSlim(1, 1);
 
     private static void Log(string message)
     {
@@ -111,29 +113,41 @@ internal sealed class TextToSpeechService
             var speechConfig = SpeechConfig.FromSubscription(_azureSpeechKey, _azureSpeechRegion);
             speechConfig.SpeechSynthesisVoiceName = _azureSpeechVoice;
 
-            using var audioConfig = AudioConfig.FromDefaultSpeakerOutput();
-            using var synthesizer = new SpeechSynthesizer(speechConfig, audioConfig);
-            var speechInput = inputIsSsml ? BuildSpeechInput(text, _azureSpeechVoice) : BuildSpeechInput(snippet, _azureSpeechVoice);
-
-            Log($"[tts.info] Synthesizing {(speechInput.IsSsml ? "ssml" : "text")} ({speechInput.Content.Length} chars) with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
-
-            using var result = speechInput.IsSsml
-                ? await synthesizer.SpeakSsmlAsync(speechInput.Content).ConfigureAwait(false)
-                : await synthesizer.SpeakTextAsync(speechInput.Content).ConfigureAwait(false);
-
-            if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+            await SynthesisLock.WaitAsync(cancellationToken);
+            try
             {
-                Log($"[tts.info] Azure TTS success.");
+                using var audioConfig = AudioConfig.FromDefaultSpeakerOutput();
+                using var synthesizer = new SpeechSynthesizer(speechConfig, audioConfig);
+                var speechInput = inputIsSsml ? BuildSpeechInput(text, _azureSpeechVoice) : BuildSpeechInput(snippet, _azureSpeechVoice);
+
+                Log($"[tts.info] Synthesizing {(speechInput.IsSsml ? "ssml" : "text")} ({speechInput.Content.Length} chars) with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
+
+                using var result = speechInput.IsSsml
+                    ? await synthesizer.SpeakSsmlAsync(speechInput.Content).ConfigureAwait(false)
+                    : await synthesizer.SpeakTextAsync(speechInput.Content).ConfigureAwait(false);
+
+                if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+                {
+                    Log($"[tts.info] Azure TTS success.");
+                }
+                else if (result.Reason == ResultReason.Canceled)
+                {
+                    var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+                    Log($"[tts.error] Azure TTS canceled: Code={cancellation.ErrorCode}, Details={cancellation.ErrorDetails}");
+                }
+                else
+                {
+                    Log($"[tts.error] Azure TTS failed with reason {result.Reason}");
+                }
             }
-            else if (result.Reason == ResultReason.Canceled)
+            finally
             {
-                var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
-                Log($"[tts.error] Azure TTS canceled: Code={cancellation.ErrorCode}, Details={cancellation.ErrorDetails}");
+                SynthesisLock.Release();
             }
-            else
-            {
-                Log($"[tts.error] Azure TTS failed with reason {result.Reason}");
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            Log("[tts.debug] Azure TTS canceled while waiting for synthesis lock or during synthesis.");
         }
         catch (Exception ex)
         {
@@ -200,33 +214,46 @@ internal sealed class TextToSpeechService
 
             var tempFile = Path.Combine(Path.GetTempPath(), $"assistant_tts_{Guid.NewGuid()}.wav");
 
-            using var audioConfig = AudioConfig.FromWavFileOutput(tempFile);
-            using var synthesizer = new SpeechSynthesizer(speechConfig, audioConfig);
-            var speechInput = BuildSpeechInput(speechText, _azureSpeechVoice);
-
-            Log($"[tts.info] Synthesizing to file '{tempFile}' with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
-
-            using var result = speechInput.IsSsml
-                ? await synthesizer.SpeakSsmlAsync(speechInput.Content).ConfigureAwait(false)
-                : await synthesizer.SpeakTextAsync(speechInput.Content).ConfigureAwait(false);
-
-            if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+            await SynthesisLock.WaitAsync(cancellationToken);
+            try
             {
-                Log($"[tts.info] Azure TTS file synthesis success: {tempFile}");
-                return tempFile;
+                using var audioConfig = AudioConfig.FromWavFileOutput(tempFile);
+                using var synthesizer = new SpeechSynthesizer(speechConfig, audioConfig);
+                var speechInput = BuildSpeechInput(speechText, _azureSpeechVoice);
+
+                Log($"[tts.info] Synthesizing to file '{tempFile}' with '{_azureSpeechVoice}' in '{_azureSpeechRegion}'...");
+
+                using var result = speechInput.IsSsml
+                    ? await synthesizer.SpeakSsmlAsync(speechInput.Content).ConfigureAwait(false)
+                    : await synthesizer.SpeakTextAsync(speechInput.Content).ConfigureAwait(false);
+
+                if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+                {
+                    Log($"[tts.info] Azure TTS file synthesis success: {tempFile}");
+                    return tempFile;
+                }
+                else if (result.Reason == ResultReason.Canceled)
+                {
+                    var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+                    Log($"[tts.error] Azure TTS canceled: Code={cancellation.ErrorCode}, Details={cancellation.ErrorDetails}");
+                }
+                else
+                {
+                    Log($"[tts.error] Azure TTS failed with reason {result.Reason}");
+                }
             }
-            else if (result.Reason == ResultReason.Canceled)
+            finally
             {
-                var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
-                Log($"[tts.error] Azure TTS canceled: Code={cancellation.ErrorCode}, Details={cancellation.ErrorDetails}");
-            }
-            else
-            {
-                Log($"[tts.error] Azure TTS failed with reason {result.Reason}");
+                SynthesisLock.Release();
             }
 
             // If synthesis didn't complete, ensure no orphan file remains.
             try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            Log("[tts.debug] Azure TTS file synthesis canceled while waiting for synthesis lock or during synthesis.");
             return null;
         }
         catch (Exception ex)
