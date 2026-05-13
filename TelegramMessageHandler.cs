@@ -2310,6 +2310,8 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/clipboard_today", "view today's clipboard history", EmojiPalette.Search, profile.UseEmoji),
             FormatCommandLine("/calendar_events", "list upcoming Google Calendar events", EmojiPalette.Calendar, profile.UseEmoji),
             FormatCommandLine("/calendar_create", "create a new Google Calendar event", EmojiPalette.Calendar, profile.UseEmoji),
+            FormatCommandLine("/authorize", "start Google auth for Gmail & Calendar", EmojiPalette.Confirm, profile.UseEmoji),
+            FormatCommandLine("/create_event", "create the scheduled test event (20 May 2026 14:30 BST)", EmojiPalette.Calendar, profile.UseEmoji),
             FormatCommandLine("/podcasts", "list subscribed podcasts", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/play_podcast <name> [N]", "play Nth latest episode (default 1)", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/add_podcast <name> <search>", "add podcast subscription", EmojiPalette.Music, profile.UseEmoji),
