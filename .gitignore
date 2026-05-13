@@ -24,4 +24,11 @@ obj/**
 clipboard-history.db
 clipboard-history.db-shm
 clipboard-history.db-wal
-clipboard-history.db
+
+# Alternate build output folders
+bin-debug-verify/
+
+# Playwright browser binaries and node_modules
+.playwright/
+.playwright-mcp/
+node_modules/
