@@ -315,5 +315,180 @@
     "id": "all-001",
     "text": "Top-of-hour checklist: VS Code — use the Command Palette and keyboard shortcuts; Voice — speak short, named commands and confirm auto-generated titles; Copilot — review suggestions and run unit tests before accepting; .NET — if you see apphost lock issues use `dotnet build -p:UseAppHost=false` and pin security-sensitive packages.",
     "tags": ["general", "dotnet", "vscode", "copilot", "voice"]
+  },
+  {
+    "id": "copilot-002",
+    "text": "Use Copilot Ghost Text (inline preview) for quick drafts; accept smaller chunks (Tab) to keep control of logic and naming.",
+    "tags": ["copilot","vscode"]
+  },
+  {
+    "id": "copilot-003",
+    "text": "Provide a focused comment or function signature describing intent — Copilot produces more accurate and testable code when the goal is explicit.",
+    "tags": ["copilot","vscode","general"]
+  },
+  {
+    "id": "copilot-004",
+    "text": "Request alternatives and refinements (e.g., 'suggest a simpler implementation') and compare results; prefer explicit variable names and add unit tests to verify generated code.",
+    "tags": ["copilot","vscode"]
+  },
+  {
+    "id": "copilot-005",
+    "text": "Be cautious with security-sensitive code: review crypto/auth suggestions line-by-line and avoid accepting suggestions that handle secrets or credentials.",
+    "tags": ["copilot","security"]
+  },
+  {
+    "id": "copilot-006",
+    "text": "Use TDD where possible: write or update unit tests before generating code; Copilot uses the tests/comments to produce correct implementations.",
+    "tags": ["copilot","testing","vscode"]
+  },
+  {
+    "id": "copilot-007",
+    "text": "Exclude large or private files from Copilot context if needed and disable AI completions for generated files to avoid leaking sensitive project state.",
+    "tags": ["copilot","vscode","security"]
+  },
+  {
+    "id": "copilot-cost-001",
+    "text": "Prefer inline ghost-text completions (inline preview) for routine code; Copilot Chat / conversational completions often invoke larger models and cost more.",
+    "tags": ["copilot","cost","vscode"]
+  },
+  {
+    "id": "copilot-cost-002",
+    "text": "When model/quality options are available, choose 'fast' or 'small' models for drafts and routine tasks. Reserve 'large/creative' models for complex design or explanation tasks.",
+    "tags": ["copilot","cost","model-selection"]
+  },
+  {
+    "id": "copilot-cost-003",
+    "text": "Keep prompts and context minimal: provide a short function signature and concise intent. Large context increases token usage and cost.",
+    "tags": ["copilot","cost","prompt-engineering"]
+  },
+  {
+    "id": "copilot-cost-004",
+    "text": "Generate code in small, iterative chunks and accept short suggestions. Long single-request implementations use more tokens and often cost more.",
+    "tags": ["copilot","cost","workflow"]
+  },
+  {
+    "id": "copilot-cost-005",
+    "text": "Disable AI completions for generated files or huge files to avoid unnecessary model calls and reduce costs.",
+    "tags": ["copilot","cost","security"]
+  },
+  {
+    "id": "copilot-cost-006",
+    "text": "Batch non-urgent 'explain' or 'refactor' queries and prefer local linters/static analysis to reduce reliance on model calls.",
+    "tags": ["copilot","cost","ops"]
+  },
+  {
+    "id": "copilot-cost-007",
+    "text": "Set workspace defaults to the lowest-cost model that meets accuracy needs and monitor usage; enforce policy via extensions or settings where possible.",
+    "tags": ["copilot","cost","model-selection","ops"]
+  },
+  {
+    "id": "copilot-cost-008",
+    "text": "Ask Copilot to produce unit tests or small helper functions rather than full features—smaller outputs are cheaper and validate suggestions quickly.",
+    "tags": ["copilot","cost","testing"]
+  },
+  {
+    "id": "copilot-cost-009",
+    "text": "Reuse prompts and code snippets/templates for common patterns to avoid repeated exploratory queries; store them as repository snippets or comments.",
+    "tags": ["copilot","cost","productivity"]
+  },
+  {
+    "id": "voice-003",
+    "text": "Invoke the Command Palette (say 'Show All Commands' or 'Command Palette') to run any action by voice instead of navigating UI menus.",
+    "tags": ["voice","vscode","accessibility"]
+  },
+  {
+    "id": "voice-004",
+    "text": "Map frequent actions to simple voice-friendly keybindings via keybindings.json (e.g., \"open terminal\" -> \"workbench.action.terminal.toggleTerminal\") so voice commands can trigger complex workflows.",
+    "tags": ["voice","vscode","accessibility"]
+  },
+  {
+    "id": "voice-005",
+    "text": "Use extensions or external voice platforms (Talon, Dragon, Windows Speech Recognition) that support custom macros; create macros to chain commands like 'open file, go to symbol, run tests'.",
+    "tags": ["voice","vscode","accessibility","extensions"]
+  },
+  {
+    "id": "voice-006",
+    "text": "Prefer semantic navigation commands (Go to Symbol, Go to Definition, Find References) spoken as phrases; these use language features and work more reliably than cursor movement.",
+    "tags": ["voice","vscode","accessibility"]
+  },
+  {
+    "id": "voice-007",
+    "text": "When dictating code, speak punctuation and code tokens explicitly (e.g., 'open paren', 'close paren', 'semicolon', 'dot', 'equals'). Use snippets for boilerplate to reduce repetition.",
+    "tags": ["voice","vscode","dictation"]
+  },
+  {
+    "id": "voice-008",
+    "text": "Use selection and editing commands like 'select line', 'select block', 'expand selection', 'replace selection' for precise edits without mouse. Bind custom commands to voice-friendly phrases if needed.",
+    "tags": ["voice","vscode","accessibility"]
+  },
+  {
+    "id": "voice-009",
+    "text": "Enable readable UI: increase font size, enable a high-contrast theme, and show the outline/breadcrumbs to help voice users orient in large files via auditory feedback or screen readers.",
+    "tags": ["voice","vscode","accessibility","ui"]
+  },
+  {
+    "id": "voice-010",
+    "text": "Add confirmation steps for destructive commands (e.g., refactor/delete file) and map 'undo' voice command to 'editor.action.undo' so mistakes are reversible by voice.",
+    "tags": ["voice","vscode","accessibility","safety"]
+  },
+  {
+    "id": "voice-011",
+    "text": "Store common voice prompts/snippets as workspace snippets or a shared command map so teammates can reuse tested voice workflows and reduce errors.",
+    "tags": ["voice","vscode","workflow","productivity"]
+  },
+  {
+    "id": "talon-001",
+    "text": "Install Talon and configure VS Code integration; use command mode for editor commands and dictation mode for typing code to reduce recognition errors.",
+    "tags": ["talon","voice","vscode","accessibility"]
+  },
+  {
+    "id": "talon-002",
+    "text": "Define concise Talon .talon command files mapping short phrases to VS Code commands (e.g., \"open file\" → workbench.action.quickOpen). Keep phrases consistent.",
+    "tags": ["talon","voice","vscode"]
+  },
+  {
+    "id": "talon-003",
+    "text": "Scope Talon commands to VS Code and specific filetypes so voice commands only trigger while editing code.",
+    "tags": ["talon","voice","vscode","accessibility"]
+  },
+  {
+    "id": "talon-004",
+    "text": "Use Talon user Python scripts to implement complex macros and call VS Code commands via key sequences or the Command Palette.",
+    "tags": ["talon","voice","vscode","automation"]
+  },
+  {
+    "id": "talon-005",
+    "text": "Create voice-friendly shortcuts for frequent actions (run tests, open terminal, accept Copilot) and map them to keybindings for reliable execution.",
+    "tags": ["talon","voice","vscode","productivity"]
+  },
+  {
+    "id": "talon-006",
+    "text": "When dictating code, speak punctuation explicitly (\"open paren\", \"close paren\", \"dot\", \"semicolon\") and use Talon formatters to normalize identifiers.",
+    "tags": ["talon","voice","dictation"]
+  },
+  {
+    "id": "talon-007",
+    "text": "Use Talon snippets for boilerplate (classes, tests, templates). Trigger snippets by voice to avoid repetitive typing.",
+    "tags": ["talon","voice","vscode","snippets"]
+  },
+  {
+    "id": "talon-008",
+    "text": "Tune microphone and noise reduction settings; test commands and iterate phrase wording to improve recognition accuracy.",
+    "tags": ["talon","voice","accessibility","testing"]
+  },
+  {
+    "id": "talon-009",
+    "text": "Share Talon command files and workspace snippets in the repository (e.g., docs/talon/) so teammates can reuse and version-control voice workflows.",
+    "tags": ["talon","voice","workflow","productivity"]
+  },
+  {
+    "id": "talon-010",
+    "text": "Avoid voice macros that handle secrets or credentials; keep sensitive workflows manual or use secure secret stores.",
+    "tags": ["talon","security","voice"]
+  },
+  {
+    "id": "talon-011",
+    "text": "Enable Talon logs and test commands interactively; add undo-friendly mappings (e.g., voice 'undo' → editor.action.undo) to recover from mistakes.",
+    "tags": ["talon","voice","troubleshooting","safety"]
   }
 ]
