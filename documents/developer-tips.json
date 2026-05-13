@@ -11,7 +11,7 @@
   },
   {
     "id": "dotnet-003",
-    "text": "Favor `Span<T>`/`Memory<T>` for high-performance parsing to avoid allocations.",
+    "text": "Favor `Span<T>`/`Memory<T>` for high-performance parsing to avoid allocations regarding the heap and the stack.",
     "tags": ["dotnet"]
   },
   {
@@ -21,13 +21,13 @@
   },
   {
     "id": "general-002",
-    "text": "Add small unit tests for tricky edge cases — they pay off during refactors.",
+    "text": "Add small unit tests for tricky edge cases — they pay off during re-factors.",
     "tags": ["general"]
   }
   ,
   {
     "id": "dotnet-004",
-    "text": "Enable nullable reference types and fix warnings to reduce NullReferenceException risk.",
+    "text": "Enable nullable reference types and fix warnings to reduce NullReferenceException risk and get Copilot to help with this.",
     "tags": ["dotnet"]
   },
   {
@@ -277,7 +277,7 @@
   },
   {
     "id": "vscode-001",
-    "text": "Use Ctrl+P to quickly open files in Visual Studio Code.",
+    "text": "Use Ctrl+P or F1 or 'search files' voice command to quickly open files in Visual Studio Code.",
     "tags": ["vscode","general"]
   },
   {
