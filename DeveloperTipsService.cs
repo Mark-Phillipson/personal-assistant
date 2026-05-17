@@ -95,7 +95,7 @@ internal sealed class DeveloperTipsService
 
             if (!File.Exists(_stateFilePath))
             {
-                _state = new DevTipsState { Enabled = true, Subscribers = new List<SubscriberEntry>(), FrequencyMinutes = 60 };
+                _state = new DevTipsState { Enabled = false, Subscribers = new List<SubscriberEntry>(), FrequencyMinutes = 60 };
                 await SaveStateAsync(cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -107,7 +107,7 @@ internal sealed class DeveloperTipsService
         }
         catch
         {
-            _state = new DevTipsState { Enabled = true, Subscribers = new List<SubscriberEntry>(), FrequencyMinutes = 60 };
+            _state = new DevTipsState { Enabled = false, Subscribers = new List<SubscriberEntry>(), FrequencyMinutes = 60 };
         }
     }
 
@@ -362,7 +362,7 @@ internal sealed class DeveloperTipsService
     {
         lock (_sync)
         {
-            _state ??= new DevTipsState { Enabled = true, FrequencyMinutes = 60, Subscribers = new List<SubscriberEntry>() };
+            _state ??= new DevTipsState { Enabled = false, FrequencyMinutes = 60, Subscribers = new List<SubscriberEntry>() };
             var exists = _state.Subscribers?.FirstOrDefault(s => s.ChatId == chatId);
             if (exists is null)
             {
