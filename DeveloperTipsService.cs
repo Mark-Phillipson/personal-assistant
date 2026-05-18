@@ -141,7 +141,8 @@ internal sealed class DeveloperTipsService
             {
                 var delay = ComputeDelayUntilNext(cancellationToken);
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                await AnnounceAllAsync(cancellationToken).ConfigureAwait(false);
+                // Auto announcements disabled — speak pips and time instead.
+                await SpeakTopOfHourPipsAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -593,6 +594,30 @@ internal sealed class DeveloperTipsService
         return ssml;
     }
 
+    private async Task SpeakTopOfHourPipsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var ssml = BuildPipsSsml();
+            await _tts.TrySpeakPreviewAsync(ssml, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[devtips.pips.error] {ex.Message}");
+        }
+    }
+
+    private string BuildPipsSsml()
+    {
+        var time = DateTime.Now.ToString("h:mm tt", CultureInfo.CurrentCulture);
+        var voice = EnvironmentSettings.ReadString("AZURE_SPEECH_VOICE", "en-GB-RyanNeural");
+        var safeVoice = EscapeForSsml(voice);
+        var escapedTime = EscapeForSsml(time);
+        var content = $"<prosody rate=\"-20%\">pip.<break time=\"200ms\"/>pip.<break time=\"200ms\"/>pip.</prosody><break time=\"350ms\"/><prosody rate=\"-10%\">The time is {escapedTime}.</prosody>";
+        var ssml = $"<speak version=\"1.0\" xml:lang=\"en-GB\"><voice name=\"{safeVoice}\">{content}</voice></speak>";
+        return ssml;
+    }
+
     private record Tip([property: JsonPropertyName("id")] string Id, [property: JsonPropertyName("text")] string Text, [property: JsonPropertyName("tags")] List<string> Tags);
     private class SubscriberEntry
     {
@@ -603,7 +628,7 @@ internal sealed class DeveloperTipsService
 
     private class DevTipsState
     {
-        [JsonPropertyName("enabled")] public bool Enabled { get; set; } = true;
+        [JsonPropertyName("enabled")] public bool Enabled { get; set; } = false;
         [JsonPropertyName("subscribers")] public List<SubscriberEntry> Subscribers { get; set; } = new();
         [JsonPropertyName("lastAnnouncedUtc")] public DateTime? LastAnnouncedUtc { get; set; }
         [JsonPropertyName("frequencyMinutes")] public int FrequencyMinutes { get; set; } = 60;
