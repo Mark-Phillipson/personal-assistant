@@ -32,3 +32,4 @@ bin-debug-verify/
 .playwright/
 .playwright-mcp/
 node_modules/
+documents/proposals/outlier-clarifying-questions.md
