@@ -508,6 +508,19 @@ internal sealed class ClipboardHistoryService
             cmd.Parameters.AddWithValue("@hash", contentHash);
             cmd.Parameters.AddWithValue("@timestamp", timestamp);
 
+            // Diagnostic: log the UTF-8 bytes of the content (base64, truncated) to help verify encoding
+            try
+            {
+                var utf8Bytes = Encoding.UTF8.GetBytes(content);
+                var b64 = Convert.ToBase64String(utf8Bytes);
+                var truncated = b64.Length > 120 ? b64.Substring(0, 120) + "..." : b64;
+                Console.WriteLine($"[clipboard-history.debug] content UTF8 base64 (truncated): {truncated}");
+            }
+            catch
+            {
+                // Ignore diagnostics failures
+            }
+
             await cmd.ExecuteNonQueryAsync(cancellationToken);
             Console.WriteLine($"[clipboard-history.add] Entry added successfully (hash={contentHash[..8]})");
         }
@@ -714,6 +727,8 @@ internal sealed class ClipboardMonitor
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
                 CreateNoWindow = true
             };
 

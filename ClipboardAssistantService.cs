@@ -86,6 +86,8 @@ internal sealed class ClipboardAssistantService
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
             CreateNoWindow = true,
             WorkingDirectory = Environment.CurrentDirectory
         };
