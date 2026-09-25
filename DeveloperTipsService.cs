@@ -229,7 +229,7 @@ internal sealed class DeveloperTipsService
         return TimeSpan.FromMinutes(frequency);
     }
 
-        private async Task AnnounceAllAsync(CancellationToken cancellationToken)
+    private async Task AnnounceAllAsync(CancellationToken cancellationToken)
     {
         var lastTipId = _state.LastTipId;
         // For top-of-hour announcements prefer tips from any category (prefer non-general tags)
@@ -262,7 +262,7 @@ internal sealed class DeveloperTipsService
         {
             try
             {
-            var tip = PickRandomTipForCategory(sub.Category ?? "general", lastTipId) ?? localTip;
+                var tip = PickRandomTipForCategory(sub.Category ?? "general", lastTipId) ?? localTip;
                 if (tip is null) continue;
 
                 var message = $"Developer tip:\n\n{tip.Text}";
@@ -614,6 +614,8 @@ internal sealed class DeveloperTipsService
         var safeVoice = EscapeForSsml(voice);
         var escapedTime = EscapeForSsml(time);
         var content = $"<prosody rate=\"-20%\">pip.<break time=\"200ms\"/>pip.<break time=\"200ms\"/>pip.</prosody><break time=\"350ms\"/><prosody rate=\"-10%\">The time is {escapedTime}.</prosody>";
+        content = $"pip. {escapedTime}";// Override previous content for testing     
+
         var ssml = $"<speak version=\"1.0\" xml:lang=\"en-GB\"><voice name=\"{safeVoice}\">{content}</voice></speak>";
         return ssml;
     }

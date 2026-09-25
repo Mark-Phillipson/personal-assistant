@@ -259,8 +259,12 @@ var pronunciationDictionaryPath = EnvironmentSettings.ReadOptionalString("TTS_PR
 var pronunciationService = new PronunciationDictionaryService(pronunciationDictionaryPath);
 
 var textToSpeechService = TextToSpeechService.FromEnvironment(pronunciationService);
+var fableRequestMonitorService = FableRequestMonitorService.FromEnvironment(textToSpeechService, tickerNotificationService);
 Console.WriteLine(databaseRegistry.GetSetupStatusText());
 Console.WriteLine($"GenericDatabaseService has {genericDatabaseService.ListSources().Count} source(s) available.");
+Console.WriteLine($"Fable monitor configured: {fableRequestMonitorService.IsConfigured}");
+Console.WriteLine($"Fable auto-launch Edge at startup: {FableRequestMonitorService.ShouldAutoLaunchEdgeAtStartup()}");
+Console.WriteLine($"Fable Edge debug port reachable: {FableRequestMonitorService.IsEdgeDebugPortReachable()}");
 
 var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, tickerNotificationService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService, gitHubTodosService);
 
@@ -286,6 +290,18 @@ Console.CancelKeyPress += (_, eventArgs) =>
     appCancellation.Cancel();
 };
 
+if (fableRequestMonitorService.IsConfigured && FableRequestMonitorService.ShouldAutoLaunchEdgeAtStartup())
+{
+    try
+    {
+        await FableRequestMonitorService.EnsureEdgeBrowserDebugSessionIsAvailableAsync(appCancellation.Token);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[fable.monitor] startup Edge helper launch failed: {ex.Message}");
+    }
+}
+
 using var apiServerCancellation = new CancellationTokenSource();
 var apiServerTask = CommandApiServer.StartAsync(
     apiServerCancellation.Token,
@@ -308,11 +324,17 @@ try
             dadJokeService,
             telegramChatIdStore,
             textToSpeechService,
+            tickerNotificationService,
             cliPrompt,
             appCancellation.Token);
     }
     else
     {
+        if (fableRequestMonitorService.IsConfigured)
+        {
+            _ = Task.Run(() => fableRequestMonitorService.StartAsync(appCancellation.Token), appCancellation.Token);
+        }
+
         await RunTelegramAsync(
             copilotClient,
             assistantTools,
@@ -405,6 +427,7 @@ static async Task RunCliAsync(
     DadJokeService dadJokeService,
     TelegramChatIdStore telegramChatIdStore,
     TextToSpeechService textToSpeechService,
+    TickerNotificationService tickerNotificationService,
     string prompt,
     CancellationToken cancellationToken)
 {
@@ -476,6 +499,30 @@ static async Task RunCliAsync(
         {
             Console.Error.WriteLine($"[tts.error] CLI dad joke speak failed: {ttsEx.Message}");
         }
+        return;
+    }
+
+    if (FableRequestMonitorService.IsFableCheckRequest(prompt))
+    {
+        var fableService = FableRequestMonitorService.FromEnvironment(textToSpeechService, tickerNotificationService);
+        var result = await fableService.MonitorOnceAsync(cancellationToken);
+        var response = result.Message;
+
+        Console.WriteLine(response);
+        if (telegram is not null && storedChatId.HasValue)
+        {
+            await telegram.SendMessageInChunksAsync(storedChatId.Value, response, cancellationToken);
+        }
+
+        try
+        {
+            await textToSpeechService.TrySpeakPreviewAsync(response, cancellationToken, true);
+        }
+        catch (Exception ttsEx)
+        {
+            Console.Error.WriteLine($"[tts.error] CLI Fable check speak failed: {ttsEx.Message}");
+        }
+
         return;
     }
 

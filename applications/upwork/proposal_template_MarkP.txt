@@ -1,0 +1,95 @@
+Proposal Template — Upwork (Mark P.)
+------------------------------------------------------------
+
+SHORT VARIANT (<=120 words) — Plain text (ready to paste into Upwork)
+
+Dear Prospective Client.
+
+I can help with [briefly restate the project's core need — replace this placeholder]. I bring 20+ years building data-centric web and desktop applications using C#, ASP.NET/Blazor, and Microsoft SQL Server. I deliver maintainable code, clear milestones, and timely communication.
+
+Why I'm a fit:
+- 20+ years building data-centric applications with C#, ASP.NET/Blazor, and SQL Server.
+- Strong experience designing schemas, APIs, and reliable backends.
+- Incremental delivery with demos, tests, and documentation.
+- Clear communication and overlap with your hours as needed.
+
+Approach & milestones:
+- Milestone 1 — Requirements & spec (2–3 days)
+- Milestone 2 — Implementation & tests (1–3 weeks)
+- Milestone 3 — Deployment & handover (1 week)
+
+Estimate: $X fixed (assumptions listed below) or $Y/hour. Please share project details for an exact quote.
+
+If this sounds good I can start next week and provide a detailed plan within two business days.
+
+Best regards,
+Mark P.
+
+
+DETAILED VARIANT (approx 250–400 words) — Plain text (ready to paste into Upwork)
+
+Dear Prospective Client.
+
+I understand you need [one-sentence restatement of the client's core need — replace this]. I can deliver a robust, maintainable solution that meets your functional requirements and is easy to operate and extend.
+
+Summary of fit and approach:
+
+- Background: I have 20+ years delivering data-centric desktop and web applications using C#, ASP.NET/Blazor, and Microsoft SQL Server. I focus on clear architecture, test coverage, and reliable deployments.
+- Process: I break work into small, reviewable increments with frequent demos so you can validate direction early.
+- Communication: I provide regular status updates, share working builds, and keep an open channel for questions and clarifications.
+
+Proposed milestones (example):
+
+1) Discovery & spec — Gather requirements, acceptance criteria, and success metrics. Produce a short spec and wireframes where needed. (2–4 days)
+2) Core implementation — Implement backend, data model, and core features with unit/integration tests. Deliver incremental demos. (1–3 weeks depending on scope)
+3) Finalize & deploy — Finish remaining features, perform QA, deploy to your environment, and hand over documentation. (1 week)
+
+Estimate & assumptions:
+- Estimated range: $X–$Y fixed (depends on scope) or $Z/hour. Assumes a stable requirements set and access to any existing data/schema.
+- I will provide a precise fixed-price quote after review of the detailed requirements and any sample data.
+
+Clarifying questions (please answer to refine estimate):
+- Do you have existing code or a database schema I should integrate with?
+- Are there strict performance or uptime requirements?
+- Preferred deployment target (Azure, AWS, on-prem)?
+
+If you share the job details I will produce a concise, itemized quote and timeline within 48 hours.
+
+Best regards,
+Mark P.
+
+
+SCREENING ANSWERS (plain text) — edit as needed before applying
+
+- Years experience (C#/.NET): 20+
+- Key skills: C#, ASP.NET, Blazor, Microsoft SQL Server, API design, testing, deployment
+- Availability: Can start in [start timeframe]; available to overlap [hours per day/week]
+- English: Native
+- Upwork: 100% Job Success; Top Rated Plus (include only if desired)
+
+
+MARKDOWN REVIEW COPY (for editing/review only)
+
+## Proposal — Short (plain text)
+
+Dear Prospective Client.
+
+I can help with [briefly restate the project's core need]. I bring 20+ years building data-centric web and desktop applications using C#, ASP.NET/Blazor, and Microsoft SQL Server. I deliver maintainable code, clear milestones, and timely communication.
+
+**Why I'm a fit**
+- 20+ years building data-centric applications with C#, ASP.NET/Blazor, and SQL Server.
+- Strong experience designing schemas, APIs, and reliable backends.
+- Incremental delivery with demos, tests, and documentation.
+- Clear communication and overlap with your hours as needed.
+
+**Approach & milestones**
+- Discovery & spec — 2–3 days
+- Implementation & tests — 1–3 weeks
+- Deployment & handover — 1 week
+
+**Estimate**: Placeholder — request project details for a firm quote.
+
+
+---
+
+Use the plain-text sections above (they start with "Dear Prospective Client.") when pasting into Upwork apply fields. Replace bracketed placeholders with job-specific details before submitting.

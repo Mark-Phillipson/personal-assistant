@@ -1,0 +1,64 @@
+SHORT VARIANT (<=120 words) — Plain text (ready to paste into Upwork)
+
+Dear Prospective Client.
+
+You need a Senior .NET Developer for a long-term, remote, 30+ hrs/week engagement to design and build scalable enterprise applications using C#, .NET Core/ASP.NET, and SQL Server.
+
+I have 20+ years delivering enterprise .NET systems with deep experience in API design, database architecture, ASP.NET MVC, and web services. I write clean, well-tested code, deliver incremental milestones with demos, and communicate clearly in English. I can commit 30+ hrs/week and am open to contract-to-hire. Proposed rate: $65/hr (negotiable for long-term commitments). After a brief kickoff I will deliver a concise project plan and timeline.
+
+Best regards,
+Mark P.
+
+
+DETAILED VARIANT (approx 250–400 words) — Plain text (ready to paste into Upwork)
+
+Dear Prospective Client.
+
+You need a Senior .NET Developer with extensive experience to join a long-term, remote (30+ hrs/week) engagement and deliver scalable, maintainable enterprise applications using C#, .NET Core/ASP.NET, and SQL Server.
+
+Summary of fit and approach:
+
+- Experience: 20+ years building data-centric, enterprise .NET systems. I lead API design, database architecture, and backend services that operate reliably at scale.
+- Skills match: Strong with C#, .NET Core, ASP.NET/ASP.NET MVC, SQL Server, Web Services, API design, and database/schema design.
+- Process: I split work into short, reviewable iterations with tests and demos so you see progress early and often. I emphasise clear acceptance criteria, automated tests, and code quality.
+
+Why I'm a fit:
+- API & Web Services: Designed and maintained REST and RPC-style services with versioning, authentication, and monitoring.
+- Database architecture & design: Schema design, indexing, query optimization, migrations, and data integrity for transactional systems.
+- .NET platform: Long history on .NET Framework and .NET Core, including ASP.NET MVC and modern ASP.NET projects.
+- Reliability & maintainability: Unit/integration tests, CI pipelines, logging/observability, and documentation.
+
+Proposed approach & milestones (example):
+
+1) Discovery & spec — Gather requirements, review any existing code/schema, and produce a short spec with acceptance criteria. (3–5 days)
+2) Implement core features — Build APIs, data model, and core backend components with tests and demos. (2–6 weeks depending on scope)
+3) Stabilize & harden — Performance tuning, security review, and add monitoring/alerts. (1–2 weeks)
+4) Handover & ongoing support — Deploy, document, and provide transition; continue as ongoing engineer if desired.
+
+Estimate & assumptions:
+- Hourly proposal: $65/hr (I am open to negotiation for a long-term, multi-year commitment or contract-to-hire). A firm fixed-price bid can be provided after reviewing the detailed requirements and repo.
+- Assumes a stable requirements set, access to existing codebase or schema (if any), and a single deployment target (please specify Azure/AWS/on-prem).
+
+Clarifying questions to refine scope and estimate:
+- Do you have an existing codebase or database schema I should review? If so, can I get read access?
+- Preferred deployment target and CI/CD tooling (Azure DevOps, GitHub Actions, other)?
+- Are there strict uptime, performance, or compliance requirements I should account for?
+
+If this fits, please share access to any existing repo or docs and I will prepare a concise, itemized plan and timeline within 48 hours.
+
+Best regards,
+Mark P.
+
+
+SCREENING ANSWERS (plain text) — edit as needed before applying
+
+Years experience (C#/.NET): 20+
+Key skills: C#, .NET Core, ASP.NET, ASP.NET MVC, SQL Server, API design, Database architecture, Web Services, Testing, CI/CD
+Availability: Can commit 30+ hrs/week (please confirm preferred weekly hours and overlap requirements)
+Hourly rate: $65/hr (open to negotiation for long-term engagements)
+English: Native
+
+
+INSTRUCTIONS
+
+Use the plain-text sections above when pasting into Upwork apply fields. Replace any bracketed placeholders only when you have job-specific details (for example, exact start date or repository access information).

@@ -103,6 +103,7 @@ Note: Voice Admin *write* operations (adding/completing/assigning todos) are dep
 - `TALON_USER_DIRECTORY` (optional, default `%USERPROFILE%\AppData\Roaming\talon\user`; root path for read-only Talon file tools)
 - `ASSISTANT_REPO_DIRECTORY` (optional, default current working directory when app starts; root path for the `repo` alias in `open_known_folder_in_explorer`)
 - `UPWORK_CHROME_CDP_URL` (optional, default `http://127.0.0.1:9222`; when Chrome is started with remote debugging, Upwork tools can attach to your existing logged-in Chrome profile/session)
+- `FABLE_AUTO_LAUNCH_EDGE` (optional, default `true`; when true, the app automatically launches the Edge remote-debug helper at startup so Fable can reuse your logged-in browser session)
 - `ANDROID_COMPANION_API_PREFIX` (optional, default `http://localhost:5000/`; HttpListener prefix used by the Android companion command API)
 - `ANDROID_DEVICE_TOKEN` (optional but recommended; shared secret required by `POST /api/command` when set)
 - `ASSISTANT_NAME` (optional, default `Bob`)

@@ -14,7 +14,6 @@ Telegram commands
 - `/devtips mode [dotnet|general]` — set preferred tip category for this chat.
 - `/devtips audio [on|off]` — enable/disable WAV audio delivery for this chat (audio requires TTS enabled and Azure speech credentials).
 
-- `/devtips schedule <show|hourly|fixed <minutes>|times <hh:mm[,hh:mm]>|random <min> <max>` — configure when tips are announced. Examples:
 	- `/devtips schedule show` — show current schedule.
 	- `/devtips schedule hourly` — announce at the top of each hour.
 	- `/devtips schedule fixed 30` — announce every 30 minutes (interval-based).

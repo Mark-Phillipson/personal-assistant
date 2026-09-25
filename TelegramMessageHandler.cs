@@ -65,6 +65,32 @@ internal static class TelegramMessageHandler
         var chatId = message.Chat.Id;
         var profile = GetPersonalityForChat(chatId, personalityProfiles, defaultPersonality);
 
+        if (!string.IsNullOrWhiteSpace(text) && FableRequestMonitorService.IsFableCheckRequest(text))
+        {
+            try
+            {
+                var fableService = FableRequestMonitorService.FromEnvironment(textToSpeechService, tickerNotificationService);
+                var result = await fableService.MonitorOnceAsync(cancellationToken);
+
+                await telegram.SendMessageInChunksAsync(chatId, result.Message, cancellationToken);
+
+                try
+                {
+                    await textToSpeechService.TrySpeakPreviewAsync(result.Message, cancellationToken, true);
+                }
+                catch (Exception ttsEx)
+                {
+                    Console.Error.WriteLine($"[tts.error] Telegram Fable check speak failed: {ttsEx.Message}");
+                }
+
+                return;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[fable.telegram] Fable check request failed: {ex.Message}");
+            }
+        }
+
         // Wire up the calendar auth notifier so the device-code URL/code is sent back
         // to this chat rather than being written only to the (invisible) process console.
         // Note: this sets a notifier on the singleton calendar service; if multiple
