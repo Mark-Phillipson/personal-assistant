@@ -15,6 +15,25 @@ internal static class TelegramMessageHandler
     private static readonly ConcurrentDictionary<long, string> SessionToolSignatures = new();
     private record ProposedTodo(string Title, string? Body, string? Label);
     private static readonly ConcurrentDictionary<long, ProposedTodo> PendingTodoProposals = new();
+    private static readonly object FableServiceLock = new();
+    private static FableRequestMonitorService? SharedFableMonitorService;
+
+    private static FableRequestMonitorService GetOrCreateFableMonitorService(
+        TextToSpeechService textToSpeechService,
+        TickerNotificationService tickerNotificationService)
+    {
+        lock (FableServiceLock)
+        {
+            SharedFableMonitorService ??= FableRequestMonitorService.FromEnvironment(textToSpeechService, tickerNotificationService);
+            return SharedFableMonitorService;
+        }
+    }
+
+    private static async Task<string> BuildFableFailureMessageAsync(Exception ex, CancellationToken cancellationToken)
+    {
+        var diagnostics = await FableRequestMonitorService.GetAttachDiagnosticsAsync(cancellationToken);
+        return $"Fable check failed: {ex.Message}\n\n{diagnostics}";
+    }
 
     private static string NormalizeEventText(string? text)
     {
@@ -65,11 +84,13 @@ internal static class TelegramMessageHandler
         var chatId = message.Chat.Id;
         var profile = GetPersonalityForChat(chatId, personalityProfiles, defaultPersonality);
 
-        if (!string.IsNullOrWhiteSpace(text) && FableRequestMonitorService.IsFableCheckRequest(text))
+        if (!string.IsNullOrWhiteSpace(text)
+            && !text.StartsWith('/')
+            && FableRequestMonitorService.IsFableCheckRequest(text))
         {
             try
             {
-                var fableService = FableRequestMonitorService.FromEnvironment(textToSpeechService, tickerNotificationService);
+                var fableService = GetOrCreateFableMonitorService(textToSpeechService, tickerNotificationService);
                 var result = await fableService.MonitorOnceAsync(cancellationToken);
 
                 await telegram.SendMessageInChunksAsync(chatId, result.Message, cancellationToken);
@@ -88,6 +109,12 @@ internal static class TelegramMessageHandler
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"[fable.telegram] Fable check request failed: {ex.Message}");
+                var failureMessage = await BuildFableFailureMessageAsync(ex, cancellationToken);
+                await telegram.SendMessageInChunksAsync(
+                    chatId,
+                    EmojiPalette.Wrap(failureMessage, EmojiPalette.Warning, profile.UseEmoji),
+                    cancellationToken);
+                return;
             }
         }
 
@@ -453,7 +480,7 @@ internal static class TelegramMessageHandler
                     {
                         try
                         {
-                            var fableService = FableRequestMonitorService.FromEnvironment(textToSpeechService, tickerNotificationService);
+                            var fableService = GetOrCreateFableMonitorService(textToSpeechService, tickerNotificationService);
                             if (!fableService.IsConfigured)
                             {
                                 await telegram.SendMessageInChunksAsync(
@@ -477,9 +504,10 @@ internal static class TelegramMessageHandler
                         }
                         catch (Exception ex)
                         {
+                            var failureMessage = await BuildFableFailureMessageAsync(ex, cancellationToken);
                             await telegram.SendMessageInChunksAsync(
                                 chatId,
-                                EmojiPalette.Wrap($"Fable check failed: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji),
+                                EmojiPalette.Wrap(failureMessage, EmojiPalette.Warning, profile.UseEmoji),
                                 cancellationToken);
                         }
 

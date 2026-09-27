@@ -268,8 +268,14 @@ public class DatabasePhaseThreeTests
     {
         var json = "{\"databases\":[{\"alias\":\"users\",\"provider\":\"sqlite\",\"connectionString\":\"data.db\",\"displayName\":\"Users DB\",\"defaultSchema\":\"main\",\"readOnly\":true}]}";
         var temp = Path.GetTempFileName();
+        var originalDatabaseConfigPath = Environment.GetEnvironmentVariable("DATABASE_CONFIG_PATH");
+        var originalDatabaseConfigJson = Environment.GetEnvironmentVariable("DATABASE_CONFIG_JSON");
+        var originalVoiceAdminDbPath = Environment.GetEnvironmentVariable("VOICE_ADMIN_DB_PATH");
+        var originalSqlDiscovery = Environment.GetEnvironmentVariable("DATABASE_SQLSERVER_DISCOVERY");
         try
         {
+            Environment.SetEnvironmentVariable("DATABASE_CONFIG_JSON", "{}");
+            Environment.SetEnvironmentVariable("DATABASE_SQLSERVER_DISCOVERY", "false");
             File.WriteAllText(temp, json);
             Environment.SetEnvironmentVariable("DATABASE_CONFIG_PATH", temp);
 
@@ -279,7 +285,8 @@ public class DatabasePhaseThreeTests
             Assert.Equal("Users DB", source.DisplayName);
             Assert.Equal(DatabaseProviderType.SQLite, source.ProviderType);
 
-            Environment.SetEnvironmentVariable("DATABASE_CONFIG_PATH", null);
+            Environment.SetEnvironmentVariable("DATABASE_CONFIG_PATH", "__TEST_MISSING_CONFIG_PATH__");
+            Environment.SetEnvironmentVariable("DATABASE_CONFIG_JSON", "{}");
             Environment.SetEnvironmentVariable("VOICE_ADMIN_DB_PATH", "C:\\does-not-exist.db");
             var legacyReg = DatabaseRegistry.FromEnvironment();
             Assert.True(legacyReg.HasSources);
@@ -289,8 +296,10 @@ public class DatabasePhaseThreeTests
         finally
         {
             File.Delete(temp);
-            Environment.SetEnvironmentVariable("DATABASE_CONFIG_PATH", null);
-            Environment.SetEnvironmentVariable("VOICE_ADMIN_DB_PATH", null);
+            Environment.SetEnvironmentVariable("DATABASE_CONFIG_PATH", originalDatabaseConfigPath);
+            Environment.SetEnvironmentVariable("DATABASE_CONFIG_JSON", originalDatabaseConfigJson);
+            Environment.SetEnvironmentVariable("VOICE_ADMIN_DB_PATH", originalVoiceAdminDbPath);
+            Environment.SetEnvironmentVariable("DATABASE_SQLSERVER_DISCOVERY", originalSqlDiscovery);
         }
     }
 
