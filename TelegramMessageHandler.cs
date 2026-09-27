@@ -448,6 +448,44 @@ internal static class TelegramMessageHandler
                         return;
                     }
 
+                case "/fable":
+                case "/fable_status":
+                    {
+                        try
+                        {
+                            var fableService = FableRequestMonitorService.FromEnvironment(textToSpeechService, tickerNotificationService);
+                            if (!fableService.IsConfigured)
+                            {
+                                await telegram.SendMessageInChunksAsync(
+                                    chatId,
+                                    EmojiPalette.Wrap("Fable is not configured. Set FABLE_USERNAME, FABLE_PASSWORD, and FABLE_LOGIN_URL first.", EmojiPalette.Warning, profile.UseEmoji),
+                                    cancellationToken);
+                                return;
+                            }
+
+                            var result = await fableService.MonitorOnceAsync(cancellationToken);
+                            var fableMessage = EmojiPalette.Wrap(result.Message, EmojiPalette.Search, profile.UseEmoji);
+                            await SendReplyWithOptionalTelegramAudioAsync(
+                                chatId,
+                                fableMessage,
+                                result.Message,
+                                text,
+                                telegram,
+                                textToSpeechService,
+                                cancellationToken,
+                                "Fable status audio failed");
+                        }
+                        catch (Exception ex)
+                        {
+                            await telegram.SendMessageInChunksAsync(
+                                chatId,
+                                EmojiPalette.Wrap($"Fable check failed: {ex.Message}", EmojiPalette.Warning, profile.UseEmoji),
+                                cancellationToken);
+                        }
+
+                        return;
+                    }
+
                 case "/dadjoke":
                     {
                         var searchTerm = ExtractCommandPayload(text);
@@ -2338,6 +2376,7 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/calendar_create", "create a new Google Calendar event", EmojiPalette.Calendar, profile.UseEmoji),
             FormatCommandLine("/authorize", "start Google auth for Gmail & Calendar", EmojiPalette.Confirm, profile.UseEmoji),
             FormatCommandLine("/create_event", "create the scheduled test event (20 May 2026 14:30 BST)", EmojiPalette.Calendar, profile.UseEmoji),
+            FormatCommandLine("/fable", "check current Fable request availability", EmojiPalette.Search, profile.UseEmoji),
             FormatCommandLine("/podcasts", "list subscribed podcasts", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/play_podcast <name> [N]", "play Nth latest episode (default 1)", EmojiPalette.Music, profile.UseEmoji),
             FormatCommandLine("/add_podcast <name> <search>", "add podcast subscription", EmojiPalette.Music, profile.UseEmoji),

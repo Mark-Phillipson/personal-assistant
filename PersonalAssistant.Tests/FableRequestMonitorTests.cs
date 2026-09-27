@@ -159,6 +159,15 @@ public class FableRequestMonitorTests
     }
 
     [Fact]
+    public void IsTestCommandArgument_RecognizesFableTestingFlag()
+    {
+        Assert.True(FableRequestMonitorService.IsTestCommandArgument("--test-fable-monitor"));
+        Assert.True(FableRequestMonitorService.IsTestCommandArgument("  --TEST-FABLE-MONITOR  "));
+        Assert.False(FableRequestMonitorService.IsTestCommandArgument("--cli"));
+        Assert.False(FableRequestMonitorService.IsTestCommandArgument(string.Empty));
+    }
+
+    [Fact]
     public void BrowserMonitorConfig_DefaultsToFableMonitor()
     {
         var sites = BrowserMonitorService.GetConfiguredMonitorSites();
@@ -216,6 +225,19 @@ public class FableRequestMonitorTests
         Assert.True(FableRequestMonitorService.IsBlankBrowserTarget("about:blank"));
         Assert.True(FableRequestMonitorService.IsBlankBrowserTarget("chrome://newtab/"));
         Assert.False(FableRequestMonitorService.IsBlankBrowserTarget("https://app.makeitfable.com/"));
+    }
+
+    [Fact]
+    public void FableMonitorPageSelection_PrefersExistingFableTabEvenWhenAnotherTabIsBlank()
+    {
+        var urls = new[]
+        {
+            "about:blank",
+            "https://app.makeitfable.com/dashboard",
+            "https://example.com"
+        };
+
+        Assert.Equal("https://app.makeitfable.com/dashboard", FableRequestMonitorService.SelectPreferredFablePageUrl(urls));
     }
 
     [Fact]

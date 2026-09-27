@@ -238,6 +238,21 @@ var pronunciationService = new PronunciationDictionaryService(pronunciationDicti
 
 var textToSpeechService = TextToSpeechService.FromEnvironment(pronunciationService);
 var fableRequestMonitorService = FableRequestMonitorService.FromEnvironment(textToSpeechService, tickerNotificationService);
+
+if (args.Any(arg => FableRequestMonitorService.IsTestCommandArgument(arg)))
+{
+    Console.WriteLine("Running Fable monitor test pass...");
+    Console.WriteLine($"Fable monitor configured: {fableRequestMonitorService.IsConfigured}");
+    Console.WriteLine($"Fable auto-launch Edge at startup: {FableRequestMonitorService.ShouldAutoLaunchEdgeAtStartup()}");
+    Console.WriteLine($"Fable Edge debug port reachable: {FableRequestMonitorService.IsEdgeDebugPortReachable()}");
+
+    var result = await fableRequestMonitorService.MonitorOnceAsync();
+    Console.WriteLine($"Fable monitor test result: {result.Message}");
+    Console.WriteLine($"Logged in: {result.IsLoggedIn}, available: {result.AvailableRequestCount}");
+    Environment.ExitCode = fableRequestMonitorService.IsConfigured && result.IsLoggedIn ? 0 : 1;
+    return;
+}
+
 Console.WriteLine(databaseRegistry.GetSetupStatusText());
 Console.WriteLine($"GenericDatabaseService has {genericDatabaseService.ListSources().Count} source(s) available.");
 Console.WriteLine($"Fable monitor configured: {fableRequestMonitorService.IsConfigured}");

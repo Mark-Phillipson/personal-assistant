@@ -238,6 +238,12 @@ internal sealed class FableRequestMonitorService
         return null;
     }
 
+    public static bool IsTestCommandArgument(string? arg)
+    {
+        return !string.IsNullOrWhiteSpace(arg)
+            && string.Equals(arg.Trim(), "--test-fable-monitor", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static bool IsFableCheckRequest(string? prompt)
     {
         if (string.IsNullOrWhiteSpace(prompt))
@@ -365,24 +371,67 @@ internal sealed class FableRequestMonitorService
             || url.StartsWith("edge://", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static string? SelectPreferredFablePageUrl(IEnumerable<string?> candidateUrls)
+    {
+        var fablePage = candidateUrls
+            .Where(static url => !string.IsNullOrWhiteSpace(url))
+            .FirstOrDefault(url => url.Contains("makeitfable.com", StringComparison.OrdinalIgnoreCase)
+                && !IsBlankBrowserTarget(url));
+
+        if (fablePage is not null)
+        {
+            return fablePage;
+        }
+
+        return candidateUrls
+            .Where(static url => !string.IsNullOrWhiteSpace(url))
+            .FirstOrDefault(url => !IsBlankBrowserTarget(url));
+    }
+
     private async Task<IPage> GetOrCreateMonitorPageAsync(IBrowserContext context)
     {
         if (_monitorPage is not null && !_monitorPage.IsClosed)
         {
-            if (IsBlankBrowserTarget(_monitorPage.Url) || !_monitorPage.Url.Contains("makeitfable.com", StringComparison.OrdinalIgnoreCase))
+            var currentUrl = _monitorPage.Url;
+            if (IsBlankBrowserTarget(currentUrl) || !currentUrl.Contains("makeitfable.com", StringComparison.OrdinalIgnoreCase))
             {
+                var alternateFablePage = context.Pages
+                    .FirstOrDefault(page => page != _monitorPage
+                        && !IsBlankBrowserTarget(page.Url)
+                        && page.Url.Contains("makeitfable.com", StringComparison.OrdinalIgnoreCase));
+
+                if (alternateFablePage is not null)
+                {
+                    _monitorPage = alternateFablePage;
+                    Console.WriteLine($"[fable.monitor] switched to existing Fable page: {_monitorPage.Url}");
+                    return _monitorPage;
+                }
+
+                Console.WriteLine($"[fable.monitor] current page was not a usable Fable tab ({currentUrl}); navigating to login URL: {_loginUrl}");
                 await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
             }
 
+            Console.WriteLine($"[fable.monitor] reusing existing page: {_monitorPage.Url}");
             return _monitorPage;
         }
 
         var preferredPage = context.Pages
-            .FirstOrDefault(page => page.Url.Contains("makeitfable.com", StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(page => !IsBlankBrowserTarget(page.Url)
+                && page.Url.Contains("makeitfable.com", StringComparison.OrdinalIgnoreCase));
 
         if (preferredPage is not null)
         {
             _monitorPage = preferredPage;
+            Console.WriteLine($"[fable.monitor] selected existing Fable page from browser session: {_monitorPage.Url}");
+            return _monitorPage;
+        }
+
+        var firstUsablePage = context.Pages.FirstOrDefault(page => !IsBlankBrowserTarget(page.Url));
+        if (firstUsablePage is not null)
+        {
+            _monitorPage = firstUsablePage;
+            Console.WriteLine($"[fable.monitor] selected first usable non-blank page and navigated to Fable: {_monitorPage.Url}");
+            await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
             return _monitorPage;
         }
 
@@ -390,11 +439,13 @@ internal sealed class FableRequestMonitorService
         if (blankPage is not null)
         {
             _monitorPage = blankPage;
+            Console.WriteLine($"[fable.monitor] selected blank tab to navigate to Fable login: {_loginUrl}");
             await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
             return _monitorPage;
         }
 
         _monitorPage = await context.NewPageAsync();
+        Console.WriteLine($"[fable.monitor] created a new page for Fable login: {_loginUrl}");
         await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
         return _monitorPage;
     }
@@ -403,15 +454,20 @@ internal sealed class FableRequestMonitorService
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
+            Console.WriteLine($"[fable.monitor] login attempt {attempt + 1} for {_loginUrl}");
             await page.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
 
-            if (await IsAlreadyLoggedInAsync(page, cancellationToken))
+            var alreadyLoggedIn = await IsAlreadyLoggedInAsync(page, cancellationToken);
+            Console.WriteLine($"[fable.monitor] already-logged-in check for attempt {attempt + 1}: {alreadyLoggedIn}");
+            if (alreadyLoggedIn)
             {
                 return true;
             }
 
             var emailLocator = page.Locator("input[type='email'], input[name='email'], input[id='email']");
-            if (await emailLocator.CountAsync() > 0)
+            var emailInputCount = await emailLocator.CountAsync();
+            Console.WriteLine($"[fable.monitor] email input count on attempt {attempt + 1}: {emailInputCount}");
+            if (emailInputCount > 0)
             {
                 await emailLocator.First.FillAsync(_username, new LocatorFillOptions { Timeout = 15000 });
 
@@ -429,9 +485,11 @@ internal sealed class FableRequestMonitorService
                 try
                 {
                     await page.WaitForSelectorAsync("input[type='password'], input[name='password']", new PageWaitForSelectorOptions { Timeout = 15000 });
+                    Console.WriteLine($"[fable.monitor] password field detected on attempt {attempt + 1}.");
                 }
                 catch (Exception)
                 {
+                    Console.WriteLine($"[fable.monitor] password field not detected on attempt {attempt + 1}; reloading page.");
                     await page.ReloadAsync();
                     continue;
                 }
@@ -472,17 +530,21 @@ internal sealed class FableRequestMonitorService
         try
         {
             var loginPrompt = page.Locator("text=Log in to Fable, text=Log in, text=Welcome").First;
-            if (await loginPrompt.CountAsync() == 0)
+            var loginPromptCount = await loginPrompt.CountAsync();
+            Console.WriteLine($"[fable.monitor] login prompt count: {loginPromptCount}");
+            if (loginPromptCount == 0)
             {
                 var emailInputCount = await page.Locator("input[type='email'], input[name='email'], input[id='email']").CountAsync();
                 var passwordInputCount = await page.Locator("input[type='password'], input[name='password']").CountAsync();
+                Console.WriteLine($"[fable.monitor] detected email inputs: {emailInputCount}, password inputs: {passwordInputCount}");
                 return emailInputCount == 0 && passwordInputCount == 0;
             }
 
             return false;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[fable.monitor] login detection check threw: {ex.Message}");
             return false;
         }
     }
