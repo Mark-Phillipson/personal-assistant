@@ -3,35 +3,13 @@ using System.IO;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using DotNetEnv;
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
 
+EnvironmentSettings.LoadDotEnvIfPresent();
+
 var workingDirectoryEnvFilePath = Path.Combine(Environment.CurrentDirectory, ".env");
 var assemblyDirectoryEnvFilePath = Path.Combine(AppContext.BaseDirectory, ".env");
-
-if (File.Exists(workingDirectoryEnvFilePath))
-{
-    try
-    {
-        Env.Load(workingDirectoryEnvFilePath);
-    }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"[env.load] Failed to parse {workingDirectoryEnvFilePath}: {ex.Message}");
-    }
-}
-else if (File.Exists(assemblyDirectoryEnvFilePath))
-{
-    try
-    {
-        Env.Load(assemblyDirectoryEnvFilePath);
-    }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"[env.load] Failed to parse {assemblyDirectoryEnvFilePath}: {ex.Message}");
-    }
-}
 
 // Ensure ASSISTANT_MODEL comes from the .env configuration file when present,
 // so editor/terminal process variables cannot silently override model selection.

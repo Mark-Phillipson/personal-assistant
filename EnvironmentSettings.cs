@@ -1,76 +1,138 @@
+using System.Text.RegularExpressions;
+
 internal static class EnvironmentSettings
 {
     public static void LoadDotEnvIfPresent()
     {
-        var candidatePaths = GetDotEnvCandidatePaths();
-
-        foreach (var candidate in candidatePaths.Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var candidate in GetDotEnvCandidatePaths())
         {
             if (!File.Exists(candidate))
             {
                 continue;
             }
 
-            foreach (var rawLine in File.ReadAllLines(candidate))
+            if (TryLoadDotEnvFile(candidate))
             {
-                var line = rawLine.Trim();
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#", StringComparison.Ordinal))
-                {
-                    continue;
-                }
+                break;
+            }
+        }
+    }
 
-                var equalsIndex = line.IndexOf('=');
-                if (equalsIndex <= 0)
-                {
-                    continue;
-                }
+    private static bool TryLoadDotEnvFile(string path)
+    {
+        var sawValidAssignment = false;
 
-                var key = line[..equalsIndex].Trim();
-                var value = line[(equalsIndex + 1)..].Trim();
-                value = TrimQuotes(value);
-
-                if (!string.IsNullOrWhiteSpace(key) && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
-                {
-                    Environment.SetEnvironmentVariable(key, value);
-                }
+        foreach (var rawLine in File.ReadAllLines(path))
+        {
+            var line = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#", StringComparison.Ordinal) || line.StartsWith("//", StringComparison.Ordinal))
+            {
+                continue;
             }
 
-            break;
+            if (line.StartsWith("export ", StringComparison.OrdinalIgnoreCase))
+            {
+                line = line[7..].TrimStart();
+            }
+
+            var equalsIndex = line.IndexOf('=');
+            if (equalsIndex <= 0)
+            {
+                continue;
+            }
+
+            var key = line[..equalsIndex].Trim();
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                continue;
+            }
+
+            var value = line[(equalsIndex + 1)..].Trim();
+            if (LooksLikeMalformedConcatenatedAssignment(value))
+            {
+                continue;
+            }
+
+            value = TrimQuotes(value);
+
+            sawValidAssignment = true;
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
+            {
+                Environment.SetEnvironmentVariable(key, value);
+            }
         }
+
+        return sawValidAssignment;
+    }
+
+    private static bool LooksLikeMalformedConcatenatedAssignment(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (value.StartsWith('"') || value.StartsWith('\''))
+        {
+            return false;
+        }
+
+        return Regex.IsMatch(value, "^(?:true|false|[0-9]+)[A-Z_][A-Z0-9_]*=");
     }
 
     private static IEnumerable<string> GetDotEnvCandidatePaths()
     {
-        var workingDirectory = Directory.GetCurrentDirectory();
-        var baseDirectory = AppContext.BaseDirectory;
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var directories = new List<string>
+        foreach (var directory in EnumerateCandidateDirectories())
         {
-            workingDirectory,
-            baseDirectory,
-            userProfile
-        };
-
-        foreach (var directory in new[] { workingDirectory, baseDirectory })
-        {
-            var current = directory;
-            while (!string.IsNullOrEmpty(current))
+            var candidate = Path.Combine(directory, ".env");
+            if (seen.Add(candidate))
             {
-                directories.Add(current);
-                var parent = Directory.GetParent(current);
-                if (parent is null)
-                {
-                    break;
-                }
-                current = parent.FullName;
+                yield return candidate;
             }
         }
+    }
 
-        foreach (var directory in directories.Distinct(StringComparer.OrdinalIgnoreCase))
+    private static IEnumerable<string> EnumerateCandidateDirectories()
+    {
+        var current = Directory.GetCurrentDirectory();
+        while (!string.IsNullOrEmpty(current))
         {
-            yield return Path.Combine(directory, ".env");
+            if (!ShouldSkipGeneratedDirectory(current))
+            {
+                yield return current;
+            }
+
+            var parent = Directory.GetParent(current);
+            if (parent is null)
+            {
+                break;
+            }
+
+            current = parent.FullName;
         }
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(userProfile) && !ShouldSkipGeneratedDirectory(userProfile))
+        {
+            yield return userProfile;
+        }
+    }
+
+    private static bool ShouldSkipGeneratedDirectory(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return false;
+        }
+
+        var segments = directory.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+        return segments.Any(segment =>
+            string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(segment, "obj", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(segment, "publish", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(segment, "out", StringComparison.OrdinalIgnoreCase));
     }
 
     public static string Require(string name)

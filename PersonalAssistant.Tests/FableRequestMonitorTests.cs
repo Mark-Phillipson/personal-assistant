@@ -104,6 +104,44 @@ public class FableRequestMonitorTests
     }
 
     [Fact]
+    public void EnvironmentSettings_IgnoresMalformedOutputDotEnvInFavorOfValidRepoRoot()
+    {
+        var originalDirectory = Directory.GetCurrentDirectory();
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"personal-assistant-env-{Guid.NewGuid():N}");
+        var repoRoot = Path.Combine(tempRoot, "repo");
+        var outputDirectory = Path.Combine(repoRoot, "bin", "Debug", "net10.0");
+        Directory.CreateDirectory(outputDirectory);
+
+        var validRepoEnv = Path.Combine(repoRoot, ".env");
+        var malformedOutputEnv = Path.Combine(outputDirectory, ".env");
+
+        File.WriteAllText(validRepoEnv, "FABLE_USERNAME=valid-user\nFABLE_PASSWORD=valid-pass\nFABLE_LOGIN_URL=https://app.makeitfable.com/\n");
+        File.WriteAllText(malformedOutputEnv, "DATABASE_SQLSERVER_INCLUDE_LOCALDB=falseDATABASE_CONFIG_JSON={\"databases\":[{\"alias\":\"localdb\"}]}\n");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("FABLE_USERNAME", null);
+            Environment.SetEnvironmentVariable("FABLE_PASSWORD", null);
+            Environment.SetEnvironmentVariable("FABLE_LOGIN_URL", null);
+            Directory.SetCurrentDirectory(outputDirectory);
+
+            EnvironmentSettings.LoadDotEnvIfPresent();
+
+            Assert.Equal("valid-user", EnvironmentSettings.ReadOptionalString("FABLE_USERNAME"));
+            Assert.Equal("valid-pass", EnvironmentSettings.ReadOptionalString("FABLE_PASSWORD"));
+            Assert.Equal("https://app.makeitfable.com/", EnvironmentSettings.ReadOptionalString("FABLE_LOGIN_URL"));
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+            Directory.Delete(tempRoot, recursive: true);
+            Environment.SetEnvironmentVariable("FABLE_USERNAME", null);
+            Environment.SetEnvironmentVariable("FABLE_PASSWORD", null);
+            Environment.SetEnvironmentVariable("FABLE_LOGIN_URL", null);
+        }
+    }
+
+    [Fact]
     public void IsFableCheckRequest_RecognizesVoiceCommands()
     {
         Assert.True(FableRequestMonitorService.IsFableCheckRequest("bob check fable"));
