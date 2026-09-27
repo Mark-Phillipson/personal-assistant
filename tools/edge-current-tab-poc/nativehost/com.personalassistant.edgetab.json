@@ -1,0 +1,9 @@
+{
+  "name": "com.personalassistant.edgetab",
+  "description": "Personal Assistant Edge Tab Host",
+  "path": "C:\\path\\to\\nativehost\\EdgeTabNativeHost.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://<extension-id>/"
+  ]
+}

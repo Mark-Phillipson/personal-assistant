@@ -41,5 +41,8 @@
   <ItemGroup>
     <Compile Remove="scripts\**\*.cs" />
     <None Include="scripts\**\*" />
+
+    <Compile Remove="tools\**\*.cs" />
+    <None Include="tools\**\*" />
   </ItemGroup>
 </Project>

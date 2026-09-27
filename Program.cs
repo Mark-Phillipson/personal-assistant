@@ -302,6 +302,9 @@ if (fableRequestMonitorService.IsConfigured && FableRequestMonitorService.Should
     }
 }
 
+// The default is intentionally disabled to prevent a stray Edge debug session from opening on app startup.
+// If you want this behavior, set FABLE_AUTO_LAUNCH_EDGE=true explicitly.
+
 using var apiServerCancellation = new CancellationTokenSource();
 var apiServerTask = CommandApiServer.StartAsync(
     apiServerCancellation.Token,

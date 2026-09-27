@@ -16,7 +16,9 @@ internal sealed class FableRequestMonitorService
     private readonly object _alertLock = new();
     private DateTimeOffset? _lastAlertUtc;
     private IPlaywright? _playwright;
+    private IBrowserContext? _browserContext;
     private IBrowser? _browser;
+    private IPage? _monitorPage;
 
     private FableRequestMonitorService(
         string loginUrl,
@@ -152,7 +154,9 @@ internal sealed class FableRequestMonitorService
 
     public static bool ShouldAutoLaunchEdgeAtStartup()
     {
-        return EnvironmentSettings.ReadBool("FABLE_AUTO_LAUNCH_EDGE", true);
+        // Default is false so the app no longer opens a remote-debug Edge session on startup.
+        // Users can still opt back in explicitly via FABLE_AUTO_LAUNCH_EDGE=true when needed.
+        return EnvironmentSettings.ReadBool("FABLE_AUTO_LAUNCH_EDGE", false);
     }
 
     public static async Task EnsureEdgeBrowserDebugSessionIsAvailableAsync(CancellationToken cancellationToken = default)
@@ -242,19 +246,65 @@ internal sealed class FableRequestMonitorService
         }
 
         var normalized = prompt.Trim();
-        normalized = Regex.Replace(normalized, "^\\s*bob\\s+", string.Empty, RegexOptions.IgnoreCase);
-        normalized = Regex.Replace(normalized, "^\\s*please\\s+", string.Empty, RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"^\s*bob\s+", string.Empty, RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"^\s*please\s+", string.Empty, RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"^\s*voice\s+command\s*:\s*", string.Empty, RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"^\s*transcript\s*:\s*", string.Empty, RegexOptions.IgnoreCase);
         normalized = normalized.Trim();
+
+        if (normalized.Length == 0)
+        {
+            return false;
+        }
+
+        var lower = normalized.ToLowerInvariant();
+
+        if (Regex.IsMatch(lower, @"\bfable\b"))
+        {
+            var obviousDefinitions = new[]
+            {
+                "what is fable",
+                "what is a fable",
+                "define fable",
+                "tell me a fable",
+                "tell me a story",
+                "write a fable",
+                "write fable",
+                "fable story",
+                "fairy tale",
+                "story about fable",
+                "fable as a literary device",
+                "fable meaning",
+                "who is fable",
+                "what does fable mean"
+            };
+
+            if (obviousDefinitions.Any(pattern => lower.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            // Final hard stop: if the user says anything about Fable in normal monitor language,
+            // route it to the Fable monitor before the model can reinterpret it as a generic query.
+            if (lower.Contains("fable", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
 
         var patterns = new[]
         {
             @"\bcheck\b.*\bfable\b",
-            @"\bfable\b.*\b(?:check|available|requests?|queue|jobs?)\b",
-            @"\b(?:using|with|through)\s+(?:the\s+)?fable\s+(?:dashboard|site|page)\b.*\b(?:check|look|see)\b.*\brequests?\b",
-            @"\bfable\s+(?:dashboard|site|page)\b.*\b(?:check|look|see)\b.*\brequests?\b",
-            @"\b(?:check|find|look|scan|see|review|have|got)\b.*\b(?:available\s+)?(?:fable\s+)?(?:requests?|jobs?)\b",
-            @"\b(?:available\s+)?(?:fable\s+)?(?:requests?|jobs?)\b.*\b(?:check|find|look|scan|see|review|have|got)\b",
-            @"\bdo\s+i\s+have\s+any\s+fable\s+requests?\b"
+            @"\bfable\b.*\b(?:check|available|requests?|queue|jobs?|slots?)\b",
+            @"\b(?:check|find|look|scan|see|review|have|got|tell|status)\b.*\b(?:available\s+)?(?:fable\s+)?(?:requests?|jobs?|slots?)\b",
+            @"\b(?:available\s+)?(?:fable\s+)?(?:requests?|jobs?|slots?)\b.*\b(?:check|find|look|scan|see|review|have|got|tell|status)\b",
+            @"\b(?:using|with|through)\s+(?:the\s+)?fable\s+(?:dashboard|site|page)\b.*\b(?:check|look|see|status|available)\b.*\brequests?\b",
+            @"\bfable\s+(?:dashboard|site|page)\b.*\b(?:check|look|see|status|available)\b.*\brequests?\b",
+            @"\bdo\s+i\s+have\s+any\s+fable\s+requests?\b",
+            @"\bany\s+fable\s+(?:requests?|jobs?|slots?)\b",
+            @"\bhow\s+many\s+fable\s+(?:requests?|jobs?|slots?)\b",
+            @"\b(?:is\s+)?fable\s+(?:busy|available|open|working)\b",
+            @"\bfable\s+(?:available|request|job|slot)\s+(?:now|today|right now)\b"
         };
 
         return patterns.Any(pattern => Regex.IsMatch(normalized, pattern, RegexOptions.IgnoreCase));
@@ -267,16 +317,19 @@ internal sealed class FableRequestMonitorService
             return new FableMonitorCheckResult(false, 0, false, "Fable monitor is not configured.");
         }
 
-        var browser = await ConnectToEdgeBrowserAsync(cancellationToken);
-        var context = browser.Contexts.FirstOrDefault() ?? await browser.NewContextAsync();
-        var page = context.Pages.FirstOrDefault(p => p.Url.Contains("makeitfable.com", StringComparison.OrdinalIgnoreCase))
-            ?? await context.NewPageAsync();
+        var context = await ConnectToEdgeBrowserAsync(cancellationToken);
+        var page = await GetOrCreateMonitorPageAsync(context);
 
         try
         {
             var signedIn = await EnsureLoggedInAsync(page, cancellationToken);
             if (!signedIn)
             {
+                if (BrowserMonitorService.ShouldLaunchHeadfulLoginFallback())
+                {
+                    BrowserMonitorService.LaunchHeadfulLoginFallback(_loginUrl);
+                }
+
                 await TriggerAlertAsync("Fable is not logged in. Please sign in to continue.");
                 return new FableMonitorCheckResult(false, 0, false, "Fable login was not completed.");
             }
@@ -295,13 +348,55 @@ internal sealed class FableRequestMonitorService
         {
             try
             {
-                await page.CloseAsync();
+                await page.BringToFrontAsync();
             }
             catch
             {
-                // ignore page close errors during polling loops
+                // ignore attempts to keep the Fable tab in focus
             }
         }
+    }
+
+    internal static bool IsBlankBrowserTarget(string? url)
+    {
+        return string.IsNullOrWhiteSpace(url)
+            || url.StartsWith("about:blank", StringComparison.OrdinalIgnoreCase)
+            || url.StartsWith("chrome://", StringComparison.OrdinalIgnoreCase)
+            || url.StartsWith("edge://", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<IPage> GetOrCreateMonitorPageAsync(IBrowserContext context)
+    {
+        if (_monitorPage is not null && !_monitorPage.IsClosed)
+        {
+            if (IsBlankBrowserTarget(_monitorPage.Url) || !_monitorPage.Url.Contains("makeitfable.com", StringComparison.OrdinalIgnoreCase))
+            {
+                await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
+            }
+
+            return _monitorPage;
+        }
+
+        var preferredPage = context.Pages
+            .FirstOrDefault(page => page.Url.Contains("makeitfable.com", StringComparison.OrdinalIgnoreCase));
+
+        if (preferredPage is not null)
+        {
+            _monitorPage = preferredPage;
+            return _monitorPage;
+        }
+
+        var blankPage = context.Pages.FirstOrDefault(page => IsBlankBrowserTarget(page.Url));
+        if (blankPage is not null)
+        {
+            _monitorPage = blankPage;
+            await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
+            return _monitorPage;
+        }
+
+        _monitorPage = await context.NewPageAsync();
+        await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
+        return _monitorPage;
     }
 
     private async Task<bool> EnsureLoggedInAsync(IPage page, CancellationToken cancellationToken)
@@ -477,25 +572,47 @@ internal sealed class FableRequestMonitorService
         }
     }
 
-    private async Task<IBrowser> ConnectToEdgeBrowserAsync(CancellationToken cancellationToken)
+    private async Task<IBrowserContext> ConnectToEdgeBrowserAsync(CancellationToken cancellationToken)
     {
-        if (_browser is not null)
+        if (_browserContext is not null)
         {
-            return _browser;
+            return _browserContext;
         }
 
         _playwright ??= await Playwright.CreateAsync();
-        var cdpUrl = EnvironmentSettings.ReadOptionalString("FORM_FILL_BROWSER_CDP_URL") ?? "http://127.0.0.1:9223";
+
+        var userDataDir = EnvironmentSettings.ReadOptionalString("BROWSER_MONITOR_PROFILE_DIR")
+            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Edge", "User Data", "PersonalAssistant-FableMonitor");
 
         try
         {
+            _browserContext = await _playwright.Chromium.LaunchPersistentContextAsync(
+                userDataDir,
+                new BrowserTypeLaunchPersistentContextOptions
+                {
+                    Channel = "msedge",
+                    Headless = BrowserMonitorService.ShouldLaunchPlaywrightHeadless(),
+                    IgnoreDefaultArgs = new[] { "--enable-automation" }
+                });
+
+            return _browserContext;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[fable.monitor] headless persistent browser launch failed: {ex.Message}");
+        }
+
+        try
+        {
+            var cdpUrl = EnvironmentSettings.ReadOptionalString("FORM_FILL_BROWSER_CDP_URL") ?? "http://127.0.0.1:9223";
             _browser = await _playwright.Chromium.ConnectOverCDPAsync(cdpUrl, new BrowserTypeConnectOverCDPOptions { Timeout = 15000 });
-            return _browser;
+            _browserContext = _browser.Contexts.FirstOrDefault() ?? await _browser.NewContextAsync();
+            return _browserContext;
         }
         catch
         {
             throw new InvalidOperationException(
-                "Fable browser monitoring requires Edge remote debugging to be enabled. Launch the dedicated Edge helper from scripts/start-fable-edge.ps1 (or run: msedge --remote-debugging-port=9223 --user-data-dir=\"%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\FableMonitor\" https://app.makeitfable.com/) and sign in once so the monitor can reuse that session.");
+                "Fable browser monitoring requires a usable Edge session. The app tried the persistent headless profile first and then fell back to remote debugging; neither was available. Launch a one-off Edge session and sign in once, or configure a valid persistent profile for the monitor.");
         }
     }
 }

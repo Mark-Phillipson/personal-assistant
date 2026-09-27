@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Xunit;
 
 public class FableRequestMonitorTests
@@ -37,12 +38,19 @@ public class FableRequestMonitorTests
     }
 
     [Fact]
+    public void ShouldAutoLaunchEdgeAtStartup_DefaultsToDisabled()
+    {
+        Environment.SetEnvironmentVariable("FABLE_AUTO_LAUNCH_EDGE", null);
+        Assert.False(FableRequestMonitorService.ShouldAutoLaunchEdgeAtStartup());
+    }
+
+    [Fact]
     public void ShouldAutoLaunchEdgeAtStartup_RespectsFlag()
     {
-        Environment.SetEnvironmentVariable("FABLE_AUTO_LAUNCH_EDGE", "false");
+        Environment.SetEnvironmentVariable("FABLE_AUTO_LAUNCH_EDGE", "true");
         try
         {
-            Assert.False(FableRequestMonitorService.ShouldAutoLaunchEdgeAtStartup());
+            Assert.True(FableRequestMonitorService.ShouldAutoLaunchEdgeAtStartup());
         }
         finally
         {
@@ -105,6 +113,111 @@ public class FableRequestMonitorTests
         Assert.True(FableRequestMonitorService.IsFableCheckRequest("using the fable dashboard check for requests"));
         Assert.True(FableRequestMonitorService.IsFableCheckRequest("check fable requests"));
         Assert.True(FableRequestMonitorService.IsFableCheckRequest("do I have any fable requests"));
+        Assert.True(FableRequestMonitorService.IsFableCheckRequest("fable"));
+        Assert.True(FableRequestMonitorService.IsFableCheckRequest("Voice command: check fable for requests"));
+        Assert.True(FableRequestMonitorService.IsFableCheckRequest("what are my fable requests"));
+        Assert.False(FableRequestMonitorService.IsFableCheckRequest("what is fable"));
         Assert.False(FableRequestMonitorService.IsFableCheckRequest("bob tell me a joke"));
+    }
+
+    [Fact]
+    public void BrowserMonitorConfig_DefaultsToFableMonitor()
+    {
+        var sites = BrowserMonitorService.GetConfiguredMonitorSites();
+
+        Assert.NotEmpty(sites);
+        Assert.Contains(sites, site => string.Equals(site.Name, "Fable", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(sites, site => string.Equals(site.LoginUrl, "https://app.makeitfable.com/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BrowserMonitorConfig_UsesHeadfulFallbackWhenRequested()
+    {
+        Environment.SetEnvironmentVariable("BROWSER_MONITOR_HEADFUL_LOGIN_ON_FAILURE", "true");
+        try
+        {
+            Assert.True(BrowserMonitorService.ShouldLaunchHeadfulLoginFallback());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BROWSER_MONITOR_HEADFUL_LOGIN_ON_FAILURE", null);
+        }
+    }
+
+    [Fact]
+    public void BrowserMonitorConfig_UsesHeadlessByDefaultAndVisibleWhenRequested()
+    {
+        Environment.SetEnvironmentVariable("BROWSER_MONITOR_HEADLESS", null);
+        Environment.SetEnvironmentVariable("BROWSER_MONITOR_VISIBLE", null);
+        Assert.True(BrowserMonitorService.ShouldLaunchPlaywrightHeadless());
+
+        Environment.SetEnvironmentVariable("BROWSER_MONITOR_VISIBLE", "true");
+        try
+        {
+            Assert.False(BrowserMonitorService.ShouldLaunchPlaywrightHeadless());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BROWSER_MONITOR_VISIBLE", null);
+        }
+
+        Environment.SetEnvironmentVariable("BROWSER_MONITOR_HEADLESS", "false");
+        try
+        {
+            Assert.False(BrowserMonitorService.ShouldLaunchPlaywrightHeadless());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BROWSER_MONITOR_HEADLESS", null);
+        }
+    }
+
+    [Fact]
+    public void FableMonitorPageSelection_IgnoresBlankTabs()
+    {
+        Assert.True(FableRequestMonitorService.IsBlankBrowserTarget("about:blank"));
+        Assert.True(FableRequestMonitorService.IsBlankBrowserTarget("chrome://newtab/"));
+        Assert.False(FableRequestMonitorService.IsBlankBrowserTarget("https://app.makeitfable.com/"));
+    }
+
+    [Fact]
+    public async Task CliCommand_FableRequest_RoutesToFableMonitor()
+    {
+        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        var projectPath = Path.Combine(repoRoot, "personal-assistant.csproj");
+
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"run --project \"{projectPath}\" -- --cli \"fable request\"",
+                WorkingDirectory = repoRoot,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+
+        process.Start();
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
+        var completed = await Task.WhenAny(Task.Run(() => process.WaitForExit()), Task.Delay(TimeSpan.FromSeconds(90)));
+        if (completed != Task.Run(() => process.WaitForExit()))
+        {
+            process.Kill(entireProcessTree: true);
+            throw new TimeoutException("The CLI Fable request did not finish within 90 seconds.");
+        }
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+        var output = stdout + Environment.NewLine + stderr;
+
+        Assert.Equal(0, process.ExitCode);
+        Assert.Contains("Fable", output, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("I could not generate a response", output, StringComparison.OrdinalIgnoreCase);
     }
 }

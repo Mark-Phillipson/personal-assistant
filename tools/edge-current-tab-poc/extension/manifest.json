@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Edge Current Tab POC",
+  "version": "0.1.0",
+  "description": "Minimal Edge extension that reads the current tab and sends page info to a local native messaging host.",
+  "permissions": ["activeTab", "scripting", "tabs", "nativeMessaging"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "Read current tab"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
