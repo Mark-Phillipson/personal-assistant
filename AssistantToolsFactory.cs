@@ -24,7 +24,8 @@ internal static class AssistantToolsFactory
         KnownFolderExplorerService knownFolderExplorerService,
         PodcastSubscriptionsService podcastSubscriptionsService,
         ClipboardHistoryService clipboardHistoryService,
-        GitHubTodosService gitHubTodosService)
+        GitHubTodosService gitHubTodosService,
+        ComputerToolsService computerToolsService)
     {
         var tools = new List<AIFunction>
         {
@@ -121,6 +122,38 @@ internal static class AssistantToolsFactory
                     await clipboardService.SetClipboardTextForAssistantAsync(text),
                 "set_clipboard_text",
                 "Copy text to the system clipboard of the machine hosting this bot. Use this when the user asks to copy, place, or put text on the clipboard."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Safe local folder alias: downloads, documents, desktop, or userprofile")] string folderAlias,
+                    [Description("Maximum number of files to return")] int maxResults = 20) =>
+                    await computerToolsService.ListFilesAsync(folderAlias, maxResults),
+                "list_files_in_folder",
+                "List visible files in a safe local folder such as Downloads or Documents. Returns the file names and metadata."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Safe local folder alias: downloads, documents, desktop, or userprofile")] string folderAlias,
+                    [Description("Glob pattern such as 'Axxonlab*' or '*.pdf'")] string pattern,
+                    [Description("Maximum number of matches to return")] int maxResults = 20) =>
+                    await computerToolsService.SearchFilesAsync(folderAlias, pattern, maxResults),
+                "find_files_by_pattern",
+                "Search for files by filename pattern inside a safe local folder. Useful for queries like 'Axxonlab*' or '*.pdf'."),
+            AIFunctionFactory.Create(
+                async ([Description("Safe local folder alias: downloads, documents, desktop, or userprofile")] string folderAlias) =>
+                    await computerToolsService.OpenFolderAsync(folderAlias),
+                "open_folder",
+                "Open a safe local folder in File Explorer for the user."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Absolute file path or a relative path inside a safe folder")] string filePath,
+                    [Description("Optional folder alias when a relative path is supplied (downloads, documents, desktop, or userprofile)")] string? folderAlias = null) =>
+                    await computerToolsService.OpenFileAsync(filePath, folderAlias),
+                "open_file",
+                "Open a file using the default application on the local machine. Use an absolute path or a relative path with a safe folder alias."),
+            AIFunctionFactory.Create(
+                async ([Description("Message to display back to the user after the task is complete")] string message) =>
+                    await computerToolsService.NotifyUserAsync(message),
+                "notify_user",
+                "Send a short completion or status notification back to the user once a task has finished."),
             AIFunctionFactory.Create(
                 () => webBrowserService.GetSetupStatusText(),
                 "web_browser_status",
@@ -614,7 +647,7 @@ internal static class AssistantToolsFactory
                     [Description("Optional file search filter (e.g. *.pdf, *.txt). Default is *.")] string? fileFilter = null,
                     [Description("Maximum number of files to return (1-500). Default 50.")] int maxResults = 50) =>
                     await knownFolderExplorerService.ListFilesAsync(folderAlias, subPath, fileFilter, maxResults),
-                "list_files_in_folder",
+                "list_known_folder_files",
                 "List files in a known folder (documents, desktop, downloads, pictures, videos, repo, repos) with relative paths, size, and last modified date."),
             AIFunctionFactory.Create(
                 async (

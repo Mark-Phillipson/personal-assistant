@@ -259,7 +259,14 @@ Console.WriteLine($"Fable monitor configured: {fableRequestMonitorService.IsConf
 Console.WriteLine($"Fable auto-launch Edge at startup: {FableRequestMonitorService.ShouldAutoLaunchEdgeAtStartup()}");
 Console.WriteLine($"Fable Edge debug port reachable: {FableRequestMonitorService.IsEdgeDebugPortReachable()}");
 
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, tickerNotificationService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService, gitHubTodosService);
+var computerToolsService = new ComputerToolsService();
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, tickerNotificationService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService, gitHubTodosService, computerToolsService);
+
+if (args.Any(arg => string.Equals(arg, "--computer-tools-smoke", StringComparison.OrdinalIgnoreCase)))
+{
+    await RunComputerToolsSmokeTestAsync();
+    return;
+}
 
 await using var copilotClient = new CopilotClient();
 await using var webBrowserDisposable = webBrowserService;
@@ -377,6 +384,37 @@ finally
         try { singleInstanceMutex.ReleaseMutex(); } catch { }
         try { singleInstanceMutex.Dispose(); } catch { }
     }
+}
+
+static async Task RunComputerToolsSmokeTestAsync()
+{
+    var smokeDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".assistant-computer-tools-smoke");
+    Directory.CreateDirectory(smokeDir);
+
+    var alphaFile = Path.Combine(smokeDir, "Axxonlab_Alpha.pdf");
+    var betaFile = Path.Combine(smokeDir, "Axxonlab_Beta.txt");
+    var otherFile = Path.Combine(smokeDir, "Other_Report.txt");
+
+    await File.WriteAllTextAsync(alphaFile, "alpha pdf content");
+    await File.WriteAllTextAsync(betaFile, "beta text content");
+    await File.WriteAllTextAsync(otherFile, "other content");
+
+    var service = new ComputerToolsService();
+
+    Console.WriteLine("=== list files ===");
+    Console.WriteLine(await service.ListFilesAtPathAsync(smokeDir, 10, "computer-tools-smoke"));
+
+    Console.WriteLine("=== search files ===");
+    Console.WriteLine(await service.SearchFilesAtPathAsync(smokeDir, "Axxonlab*", 10, "computer-tools-smoke"));
+
+    Console.WriteLine("=== open folder ===");
+    Console.WriteLine(await service.OpenFolderAtPathAsync(smokeDir, "computer-tools-smoke"));
+
+    Console.WriteLine("=== open file ===");
+    Console.WriteLine(await service.OpenFileAtPathAsync(betaFile));
+
+    Console.WriteLine("=== notify user ===");
+    Console.WriteLine(await service.NotifyUserAsync("Computer tools smoke test complete."));
 }
 
 static string ResolveAssistantTransport(string[] args)
