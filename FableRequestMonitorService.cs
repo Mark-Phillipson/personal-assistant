@@ -19,6 +19,8 @@ internal sealed class FableRequestMonitorService
     private readonly TickerNotificationService _tickerNotificationService;
     private readonly bool _useExistingTabOnly;
     private readonly bool _allowPersistentProfileFallback;
+    private readonly bool _bringTabToFront;
+    private readonly bool _loginTimeoutRecoveryEnabled;
     private readonly object _alertLock = new();
     private DateTimeOffset? _lastAlertUtc;
     private IPlaywright? _playwright;
@@ -49,6 +51,8 @@ internal sealed class FableRequestMonitorService
         _availableRequestsSelectorOverride = EnvironmentSettings.ReadOptionalString("FABLE_AVAILABLE_REQUESTS_SELECTOR");
         _useExistingTabOnly = EnvironmentSettings.ReadBool("FABLE_USE_EXISTING_TAB_ONLY", true);
         _allowPersistentProfileFallback = EnvironmentSettings.ReadBool("FABLE_ALLOW_PERSISTENT_PROFILE_FALLBACK", false);
+        _bringTabToFront = EnvironmentSettings.ReadBool("FABLE_BRING_TAB_TO_FRONT", false);
+        _loginTimeoutRecoveryEnabled = EnvironmentSettings.ReadBool("FABLE_LOGIN_TIMEOUT_RECOVERY_ENABLED", true);
     }
 
     public bool IsConfigured =>
@@ -554,13 +558,16 @@ internal sealed class FableRequestMonitorService
         }
         finally
         {
-            try
+            if (_bringTabToFront)
             {
-                await page.BringToFrontAsync();
-            }
-            catch
-            {
-                // ignore attempts to keep the Fable tab in focus
+                try
+                {
+                    await page.BringToFrontAsync();
+                }
+                catch
+                {
+                    // ignore attempts to focus the Fable tab
+                }
             }
         }
     }
@@ -667,6 +674,12 @@ internal sealed class FableRequestMonitorService
         for (var attempt = 0; attempt < 3; attempt++)
         {
             Console.WriteLine($"[fable.monitor] login attempt {attempt + 1} for {_loginUrl}");
+
+            if (_loginTimeoutRecoveryEnabled)
+            {
+                await TryRecoverTimedOutSessionAsync(page);
+            }
+
             var alreadyLoggedIn = await IsAlreadyLoggedInAsync(page, cancellationToken);
             Console.WriteLine($"[fable.monitor] already-logged-in check for attempt {attempt + 1}: {alreadyLoggedIn}");
             if (alreadyLoggedIn)
@@ -740,6 +753,45 @@ internal sealed class FableRequestMonitorService
         }
 
         return false;
+    }
+
+    private async Task TryRecoverTimedOutSessionAsync(IPage page)
+    {
+        try
+        {
+            var timeoutReloginButton = page.Locator(
+                "button:has-text('Log in again'), button:has-text('Login again'), button:has-text('Sign in again'), button:has-text('Continue session'), a:has-text('Log in again')").First;
+
+            if (await timeoutReloginButton.CountAsync() > 0)
+            {
+                Console.WriteLine("[fable.monitor] detected timeout re-login prompt; clicking re-login action.");
+                await timeoutReloginButton.ClickAsync(new LocatorClickOptions { Timeout = 5000 });
+                await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded, new PageWaitForLoadStateOptions { Timeout = 10000 });
+            }
+
+            var passwordLocator = page.Locator("input[type='password'], input[name='password']");
+            var emailLocator = page.Locator("input[type='email'], input[name='email'], input[id='email']");
+
+            var passwordCount = await passwordLocator.CountAsync();
+            var emailCount = await emailLocator.CountAsync();
+
+            if (passwordCount > 0 && emailCount == 0)
+            {
+                Console.WriteLine("[fable.monitor] detected password-only re-auth screen; submitting stored password.");
+                await passwordLocator.First.FillAsync(_password, new LocatorFillOptions { Timeout = 8000 });
+
+                var submitLocator = page.Locator("button:has-text('Log In'), button:has-text('Login'), button:has-text('Sign in'), button[type='submit'], input[type='submit']").First;
+                if (await submitLocator.CountAsync() > 0)
+                {
+                    await submitLocator.ClickAsync(new LocatorClickOptions { Timeout = 8000 });
+                    await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 12000 });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[fable.monitor] timeout recovery attempt skipped: {ex.Message}");
+        }
     }
 
     private async Task<bool> IsAlreadyLoggedInAsync(IPage page, CancellationToken cancellationToken)
