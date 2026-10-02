@@ -29,6 +29,16 @@ internal sealed class FableRequestMonitorService
     private IPage? _monitorPage;
     private readonly string? _availableRequestsSelectorOverride;
 
+    private static void LogInfo(string message)
+    {
+        Console.WriteLine($"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}");
+    }
+
+    private static void LogError(string message)
+    {
+        Console.Error.WriteLine($"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}");
+    }
+
     private FableRequestMonitorService(
         string loginUrl,
         string username,
@@ -127,7 +137,7 @@ internal sealed class FableRequestMonitorService
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[fable.monitor] immediate startup check failed: {ex.Message}");
+                LogError($"[fable.monitor] immediate startup check failed: {ex.Message}");
             }
         }
 
@@ -147,7 +157,7 @@ internal sealed class FableRequestMonitorService
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[fable.monitor] poll failed: {ex.Message}");
+                LogError($"[fable.monitor] poll failed: {ex.Message}");
             }
 
             try
@@ -188,7 +198,7 @@ internal sealed class FableRequestMonitorService
         var scriptPath = ResolveEdgeLauncherScriptPath();
         if (string.IsNullOrWhiteSpace(scriptPath) || !File.Exists(scriptPath))
         {
-            Console.Error.WriteLine("[fable.monitor] Edge helper script not found; skipping startup auto-launch.");
+            LogError("[fable.monitor] Edge helper script not found; skipping startup auto-launch.");
             return;
         }
 
@@ -207,7 +217,7 @@ internal sealed class FableRequestMonitorService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[fable.monitor] failed to auto-launch Edge helper: {ex.Message}");
+            LogError($"[fable.monitor] failed to auto-launch Edge helper: {ex.Message}");
         }
     }
 
@@ -395,7 +405,7 @@ internal sealed class FableRequestMonitorService
         var scriptPath = ResolveEdgeLauncherScriptPath();
         if (string.IsNullOrWhiteSpace(scriptPath) || !File.Exists(scriptPath))
         {
-            Console.Error.WriteLine("[fable.monitor] Edge helper script not found for on-demand launch.");
+            LogError("[fable.monitor] Edge helper script not found for on-demand launch.");
             return false;
         }
 
@@ -418,7 +428,7 @@ internal sealed class FableRequestMonitorService
 
                 if (IsEdgeDebugPortReachable())
                 {
-                    Console.WriteLine("[fable.monitor] on-demand Edge debug session became reachable.");
+                    LogInfo("[fable.monitor] on-demand Edge debug session became reachable.");
                     return true;
                 }
 
@@ -427,7 +437,7 @@ internal sealed class FableRequestMonitorService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[fable.monitor] on-demand Edge debug launch failed: {ex.Message}");
+            LogError($"[fable.monitor] on-demand Edge debug launch failed: {ex.Message}");
         }
 
         return IsEdgeDebugPortReachable();
@@ -543,7 +553,7 @@ internal sealed class FableRequestMonitorService
                     return new FableMonitorCheckResult(true, 0, false, "Fable is logged in, but I could not reliably read the available requests count from the dashboard.");
                 }
 
-                Console.WriteLine("[fable.monitor] could not reliably read available request count; defaulting to zero because strict mode is disabled.");
+                LogInfo("[fable.monitor] could not reliably read available request count; defaulting to zero because strict mode is disabled.");
                 count = 0;
             }
 
@@ -612,7 +622,7 @@ internal sealed class FableRequestMonitorService
                 if (alternateFablePage is not null)
                 {
                     _monitorPage = alternateFablePage;
-                    Console.WriteLine($"[fable.monitor] switched to existing Fable page: {_monitorPage.Url}");
+                    LogInfo($"[fable.monitor] switched to existing Fable page: {_monitorPage.Url}");
                     return _monitorPage;
                 }
 
@@ -621,11 +631,11 @@ internal sealed class FableRequestMonitorService
                     throw new InvalidOperationException("No open Fable tab was found in the attached browser session. Open your logged-in Fable dashboard tab and run the command again.");
                 }
 
-                Console.WriteLine($"[fable.monitor] current page was not a usable Fable tab ({currentUrl}); reusing it for Fable navigation.");
+                LogInfo($"[fable.monitor] current page was not a usable Fable tab ({currentUrl}); reusing it for Fable navigation.");
                 await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
             }
 
-            Console.WriteLine($"[fable.monitor] reusing existing page: {_monitorPage.Url}");
+            LogInfo($"[fable.monitor] reusing existing page: {_monitorPage.Url}");
             return _monitorPage;
         }
 
@@ -636,7 +646,7 @@ internal sealed class FableRequestMonitorService
         if (preferredPage is not null)
         {
             _monitorPage = preferredPage;
-            Console.WriteLine($"[fable.monitor] selected existing Fable page from browser session: {_monitorPage.Url}");
+            LogInfo($"[fable.monitor] selected existing Fable page from browser session: {_monitorPage.Url}");
             return _monitorPage;
         }
 
@@ -649,7 +659,7 @@ internal sealed class FableRequestMonitorService
         if (firstUsablePage is not null)
         {
             _monitorPage = firstUsablePage;
-            Console.WriteLine("[fable.monitor] reusing first non-blank page for Fable navigation.");
+            LogInfo("[fable.monitor] reusing first non-blank page for Fable navigation.");
             await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
             return _monitorPage;
         }
@@ -658,13 +668,13 @@ internal sealed class FableRequestMonitorService
         if (blankPage is not null)
         {
             _monitorPage = blankPage;
-            Console.WriteLine($"[fable.monitor] selected blank tab to navigate to Fable login: {_loginUrl}");
+            LogInfo($"[fable.monitor] selected blank tab to navigate to Fable login: {_loginUrl}");
             await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
             return _monitorPage;
         }
 
         _monitorPage = await context.NewPageAsync();
-        Console.WriteLine($"[fable.monitor] no pages existed in context, created one for Fable login: {_loginUrl}");
+        LogInfo($"[fable.monitor] no pages existed in context, created one for Fable login: {_loginUrl}");
         await _monitorPage.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
         return _monitorPage;
     }
@@ -673,7 +683,7 @@ internal sealed class FableRequestMonitorService
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            Console.WriteLine($"[fable.monitor] login attempt {attempt + 1} for {_loginUrl}");
+            LogInfo($"[fable.monitor] login attempt {attempt + 1} for {_loginUrl}");
 
             if (_loginTimeoutRecoveryEnabled)
             {
@@ -681,7 +691,7 @@ internal sealed class FableRequestMonitorService
             }
 
             var alreadyLoggedIn = await IsAlreadyLoggedInAsync(page, cancellationToken);
-            Console.WriteLine($"[fable.monitor] already-logged-in check for attempt {attempt + 1}: {alreadyLoggedIn}");
+            LogInfo($"[fable.monitor] already-logged-in check for attempt {attempt + 1}: {alreadyLoggedIn}");
             if (alreadyLoggedIn)
             {
                 return true;
@@ -696,7 +706,7 @@ internal sealed class FableRequestMonitorService
 
             var emailLocator = page.Locator("input[type='email'], input[name='email'], input[id='email']");
             var emailInputCount = await emailLocator.CountAsync();
-            Console.WriteLine($"[fable.monitor] email input count on attempt {attempt + 1}: {emailInputCount}");
+            LogInfo($"[fable.monitor] email input count on attempt {attempt + 1}: {emailInputCount}");
             if (emailInputCount > 0)
             {
                 await emailLocator.First.FillAsync(_username, new LocatorFillOptions { Timeout = 15000 });
@@ -715,11 +725,11 @@ internal sealed class FableRequestMonitorService
                 try
                 {
                     await page.WaitForSelectorAsync("input[type='password'], input[name='password']", new PageWaitForSelectorOptions { Timeout = 15000 });
-                    Console.WriteLine($"[fable.monitor] password field detected on attempt {attempt + 1}.");
+                    LogInfo($"[fable.monitor] password field detected on attempt {attempt + 1}.");
                 }
                 catch (Exception)
                 {
-                    Console.WriteLine($"[fable.monitor] password field not detected on attempt {attempt + 1}; reloading page.");
+                    LogInfo($"[fable.monitor] password field not detected on attempt {attempt + 1}; reloading page.");
                     await page.ReloadAsync();
                     continue;
                 }
@@ -764,7 +774,7 @@ internal sealed class FableRequestMonitorService
 
             if (await timeoutReloginButton.CountAsync() > 0)
             {
-                Console.WriteLine("[fable.monitor] detected timeout re-login prompt; clicking re-login action.");
+                LogInfo("[fable.monitor] detected timeout re-login prompt; clicking re-login action.");
                 await timeoutReloginButton.ClickAsync(new LocatorClickOptions { Timeout = 5000 });
                 await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded, new PageWaitForLoadStateOptions { Timeout = 10000 });
             }
@@ -777,7 +787,7 @@ internal sealed class FableRequestMonitorService
 
             if (passwordCount > 0 && emailCount == 0)
             {
-                Console.WriteLine("[fable.monitor] detected password-only re-auth screen; submitting stored password.");
+                LogInfo("[fable.monitor] detected password-only re-auth screen; submitting stored password.");
                 await passwordLocator.First.FillAsync(_password, new LocatorFillOptions { Timeout = 8000 });
 
                 var submitLocator = page.Locator("button:has-text('Log In'), button:has-text('Login'), button:has-text('Sign in'), button[type='submit'], input[type='submit']").First;
@@ -790,7 +800,7 @@ internal sealed class FableRequestMonitorService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[fable.monitor] timeout recovery attempt skipped: {ex.Message}");
+            LogInfo($"[fable.monitor] timeout recovery attempt skipped: {ex.Message}");
         }
     }
 
@@ -800,12 +810,12 @@ internal sealed class FableRequestMonitorService
         {
             var loginPrompt = page.Locator("text=Log in to Fable, text=Log in, text=Welcome").First;
             var loginPromptCount = await loginPrompt.CountAsync();
-            Console.WriteLine($"[fable.monitor] login prompt count: {loginPromptCount}");
+            LogInfo($"[fable.monitor] login prompt count: {loginPromptCount}");
             if (loginPromptCount == 0)
             {
                 var emailInputCount = await page.Locator("input[type='email'], input[name='email'], input[id='email']").CountAsync();
                 var passwordInputCount = await page.Locator("input[type='password'], input[name='password']").CountAsync();
-                Console.WriteLine($"[fable.monitor] detected email inputs: {emailInputCount}, password inputs: {passwordInputCount}");
+                LogInfo($"[fable.monitor] detected email inputs: {emailInputCount}, password inputs: {passwordInputCount}");
                 return emailInputCount == 0 && passwordInputCount == 0;
             }
 
@@ -813,7 +823,7 @@ internal sealed class FableRequestMonitorService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[fable.monitor] login detection check threw: {ex.Message}");
+            LogInfo($"[fable.monitor] login detection check threw: {ex.Message}");
             return false;
         }
     }
@@ -846,12 +856,12 @@ internal sealed class FableRequestMonitorService
                 {
                     if (IsPlausibleAvailableRequestCount(count.Value))
                     {
-                        Console.WriteLine($"[fable.monitor] extracted available requests from selector '{selector}': {count.Value}");
+                        LogInfo($"[fable.monitor] extracted available requests from selector '{selector}': {count.Value}");
                         return count.Value;
                     }
 
                     sawImplausibleValue = true;
-                    Console.WriteLine($"[fable.monitor] ignoring implausible count from selector '{selector}': {count.Value}");
+                    LogInfo($"[fable.monitor] ignoring implausible count from selector '{selector}': {count.Value}");
                 }
             }
 
@@ -860,12 +870,12 @@ internal sealed class FableRequestMonitorService
             {
                 if (IsPlausibleAvailableRequestCount(labelNeighborCount.Value))
                 {
-                    Console.WriteLine($"[fable.monitor] extracted available requests from label neighbor: {labelNeighborCount.Value}");
+                    LogInfo($"[fable.monitor] extracted available requests from label neighbor: {labelNeighborCount.Value}");
                     return labelNeighborCount.Value;
                 }
 
                 sawImplausibleValue = true;
-                Console.WriteLine($"[fable.monitor] ignoring implausible count from label neighbor: {labelNeighborCount.Value}");
+                LogInfo($"[fable.monitor] ignoring implausible count from label neighbor: {labelNeighborCount.Value}");
             }
 
             var stateCount = await TryReadCountFromDashboardStateAsync(page);
@@ -873,12 +883,12 @@ internal sealed class FableRequestMonitorService
             {
                 if (IsPlausibleAvailableRequestCount(stateCount.Value))
                 {
-                    Console.WriteLine($"[fable.monitor] extracted available requests from dashboard state: {stateCount.Value}");
+                    LogInfo($"[fable.monitor] extracted available requests from dashboard state: {stateCount.Value}");
                     return stateCount.Value;
                 }
 
                 sawImplausibleValue = true;
-                Console.WriteLine($"[fable.monitor] ignoring implausible count from dashboard state: {stateCount.Value}");
+                LogInfo($"[fable.monitor] ignoring implausible count from dashboard state: {stateCount.Value}");
             }
 
             var nearbyLabelCount = await page.EvaluateAsync<int?>(@"
@@ -918,12 +928,12 @@ internal sealed class FableRequestMonitorService
             {
                 if (IsPlausibleAvailableRequestCount(nearbyLabelCount.Value))
                 {
-                    Console.WriteLine($"[fable.monitor] extracted available requests from label-adjacent text: {nearbyLabelCount.Value}");
+                    LogInfo($"[fable.monitor] extracted available requests from label-adjacent text: {nearbyLabelCount.Value}");
                     return nearbyLabelCount.Value;
                 }
 
                 sawImplausibleValue = true;
-                Console.WriteLine($"[fable.monitor] ignoring implausible count from label-adjacent text: {nearbyLabelCount.Value}");
+                LogInfo($"[fable.monitor] ignoring implausible count from label-adjacent text: {nearbyLabelCount.Value}");
             }
 
             var lineParsedCount = await TryReadCountFromVisibleTextLinesAsync(page);
@@ -931,18 +941,18 @@ internal sealed class FableRequestMonitorService
             {
                 if (IsPlausibleAvailableRequestCount(lineParsedCount.Value))
                 {
-                    Console.WriteLine($"[fable.monitor] extracted available requests from visible text lines: {lineParsedCount.Value}");
+                    LogInfo($"[fable.monitor] extracted available requests from visible text lines: {lineParsedCount.Value}");
                     return lineParsedCount.Value;
                 }
 
                 sawImplausibleValue = true;
-                Console.WriteLine($"[fable.monitor] ignoring implausible count from visible text lines: {lineParsedCount.Value}");
+                LogInfo($"[fable.monitor] ignoring implausible count from visible text lines: {lineParsedCount.Value}");
             }
 
             var cards = await page.Locator("[data-test*='request'], .request-card").CountAsync();
             if (cards > 0)
             {
-                Console.WriteLine($"[fable.monitor] falling back to request card count: {cards}");
+                LogInfo($"[fable.monitor] falling back to request card count: {cards}");
                 return cards;
             }
 
@@ -1234,7 +1244,7 @@ internal sealed class FableRequestMonitorService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[fable.monitor] ticker failed: {ex.Message}");
+            LogError($"[fable.monitor] ticker failed: {ex.Message}");
         }
 
         try
@@ -1243,7 +1253,7 @@ internal sealed class FableRequestMonitorService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[fable.monitor] TTS failed: {ex.Message}");
+            LogError($"[fable.monitor] TTS failed: {ex.Message}");
         }
     }
 
@@ -1270,12 +1280,12 @@ internal sealed class FableRequestMonitorService
             {
                 throw new InvalidOperationException("Attached to Edge via CDP, but no browser context was available to reuse.");
             }
-            Console.WriteLine($"[fable.monitor] attached to shared browser session via CDP at {cdpUrl}.");
+            LogInfo($"[fable.monitor] attached to shared browser session via CDP at {cdpUrl}.");
             return _browserContext;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[fable.monitor] CDP attach failed at {cdpUrl}; falling back to persistent profile. {ex.Message}");
+            LogError($"[fable.monitor] CDP attach failed at {cdpUrl}; falling back to persistent profile. {ex.Message}");
         }
 
         var launchedOnDemand = await TryLaunchEdgeDebugSessionOnDemandAsync(cancellationToken);
@@ -1290,12 +1300,12 @@ internal sealed class FableRequestMonitorService
                     throw new InvalidOperationException("Attached to Edge via CDP after on-demand launch, but no browser context was available to reuse.");
                 }
 
-                Console.WriteLine($"[fable.monitor] attached to shared browser session after on-demand launch at {cdpUrl}.");
+                LogInfo($"[fable.monitor] attached to shared browser session after on-demand launch at {cdpUrl}.");
                 return _browserContext;
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[fable.monitor] CDP re-attach failed after on-demand launch at {cdpUrl}: {ex.Message}");
+                LogError($"[fable.monitor] CDP re-attach failed after on-demand launch at {cdpUrl}: {ex.Message}");
             }
         }
 
@@ -1330,7 +1340,7 @@ internal sealed class FableRequestMonitorService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[fable.monitor] headless persistent browser launch failed: {ex.Message}");
+            LogError($"[fable.monitor] headless persistent browser launch failed: {ex.Message}");
         }
 
         throw new InvalidOperationException(
