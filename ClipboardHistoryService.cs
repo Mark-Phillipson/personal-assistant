@@ -504,9 +504,9 @@ internal sealed class ClipboardHistoryService
                 """;
 
             await using var cmd = new SqliteCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@content", content);
-            cmd.Parameters.AddWithValue("@hash", contentHash);
-            cmd.Parameters.AddWithValue("@timestamp", timestamp);
+            cmd.Parameters.Add("@content", SqliteType.Text).Value = content;
+            cmd.Parameters.Add("@hash", SqliteType.Text).Value = contentHash;
+            cmd.Parameters.Add("@timestamp", SqliteType.Text).Value = timestamp;
 
             // Diagnostic: log the UTF-8 bytes of the content (base64, truncated) to help verify encoding
             try
@@ -720,17 +720,21 @@ internal sealed class ClipboardMonitor
     {
         try
         {
+            const string script = "$value=Get-Clipboard -Raw; if ($null -eq $value) { return }; $bytes=[System.Text.Encoding]::UTF8.GetBytes($value); [Convert]::ToBase64String($bytes)";
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "pwsh",
-                Arguments = "-NoProfile -NonInteractive -Command \"Get-Clipboard -Raw\"",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                StandardOutputEncoding = Encoding.UTF8,
+                StandardOutputEncoding = Encoding.ASCII,
                 StandardErrorEncoding = Encoding.UTF8,
                 CreateNoWindow = true
             };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-NonInteractive");
+            startInfo.ArgumentList.Add("-Command");
+            startInfo.ArgumentList.Add(script);
 
             using (var process = System.Diagnostics.Process.Start(startInfo))
             {
@@ -756,7 +760,21 @@ internal sealed class ClipboardMonitor
                 }
 
                 var output = process.StandardOutput.ReadToEnd()?.Trim();
-                return string.IsNullOrEmpty(output) ? null : output;
+                if (string.IsNullOrWhiteSpace(output))
+                {
+                    return null;
+                }
+
+                try
+                {
+                    var bytes = Convert.FromBase64String(output);
+                    return Encoding.UTF8.GetString(bytes);
+                }
+                catch (FormatException)
+                {
+                    Console.WriteLine("[clipboard-history.monitor] Clipboard output was not valid base64; using raw output fallback");
+                    return output;
+                }
             }
         }
         catch (Exception ex)

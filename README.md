@@ -13,6 +13,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 - Supports `/personality` to tune tone and emoji behavior per Telegram chat.
 - Supports `/natural` and `/nc` to run local NaturalCommands CLI actions.
 - Supports clipboard actions through a dedicated tool and `/clipboard_status` diagnostics.
+- Preserves Unicode clipboard history content (for example `é`, `à`, and emoji) when storing and reading entries.
 - Can list and send local files from your user folders as Telegram attachments.
 - Exposes Gmail tools to Copilot:
   - `gmail_setup_status`
