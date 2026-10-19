@@ -248,6 +248,21 @@ That would effectively turn your existing assistant into a **voice-controlled Wi
 
 And importantly, **this isn't something restricted to Codex or Claude**. GitHub's current Copilot SDK is explicitly intended for embedding the Copilot agent runtime into applications and supports .NET and custom tools. ([GitHub][3])
 
+## Phase 1 in this repo
+
+The repo now has a first-pass `DesktopAutomationService` that is meant to prove feasibility, not replace Talon:
+
+- inspect the active desktop window
+- list visible desktop windows
+- focus a window by title or process name fragment
+- move the mouse to coordinates
+- click a screen point
+- type text into the active window
+- press key combinations like `CTRL+L` or `ALT+TAB`
+- scroll the wheel
+
+That gives you a practical baseline for comparing desktop control with the Talon workflow.
+
 If you want, I can sketch out the **actual C# architecture for adding a `ComputerTools` service to your existing GitHub Copilot SDK project**, including the first `FindFiles` and `NotifyUser` tools.
 
 [1]: https://github.com/github/copilot-sdk/blob/main/docs/getting-started.md?utm_source=chatgpt.com "copilot-sdk/docs/getting-started.md at main · github/copilot-sdk · GitHub"

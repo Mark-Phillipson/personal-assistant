@@ -260,7 +260,14 @@ Console.WriteLine($"Fable auto-launch Edge at startup: {FableRequestMonitorServi
 Console.WriteLine($"Fable Edge debug port reachable: {FableRequestMonitorService.IsEdgeDebugPortReachable()}");
 
 var computerToolsService = new ComputerToolsService();
-var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, tickerNotificationService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService, gitHubTodosService, computerToolsService);
+var desktopAutomationService = new DesktopAutomationService();
+var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, tickerNotificationService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService, gitHubTodosService, computerToolsService, desktopAutomationService);
+
+if (args.Any(arg => string.Equals(arg, "--desktop-tools-smoke", StringComparison.OrdinalIgnoreCase)))
+{
+    await RunDesktopAutomationSmokeTestAsync();
+    return;
+}
 
 if (args.Any(arg => string.Equals(arg, "--computer-tools-smoke", StringComparison.OrdinalIgnoreCase)))
 {
@@ -380,6 +387,20 @@ finally
         try { singleInstanceMutex.ReleaseMutex(); } catch { }
         try { singleInstanceMutex.Dispose(); } catch { }
     }
+}
+
+static async Task RunDesktopAutomationSmokeTestAsync()
+{
+    var service = new DesktopAutomationService();
+
+    Console.WriteLine("=== desktop control status ===");
+    Console.WriteLine(service.GetSetupStatusText());
+
+    Console.WriteLine("=== active window ===");
+    Console.WriteLine(await service.GetActiveWindowAsync());
+
+    Console.WriteLine("=== visible windows ===");
+    Console.WriteLine(await service.ListWindowsAsync(10));
 }
 
 static async Task RunComputerToolsSmokeTestAsync()

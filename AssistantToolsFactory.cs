@@ -25,7 +25,8 @@ internal static class AssistantToolsFactory
         PodcastSubscriptionsService podcastSubscriptionsService,
         ClipboardHistoryService clipboardHistoryService,
         GitHubTodosService gitHubTodosService,
-        ComputerToolsService computerToolsService)
+        ComputerToolsService computerToolsService,
+        DesktopAutomationService desktopAutomationService)
     {
         var tools = new List<AIFunction>
         {
@@ -154,6 +155,56 @@ internal static class AssistantToolsFactory
                     await computerToolsService.NotifyUserAsync(message),
                 "notify_user",
                 "Send a short completion or status notification back to the user once a task has finished."),
+            AIFunctionFactory.Create(
+                () => desktopAutomationService.GetSetupStatusText(),
+                "desktop_control_status",
+                "Check whether basic desktop automation is available on the local Windows host."),
+            AIFunctionFactory.Create(
+                async () =>
+                    await desktopAutomationService.GetActiveWindowAsync(),
+                "get_active_desktop_window",
+                "Return the currently focused desktop window title, process name, and process id."),
+            AIFunctionFactory.Create(
+                async ([Description("Maximum number of visible windows to list (1-100)")] int maxResults = 20) =>
+                    await desktopAutomationService.ListWindowsAsync(maxResults),
+                "list_desktop_windows",
+                "List visible desktop windows with title, process name, process id, and handle."),
+            AIFunctionFactory.Create(
+                async ([Description("Window title or process name fragment to focus")] string windowQuery) =>
+                    await desktopAutomationService.FocusWindowAsync(windowQuery),
+                "focus_desktop_window",
+                "Focus a desktop window by matching a fragment of its title or process name."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Screen X coordinate in pixels")] int x,
+                    [Description("Screen Y coordinate in pixels")] int y,
+                    [Description("Mouse button: left, right, or middle")] string button = "left",
+                    [Description("Number of clicks to perform")] int clickCount = 1) =>
+                    await desktopAutomationService.ClickAsync(x, y, button, clickCount),
+                "click_desktop_point",
+                "Move the mouse to a screen coordinate and click. Use this as a fallback when a target app has poor accessibility."),
+            AIFunctionFactory.Create(
+                async ([Description("Text to type into the active desktop window")] string text) =>
+                    await desktopAutomationService.TypeTextAsync(text),
+                "type_desktop_text",
+                "Type text into the currently active desktop window using injected keyboard input."),
+            AIFunctionFactory.Create(
+                async ([Description("Key sequence such as CTRL+L, ALT+TAB, or CTRL+SHIFT+S; use semicolons to separate multiple steps")] string keySequence) =>
+                    await desktopAutomationService.PressKeysAsync(keySequence),
+                "press_desktop_keys",
+                "Press one or more desktop key combinations using injected keyboard input."),
+            AIFunctionFactory.Create(
+                async ([Description("Mouse wheel delta; positive scrolls up, negative scrolls down")] int delta) =>
+                    await desktopAutomationService.ScrollAsync(delta),
+                "scroll_desktop",
+                "Scroll the desktop using injected mouse wheel input."),
+            AIFunctionFactory.Create(
+                async (
+                    [Description("Screen X coordinate in pixels")] int x,
+                    [Description("Screen Y coordinate in pixels")] int y) =>
+                    await desktopAutomationService.MoveMouseAsync(x, y),
+                "move_desktop_mouse",
+                "Move the mouse pointer to a screen coordinate without clicking."),
             AIFunctionFactory.Create(
                 () => webBrowserService.GetSetupStatusText(),
                 "web_browser_status",
