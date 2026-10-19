@@ -118,7 +118,9 @@ internal sealed class FableRequestMonitorService
         return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task StartAsync(
+        CancellationToken cancellationToken = default,
+        Func<FableMonitorCheckResult, CancellationToken, Task>? statusReporter = null)
     {
         if (!IsConfigured)
         {
@@ -129,7 +131,18 @@ internal sealed class FableRequestMonitorService
         {
             try
             {
-                await MonitorOnceAsync(cancellationToken);
+                var result = await MonitorOnceAsync(cancellationToken);
+                if (statusReporter is not null)
+                {
+                    try
+                    {
+                        await statusReporter(result, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"[fable.monitor] status report failed: {ex.Message}");
+                    }
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -148,7 +161,18 @@ internal sealed class FableRequestMonitorService
                 var now = DateTime.Now;
                 if (IsWithinMonitoringWindow(now, _startHour, _endHour))
                 {
-                    await MonitorOnceAsync(cancellationToken);
+                    var result = await MonitorOnceAsync(cancellationToken);
+                    if (statusReporter is not null)
+                    {
+                        try
+                        {
+                            await statusReporter(result, cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            LogError($"[fable.monitor] status report failed: {ex.Message}");
+                        }
+                    }
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -443,6 +467,11 @@ internal sealed class FableRequestMonitorService
         return IsEdgeDebugPortReachable();
     }
 
+    private static string FormatStatusMessage(string message)
+    {
+        return $"[{DateTime.Now:HH:mm}] {message}";
+    }
+
     public static bool IsTestCommandArgument(string? arg)
     {
         return !string.IsNullOrWhiteSpace(arg)
@@ -525,7 +554,7 @@ internal sealed class FableRequestMonitorService
     {
         if (!IsConfigured)
         {
-            return new FableMonitorCheckResult(false, 0, false, "Fable monitor is not configured.");
+            return new FableMonitorCheckResult(false, 0, false, FormatStatusMessage("Fable monitor is not configured."));
         }
 
         var context = await ConnectToEdgeBrowserAsync(cancellationToken);
@@ -541,8 +570,9 @@ internal sealed class FableRequestMonitorService
                     BrowserMonitorService.LaunchHeadfulLoginFallback(_loginUrl);
                 }
 
-                await TriggerAlertAsync("Fable is not logged in. Please sign in to continue.");
-                return new FableMonitorCheckResult(false, 0, false, "Fable login was not completed.");
+                var loginMessage = FormatStatusMessage("Fable is not logged in. Please sign in to continue.");
+                await TriggerAlertAsync(loginMessage);
+                return new FableMonitorCheckResult(false, 0, false, loginMessage);
             }
 
             var count = await GetAvailableRequestCountAsync(page, cancellationToken);
@@ -550,7 +580,7 @@ internal sealed class FableRequestMonitorService
             {
                 if (ShouldFailOnUncertainCount())
                 {
-                    return new FableMonitorCheckResult(true, 0, false, "Fable is logged in, but I could not reliably read the available requests count from the dashboard.");
+                    return new FableMonitorCheckResult(true, 0, false, FormatStatusMessage("Fable is logged in, but I could not reliably read the available requests count from the dashboard."));
                 }
 
                 LogInfo("[fable.monitor] could not reliably read available request count; defaulting to zero because strict mode is disabled.");
@@ -559,12 +589,12 @@ internal sealed class FableRequestMonitorService
 
             if (count > 0)
             {
-                var message = $"Fable has {count} available request{(count == 1 ? string.Empty : "s")}.";
+                var message = FormatStatusMessage($"Fable has {count} available request{(count == 1 ? string.Empty : "s")}." );
                 await TriggerAlertAsync(message);
                 return new FableMonitorCheckResult(true, count, true, message);
             }
 
-            return new FableMonitorCheckResult(true, 0, false, "Fable is logged in but no requests are currently available.");
+            return new FableMonitorCheckResult(true, 0, false, FormatStatusMessage("Fable is logged in but no requests are currently available."));
         }
         finally
         {

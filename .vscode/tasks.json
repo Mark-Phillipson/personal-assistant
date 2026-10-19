@@ -2,20 +2,51 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Run claims (Python)",
+      "label": "Build Debug",
       "type": "shell",
-      "command": "python",
+      "command": "dotnet",
       "args": [
-        "${workspaceFolder}/scripts/run_claims.py"
+        "build",
+        "${workspaceFolder}\\personal-assistant.csproj",
+        "-c",
+        "Debug"
       ],
+      "group": "build",
+      "problemMatcher": "$msCompile",
       "presentation": {
         "reveal": "always",
         "panel": "shared"
-      },
-      "problemMatcher": [],
-      "group": {
-        "kind": "none",
-        "isDefault": false
+      }
+    },
+    {
+      "label": "Build Release",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}\\personal-assistant.csproj",
+        "-c",
+        "Release"
+      ],
+      "group": "build",
+      "problemMatcher": "$msCompile",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Clean",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "clean",
+        "${workspaceFolder}\\personal-assistant.csproj"
+      ],
+      "problemMatcher": "$msCompile",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
       }
     }
   ]

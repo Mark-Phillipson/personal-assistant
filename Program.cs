@@ -333,11 +333,6 @@ try
     }
     else
     {
-        if (fableRequestMonitorService.IsConfigured)
-        {
-            _ = Task.Run(() => fableRequestMonitorService.StartAsync(appCancellation.Token), appCancellation.Token);
-        }
-
         await RunTelegramAsync(
             copilotClient,
             assistantTools,
@@ -357,6 +352,7 @@ try
             podcastSubscriptionsService,
             clipboardHistoryService,
             telegramChatIdStore,
+            fableRequestMonitorService,
             textToSpeechService,
             pronunciationService,
             tickerNotificationService,
@@ -634,6 +630,7 @@ static async Task RunTelegramAsync(
     PodcastSubscriptionsService podcastSubscriptionsService,
     ClipboardHistoryService clipboardHistoryService,
     TelegramChatIdStore telegramChatIdStore,
+    FableRequestMonitorService fableRequestMonitorService,
     TextToSpeechService textToSpeechService,
     PronunciationDictionaryService pronunciationService,
     TickerNotificationService tickerNotificationService,
@@ -647,6 +644,37 @@ static async Task RunTelegramAsync(
     var developerTipsService = new DeveloperTipsService(textToSpeechService, telegram);
     // Start background announcer (runs until cancellation)
     _ = Task.Run(() => developerTipsService.StartAsync(cancellationToken));
+    if (fableRequestMonitorService.IsConfigured)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await fableRequestMonitorService.StartAsync(
+                    cancellationToken,
+                    async (result, ct) =>
+                    {
+                        if (!result.HasAvailableRequests)
+                        {
+                            return;
+                        }
+
+                        var currentChatId = await telegramChatIdStore.LoadAsync();
+                        if (currentChatId.HasValue)
+                        {
+                            await telegram.SendMessageInChunksAsync(currentChatId.Value, result.Message, ct);
+                        }
+                    });
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[fable.monitor] background monitor failed: {ex.Message}");
+            }
+        }, cancellationToken);
+    }
     var sessions = new ConcurrentDictionary<long, CopilotSession>();
     var conversationHistories = new ConcurrentDictionary<long, List<string>>();
     var personalityProfiles = new ConcurrentDictionary<long, PersonalityProfile>();

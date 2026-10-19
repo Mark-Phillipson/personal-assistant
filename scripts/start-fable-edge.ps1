@@ -21,7 +21,6 @@ Write-Host "User data dir: $userDataDir"
 Write-Host "Target URL: $targetUrl"
 
 Start-Process -FilePath $edgePath -ArgumentList @(
-    "--new-window",
     "--remote-debugging-port=9223",
     "--user-data-dir=$userDataDir",
     $targetUrl

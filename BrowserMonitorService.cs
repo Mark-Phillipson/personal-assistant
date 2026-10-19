@@ -73,7 +73,7 @@ internal sealed class BrowserMonitorService
             var startInfo = new ProcessStartInfo
             {
                 FileName = "msedge",
-                Arguments = $"--new-window \"{loginUrl}\"",
+                Arguments = $"\"{loginUrl}\"",
                 UseShellExecute = true,
                 WindowStyle = ProcessWindowStyle.Normal
             };
