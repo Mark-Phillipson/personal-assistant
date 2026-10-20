@@ -3,7 +3,7 @@ using System.IO;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using GitHub.Copilot.SDK;
+using GitHub.Copilot;
 using Microsoft.Extensions.AI;
 
 EnvironmentSettings.LoadDotEnvIfPresent();
@@ -473,7 +473,7 @@ static string ExtractCliPrompt(string[] args)
 
 static async Task RunCliAsync(
     CopilotClient copilotClient,
-    ICollection<AIFunction> assistantTools,
+    ICollection<AIFunctionDeclaration> assistantTools,
     PersonalityProfile defaultPersonality,
     DadJokeService dadJokeService,
     TelegramChatIdStore telegramChatIdStore,
@@ -634,7 +634,7 @@ static async Task RunCliAsync(
     
 static async Task RunTelegramAsync(
     CopilotClient copilotClient,
-    ICollection<AIFunction> assistantTools,
+    ICollection<AIFunctionDeclaration> assistantTools,
     PersonalityProfile defaultPersonality,
     PersonalityProfile environmentPersonality,
     GmailAssistantService gmailService,
@@ -809,7 +809,7 @@ var debugLogPath = Path.Combine(AppContext.BaseDirectory, "assistant-cli-debug.l
 
 static async Task<CopilotSession> CreateConfiguredSessionAsync(
     CopilotClient copilotClient,
-    ICollection<AIFunction> assistantTools,
+    ICollection<AIFunctionDeclaration> assistantTools,
     PersonalityProfile profile)
 {
     var configuredModel = SystemPromptBuilder.GetConfiguredModel();
@@ -837,7 +837,7 @@ static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFal
     string command,
     CancellationToken cancellationToken,
     CopilotClient copilotClient,
-    ICollection<AIFunction> assistantTools,
+    ICollection<AIFunctionDeclaration> assistantTools,
     PersonalityProfile defaultPersonality,
     TelegramChatIdStore telegramChatIdStore)
 {
@@ -860,43 +860,43 @@ static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFal
     var syncRoot = new object();
 
     var session = await CreateConfiguredSessionAsync(copilotClient, assistantTools, defaultPersonality);
-    using var sessionSubscription = session.On(evt =>
+    using var startSubscription = session.On<ToolExecutionStartEvent>(start =>
     {
-        switch (evt)
+        if (!string.Equals(start.Data?.ToolName, "execute_device_action", StringComparison.Ordinal))
         {
-            case ToolExecutionStartEvent start
-                when string.Equals(start.Data?.ToolName, "execute_device_action", StringComparison.Ordinal):
-                if (!string.IsNullOrWhiteSpace(start.Data.ToolCallId))
-                {
-                    lock (syncRoot)
-                    {
-                        trackedToolCalls.Add(start.Data.ToolCallId);
-                    }
-                }
-                break;
+            return;
+        }
 
-            case ToolExecutionCompleteEvent complete:
-                if (complete.Data is null || !complete.Data.Success || string.IsNullOrWhiteSpace(complete.Data.ToolCallId))
-                {
-                    break;
-                }
+        if (!string.IsNullOrWhiteSpace(start.Data?.ToolCallId))
+        {
+            lock (syncRoot)
+            {
+                trackedToolCalls.Add(start.Data.ToolCallId);
+            }
+        }
+    });
 
-                lock (syncRoot)
-                {
-                    if (!trackedToolCalls.Contains(complete.Data.ToolCallId))
-                    {
-                        return;
-                    }
-                }
+    using var completeSubscription = session.On<ToolExecutionCompleteEvent>(complete =>
+    {
+        if (complete.Data is null || !complete.Data.Success || string.IsNullOrWhiteSpace(complete.Data.ToolCallId))
+        {
+            return;
+        }
 
-                if (TryExtractDeviceActions(complete.Data.Result, out var extractedActions))
-                {
-                    lock (syncRoot)
-                    {
-                        deviceActions.AddRange(extractedActions);
-                    }
-                }
-                break;
+        lock (syncRoot)
+        {
+            if (!trackedToolCalls.Contains(complete.Data.ToolCallId))
+            {
+                return;
+            }
+        }
+
+        if (TryExtractDeviceActions(complete.Data.Result, out var extractedActions))
+        {
+            lock (syncRoot)
+            {
+                deviceActions.AddRange(extractedActions);
+            }
         }
     });
 
@@ -932,7 +932,7 @@ static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFal
 }
 
 static bool TryExtractDeviceActions(
-    ToolExecutionCompleteDataResult? result,
+    ToolExecutionCompleteResult? result,
     out List<CommandApiServer.CommandAction> actions)
 {
     actions = [];
@@ -953,7 +953,7 @@ static bool TryExtractDeviceActions(
     return actions.Count > 0;
 }
 
-static IEnumerable<string> EnumerateToolResultPayloads(ToolExecutionCompleteDataResult result)
+static IEnumerable<string> EnumerateToolResultPayloads(ToolExecutionCompleteResult result)
 {
     if (!string.IsNullOrWhiteSpace(result.Content))
     {
@@ -975,19 +975,12 @@ static IEnumerable<string> EnumerateToolResultPayloads(ToolExecutionCompleteData
     {
         switch (item)
         {
-            case ToolExecutionCompleteDataResultContentsItemText textItem when !string.IsNullOrWhiteSpace(textItem.Text):
+            case ToolExecutionCompleteContentText textItem when !string.IsNullOrWhiteSpace(textItem.Text):
                 yield return textItem.Text;
                 break;
 
-            case ToolExecutionCompleteDataResultContentsItemResource resourceItem when resourceItem.Resource is not null:
-                if (resourceItem.Resource is JsonElement jsonElement)
-                {
-                    yield return jsonElement.GetRawText();
-                }
-                else
-                {
-                    yield return resourceItem.Resource.ToString() ?? string.Empty;
-                }
+            case ToolExecutionCompleteContentResource resourceItem when resourceItem.Resource is not null:
+                yield return JsonSerializer.Serialize(resourceItem.Resource);
                 break;
         }
     }

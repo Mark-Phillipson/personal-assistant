@@ -8,7 +8,7 @@ using Microsoft.Extensions.AI;
 
 internal static class AssistantToolsFactory
 {
-    public static List<AIFunction> Build(
+    public static List<AIFunctionDeclaration> Build(
         GmailAssistantService gmailService,
         GoogleCalendarAssistantService calendarService,
         NaturalCommandsAssistantService naturalCommandsService,
@@ -828,7 +828,7 @@ internal static class AssistantToolsFactory
             return true;
         }).ToList();
 
-        return filtered;
+        return filtered.Select(t => t.AsDeclarationOnly()).ToList();
     }
 
     private static string BuildCsvContent(IEnumerable<IDictionary<string, object?>> rows)

@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Net;
 using System.Text.Json;
-using GitHub.Copilot.SDK;
+using GitHub.Copilot;
 using Microsoft.Extensions.AI;
 
 internal static class TelegramMessageHandler
@@ -60,7 +60,7 @@ internal static class TelegramMessageHandler
         CopilotClient copilotClient,
         ConcurrentDictionary<long, CopilotSession> sessions,
         ConcurrentDictionary<long, PersonalityProfile> personalityProfiles,
-        ICollection<AIFunction> assistantTools,
+        ICollection<AIFunctionDeclaration> assistantTools,
         PersonalityProfile defaultPersonality,
         PersonalityProfile environmentPersonality,
         GmailAssistantService gmailService,
@@ -1273,7 +1273,7 @@ internal static class TelegramMessageHandler
         KnownFolderExplorerService folderService,
         CopilotClient copilotClient,
         ConcurrentDictionary<long, CopilotSession> sessions,
-        ICollection<AIFunction> assistantTools,
+        ICollection<AIFunctionDeclaration> assistantTools,
         PersonalityProfile profile,
         ConcurrentDictionary<long, List<string>> conversationHistories)
     {
@@ -1319,7 +1319,7 @@ internal static class TelegramMessageHandler
             "send_file_to_telegram",
             "Send a file from a known folder to the current Telegram chat. Provide folder alias and relative file path.");
 
-        var sessionTools = assistantTools.Append(sendFileTool).ToList();
+        var sessionTools = assistantTools.Append(sendFileTool.AsDeclarationOnly()).ToList();
 
         var systemPrompt = SystemPromptBuilder.Build(profile);
         if (conversationHistories.TryGetValue(chatId, out var previousHistory) && previousHistory.Count > 0)
@@ -1389,7 +1389,7 @@ internal static class TelegramMessageHandler
         KnownFolderExplorerService knownFolderExplorerService,
         CopilotClient copilotClient,
         ConcurrentDictionary<long, CopilotSession> sessions,
-        ICollection<AIFunction> assistantTools,
+        ICollection<AIFunctionDeclaration> assistantTools,
         PersonalityProfile profile,
         ConcurrentDictionary<long, List<string>> conversationHistories,
         CancellationToken cancellationToken)
@@ -1531,7 +1531,7 @@ internal static class TelegramMessageHandler
         TelegramApiClient telegram,
         CopilotClient copilotClient,
         ConcurrentDictionary<long, CopilotSession> sessions,
-        ICollection<AIFunction> assistantTools,
+        ICollection<AIFunctionDeclaration> assistantTools,
         PersonalityProfile profile,
         KnownFolderExplorerService knownFolderExplorerService,
         GoogleCalendarAssistantService calendarService,
@@ -1719,7 +1719,7 @@ internal static class TelegramMessageHandler
         TelegramApiClient telegram,
         CopilotClient copilotClient,
         ConcurrentDictionary<long, CopilotSession> sessions,
-        ICollection<AIFunction> assistantTools,
+        ICollection<AIFunctionDeclaration> assistantTools,
         PersonalityProfile profile,
         KnownFolderExplorerService knownFolderExplorerService,
         ConcurrentDictionary<long, List<string>> conversationHistories,
@@ -2360,9 +2360,9 @@ internal static class TelegramMessageHandler
             return options;
         }
 
-        options.Attachments = new List<UserMessageDataAttachmentsItem>
+        options.Attachments = new List<Attachment>
         {
-            new UserMessageDataAttachmentsItemFile
+            new AttachmentFile
             {
                 Type = "file",
                 Path = storedAttachment.LocalPath,
@@ -2948,3 +2948,4 @@ internal static class NativeMethods
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 }
+

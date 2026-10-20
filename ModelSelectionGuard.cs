@@ -1,4 +1,4 @@
-using GitHub.Copilot.SDK;
+using GitHub.Copilot;
 
 internal static class ModelSelectionGuard
 {
@@ -16,19 +16,16 @@ internal static class ModelSelectionGuard
         var requested = configuredModel.Trim();
 
         // Explicitly switch model at session start (equivalent to issuing /model first).
-        await session.SetModelAsync(requested, cancellationToken);
+        await session.SetModelAsync(requested, new SetModelOptions(), cancellationToken);
 
-        // Prefer explicit model RPC so we can read back the runtime model id.
-        var switchResult = await session.Rpc.Model.SwitchToAsync(requested, cancellationToken);
+        // Read back the runtime model id after the switch so we can verify it took effect.
         var current = await session.Rpc.Model.GetCurrentAsync(cancellationToken);
-
-        var switchedTo = switchResult?.ModelId ?? string.Empty;
         var currentModelId = current?.ModelId ?? string.Empty;
 
         if (!ModelIdsMatch(requested, currentModelId))
         {
             throw new InvalidOperationException(
-                $"Model lock failed ({context}). Requested '{requested}', switch result '{switchedTo}', active '{currentModelId}'. Refusing to continue to avoid unintended model usage.");
+                $"Model lock failed ({context}). Requested '{requested}', active '{currentModelId}'. Refusing to continue to avoid unintended model usage.");
         }
 
         Console.WriteLine($"[model.lock] context={context} requested='{requested}' active='{currentModelId}'");
