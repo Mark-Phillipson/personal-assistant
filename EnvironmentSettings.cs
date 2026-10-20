@@ -216,4 +216,38 @@ internal static class EnvironmentSettings
 
         return parsed;
     }
+
+    public static bool? ReadOptionalBool(string name)
+    {
+        LoadDotEnvIfPresent();
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        if (!bool.TryParse(raw.Trim(), out var parsed))
+        {
+            throw new InvalidOperationException($"Environment variable '{name}' must be true or false.");
+        }
+
+        return parsed;
+    }
+
+    public static int? ReadOptionalInt(string name)
+    {
+        LoadDotEnvIfPresent();
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        if (!int.TryParse(raw.Trim(), out var parsed))
+        {
+            throw new InvalidOperationException($"Environment variable '{name}' must be an integer.");
+        }
+
+        return parsed;
+    }
 }
