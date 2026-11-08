@@ -104,8 +104,18 @@ internal sealed class FableRequestMonitorService
         return Math.Clamp(parsed, 1, 60);
     }
 
-    public static bool IsWithinMonitoringWindow(DateTime now, int startHour, int endHour)
+    public static bool IsMonitoringDay(DateTime now, bool allowWeekends = false)
     {
+        return allowWeekends || (now.DayOfWeek != DayOfWeek.Saturday && now.DayOfWeek != DayOfWeek.Sunday);
+    }
+
+    public static bool IsWithinMonitoringWindow(DateTime now, int startHour, int endHour, bool allowWeekends = false)
+    {
+        if (!IsMonitoringDay(now, allowWeekends))
+        {
+            return false;
+        }
+
         var startMinutes = Math.Clamp(startHour, 0, 23) * 60;
         var endMinutes = Math.Clamp(endHour, 0, 23) * 60;
         var currentMinutes = now.Hour * 60 + now.Minute;
@@ -127,7 +137,9 @@ internal sealed class FableRequestMonitorService
             return;
         }
 
-        if (ShouldRunImmediateStartupCheck())
+        var allowWeekendMonitoring = EnvironmentSettings.ReadBool("FABLE_MONITOR_WEEKENDS_ENABLED", false);
+
+        if (ShouldRunImmediateStartupCheck() && IsMonitoringDay(DateTime.Now, allowWeekendMonitoring))
         {
             try
             {
@@ -159,7 +171,7 @@ internal sealed class FableRequestMonitorService
             try
             {
                 var now = DateTime.Now;
-                if (IsWithinMonitoringWindow(now, _startHour, _endHour))
+                if (IsWithinMonitoringWindow(now, _startHour, _endHour, allowWeekendMonitoring))
                 {
                     var result = await MonitorOnceAsync(cancellationToken);
                     if (statusReporter is not null)
@@ -735,6 +747,25 @@ internal sealed class FableRequestMonitorService
             await page.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
 
             var emailLocator = page.Locator("input[type='email'], input[name='email'], input[id='email']");
+            try
+            {
+                // Fable renders the email form after client-side hydration; DOMContentLoaded alone is too early.
+                await emailLocator.First.WaitForAsync(new LocatorWaitForOptions
+                {
+                    State = WaitForSelectorState.Visible,
+                    Timeout = 20000
+                });
+            }
+            catch (Exception ex)
+            {
+                LogInfo($"[fable.monitor] email field did not become visible on attempt {attempt + 1}: {ex.Message}");
+                if (attempt < 2)
+                {
+                    await page.ReloadAsync();
+                }
+                continue;
+            }
+
             var emailInputCount = await emailLocator.CountAsync();
             LogInfo($"[fable.monitor] email input count on attempt {attempt + 1}: {emailInputCount}");
             if (emailInputCount > 0)
@@ -754,7 +785,11 @@ internal sealed class FableRequestMonitorService
 
                 try
                 {
-                    await page.WaitForSelectorAsync("input[type='password'], input[name='password']", new PageWaitForSelectorOptions { Timeout = 15000 });
+                    await page.Locator("input[type='password'], input[name='password']").First.WaitForAsync(new LocatorWaitForOptions
+                    {
+                        State = WaitForSelectorState.Visible,
+                        Timeout = 20000
+                    });
                     LogInfo($"[fable.monitor] password field detected on attempt {attempt + 1}.");
                 }
                 catch (Exception)
