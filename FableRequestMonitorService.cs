@@ -741,11 +741,9 @@ internal sealed class FableRequestMonitorService
                 return true;
             }
 
-            if (_useExistingTabOnly)
-            {
-                return false;
-            }
-
+            // Reuse the attached tab, but still automate sign-in within it.
+            // FABLE_USE_EXISTING_TAB_ONLY controls browser launching, not whether
+            // the monitor is allowed to fill and submit the login form.
             await page.GotoAsync(_loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 20000 });
 
             var emailLocator = page.Locator("input[type='email'], input[name='email'], input[id='email']");
