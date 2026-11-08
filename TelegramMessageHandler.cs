@@ -84,6 +84,32 @@ internal static class TelegramMessageHandler
         var chatId = message.Chat.Id;
         var profile = GetPersonalityForChat(chatId, personalityProfiles, defaultPersonality);
 
+        var audioCommand = text?.Trim().TrimStart('/').Trim() ?? string.Empty;
+        if (audioCommand.Equals("sound off", StringComparison.OrdinalIgnoreCase)
+            || audioCommand.Equals("dnd on", StringComparison.OrdinalIgnoreCase)
+            || audioCommand.Equals("do not disturb on", StringComparison.OrdinalIgnoreCase))
+        {
+            AssistantAudioSettings.SetMuted(true);
+            await telegram.SendMessageInChunksAsync(chatId, "Assistant audio is now muted. Text replies will continue as normal.", cancellationToken);
+            return;
+        }
+
+        if (audioCommand.Equals("sound on", StringComparison.OrdinalIgnoreCase)
+            || audioCommand.Equals("dnd off", StringComparison.OrdinalIgnoreCase)
+            || audioCommand.Equals("do not disturb off", StringComparison.OrdinalIgnoreCase))
+        {
+            AssistantAudioSettings.SetMuted(false);
+            await telegram.SendMessageInChunksAsync(chatId, "Assistant audio is now enabled.", cancellationToken);
+            return;
+        }
+
+        if (audioCommand.Equals("sound status", StringComparison.OrdinalIgnoreCase)
+            || audioCommand.Equals("dnd status", StringComparison.OrdinalIgnoreCase))
+        {
+            await telegram.SendMessageInChunksAsync(chatId, AssistantAudioSettings.IsMuted ? "Assistant audio is muted." : "Assistant audio is enabled.", cancellationToken);
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(text)
             && !text.StartsWith('/')
             && FableRequestMonitorService.IsFableCheckRequest(text))
