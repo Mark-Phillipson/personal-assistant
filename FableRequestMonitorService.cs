@@ -723,7 +723,9 @@ internal sealed class FableRequestMonitorService
 
     private async Task<bool> EnsureLoggedInAsync(IPage page, CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < 3; attempt++)
+        // Keep attempting automated sign-in until it succeeds or the monitor is stopped.
+        // A transient Fable/UI failure must not be reported as a request for manual sign-in.
+        for (var attempt = 0; ; attempt++)
         {
             LogInfo($"[fable.monitor] login attempt {attempt + 1} for {_loginUrl}");
 
@@ -759,10 +761,8 @@ internal sealed class FableRequestMonitorService
             catch (Exception ex)
             {
                 LogInfo($"[fable.monitor] email field did not become visible on attempt {attempt + 1}: {ex.Message}");
-                if (attempt < 2)
-                {
-                    await page.ReloadAsync();
-                }
+                await page.ReloadAsync();
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
                 continue;
             }
 
@@ -772,14 +772,44 @@ internal sealed class FableRequestMonitorService
             {
                 await emailLocator.First.FillAsync(_username, new LocatorFillOptions { Timeout = 15000 });
 
-                var continueButton = page.Locator("button:has-text('Continue'), input[type='submit'], button[type='submit']").First;
+                var continueButton = page.GetByRole(AriaRole.Button, new PageGetByRoleOptions
+                {
+                    Name = "Continue",
+                    Exact = true
+                }).First;
+
                 try
                 {
-                    await continueButton.ClickAsync(new LocatorClickOptions { Timeout = 15000 });
+                    await continueButton.WaitForAsync(new LocatorWaitForOptions
+                    {
+                        State = WaitForSelectorState.Visible,
+                        Timeout = 15000
+                    });
+
+                    await continueButton.ScrollIntoViewIfNeededAsync();
+                    await continueButton.WaitForAsync(new LocatorWaitForOptions
+                    {
+                        State = WaitForSelectorState.Attached,
+                        Timeout = 5000
+                    });
+
+                    if (!await continueButton.IsEnabledAsync())
+                    {
+                        throw new InvalidOperationException("Fable Continue button is visible but disabled.");
+                    }
+
+                    await continueButton.ClickAsync(new LocatorClickOptions
+                    {
+                        Timeout = 15000,
+                        Force = true
+                    });
+                    LogInfo($"[fable.monitor] clicked Fable Continue button on attempt {attempt + 1}.");
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    LogInfo($"[fable.monitor] could not click Fable Continue on attempt {attempt + 1}: {ex.Message}");
                     await page.ReloadAsync();
+                    await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
                     continue;
                 }
 
@@ -796,6 +826,7 @@ internal sealed class FableRequestMonitorService
                 {
                     LogInfo($"[fable.monitor] password field not detected on attempt {attempt + 1}; reloading page.");
                     await page.ReloadAsync();
+                    await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
                     continue;
                 }
 
@@ -810,6 +841,7 @@ internal sealed class FableRequestMonitorService
                 catch (Exception)
                 {
                     await page.ReloadAsync();
+                    await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
                     continue;
                 }
 
@@ -821,13 +853,10 @@ internal sealed class FableRequestMonitorService
                 }
             }
 
-            if (attempt < 2)
-            {
-                await page.ReloadAsync();
-            }
+            LogInfo($"[fable.monitor] automated sign-in did not complete on attempt {attempt + 1}; retrying in 10 seconds.");
+            await page.ReloadAsync();
+            await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
         }
-
-        return false;
     }
 
     private async Task TryRecoverTimedOutSessionAsync(IPage page)
