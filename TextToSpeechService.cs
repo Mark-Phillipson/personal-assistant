@@ -60,9 +60,9 @@ internal sealed class TextToSpeechService
     {
         Log($"[tts.debug] enabled={_enabled}, force={force}, textLength={text?.Length}, cancellationRequested={cancellationToken.IsCancellationRequested}, region={_azureSpeechRegion}, voice={_azureSpeechVoice}");
 
-        if ((!force && !_enabled) || string.IsNullOrWhiteSpace(text) || cancellationToken.IsCancellationRequested)
+        if (AssistantAudioSettings.IsMuted || (!force && !_enabled) || string.IsNullOrWhiteSpace(text) || cancellationToken.IsCancellationRequested)
         {
-            var reason = !force && !_enabled ? "disabled" : "empty/canceled";
+            var reason = AssistantAudioSettings.IsMuted ? "muted" : (!force && !_enabled ? "disabled" : "empty/canceled");
             if (string.IsNullOrWhiteSpace(text)) reason = "empty text";
             if (cancellationToken.IsCancellationRequested) reason = "cancellation requested";
             Log($"[tts.debug] early return: {reason}");
@@ -159,9 +159,9 @@ internal sealed class TextToSpeechService
     {
         Log($"[tts.debug] synth-to-file enabled={_enabled}, force={force}, textLength={text?.Length}, cancellationRequested={cancellationToken.IsCancellationRequested}");
 
-        if ((!force && !_enabled) || string.IsNullOrWhiteSpace(text) || cancellationToken.IsCancellationRequested)
+        if (AssistantAudioSettings.IsMuted || (!force && !_enabled) || string.IsNullOrWhiteSpace(text) || cancellationToken.IsCancellationRequested)
         {
-            var reason = !force && !_enabled ? "disabled" : "empty/canceled";
+            var reason = AssistantAudioSettings.IsMuted ? "muted" : (!force && !_enabled ? "disabled" : "empty/canceled");
             if (string.IsNullOrWhiteSpace(text)) reason = "empty text";
             if (cancellationToken.IsCancellationRequested) reason = "cancellation requested";
             Log($"[tts.debug] synth-to-file early return: {reason}");
