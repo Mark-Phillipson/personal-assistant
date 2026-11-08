@@ -13,6 +13,23 @@ public class FableRequestMonitorTests
         Assert.False(FableRequestMonitorService.IsWithinMonitoringWindow(new DateTime(2026, 9, 25, 22, 1, 0), 6, 22));
     }
 
+    [Theory]
+    [InlineData(2026, 9, 25, false, true)]
+    [InlineData(2026, 9, 26, false, false)]
+    [InlineData(2026, 9, 27, false, false)]
+    [InlineData(2026, 9, 26, true, true)]
+    public void IsMonitoringDay_DisablesWeekendsByDefault(int year, int month, int day, bool allowWeekends, bool expected)
+    {
+        Assert.Equal(expected, FableRequestMonitorService.IsMonitoringDay(new DateTime(year, month, day), allowWeekends));
+    }
+
+    [Fact]
+    public void IsWithinMonitoringWindow_ExcludesWeekendsByDefault()
+    {
+        Assert.False(FableRequestMonitorService.IsWithinMonitoringWindow(new DateTime(2026, 9, 26, 12, 0, 0), 6, 22));
+        Assert.True(FableRequestMonitorService.IsWithinMonitoringWindow(new DateTime(2026, 9, 26, 12, 0, 0), 6, 22, allowWeekends: true));
+    }
+
     [Fact]
     public void NormalizeCheckIntervalMinutes_UsesMinimumAndFallback()
     {
