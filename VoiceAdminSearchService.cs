@@ -137,7 +137,11 @@ internal sealed class VoiceAdminSearchService
             var heading = total > displayLimit
                 ? $"Talon voice commands (first {rows.Count} of {total})"
                 : $"Talon voice commands ({rows.Count})";
-            var result = TelegramRichTextFormatter.LabeledList(heading, rows);
+            var result = TelegramRichTextFormatter.List(
+                heading,
+                rows.Select(row => string.IsNullOrWhiteSpace(row.secondary)
+                    ? row.label
+                    : $"{row.label} — {row.secondary}"));
 
             if (total > rows.Count)
                 result += $"\n{total - rows.Count} more command(s) are available. Ask me to search Talon voice commands by keyword.";
