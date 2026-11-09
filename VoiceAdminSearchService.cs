@@ -61,14 +61,23 @@ internal sealed class VoiceAdminSearchService
         => SearchTableAsync("Talon Commands", keyword, maxResults, asHtmlTable);
 
     /// <summary>
-    /// Returns a compact, readable sample of Talon voice commands for the Telegram /help output.
+    /// Returns Talon voice-command phrases that invoke slash commands supported by Telegram /help.
+    /// Unrelated Talon commands are deliberately excluded.
     /// </summary>
-    public async Task<string> ListTalonCommandsForHelpAsync(CancellationToken cancellationToken = default)
+    public async Task<string> ListTelegramSlashCommandVoiceCommandsForHelpAsync(
+        IEnumerable<string> supportedSlashCommands,
+        CancellationToken cancellationToken = default)
     {
-        if (!IsConfigured)
-            return TelegramRichTextFormatter.Section("Talon voice commands", "Unavailable: Voice Admin database is not configured.");
+        if (!IsConfigured || supportedSlashCommands is null)
+            return string.Empty;
 
-        const int displayLimit = 12;
+        var supported = supportedSlashCommands
+            .Where(command => !string.IsNullOrWhiteSpace(command))
+            .Select(command => command.Trim().ToLowerInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (supported.Count == 0)
+            return string.Empty;
 
         try
         {
@@ -78,80 +87,65 @@ internal sealed class VoiceAdminSearchService
             var availableObjects = await GetUserObjectNamesAsync(conn);
             var tableName = ResolveObjectName(availableObjects, "Talon Commands");
             if (tableName is null)
-                return TelegramRichTextFormatter.Section("Talon voice commands", "The Talon commands table was not found in the Voice Admin database.");
+                return string.Empty;
 
             var columns = await GetTableColumnsAsync(conn, tableName);
             var commandColumn = columns.FirstOrDefault(column =>
                 string.Equals(column, "Command", StringComparison.OrdinalIgnoreCase));
-            if (commandColumn is null)
-                return TelegramRichTextFormatter.Section("Talon voice commands", "The Talon commands table does not contain a Command column.");
+            var scriptColumn = columns.FirstOrDefault(column =>
+                string.Equals(column, "Script", StringComparison.OrdinalIgnoreCase));
 
-            var titleColumn = columns.FirstOrDefault(column =>
-                string.Equals(column, "Title", StringComparison.OrdinalIgnoreCase));
-            var applicationColumn = columns.FirstOrDefault(column =>
-                string.Equals(column, "Application", StringComparison.OrdinalIgnoreCase));
-
-            await using var countCommand = new SqliteCommand(
-                $"SELECT COUNT(*) FROM {QuoteIdentifier(tableName)} WHERE TRIM(COALESCE(CAST({QuoteIdentifier(commandColumn)} AS TEXT), '')) <> ''",
-                conn);
-            var total = Convert.ToInt32(await countCommand.ExecuteScalarAsync(cancellationToken));
-
-            var selectColumns = new[]
-            {
-                QuoteIdentifier(commandColumn),
-                titleColumn is null ? "NULL" : QuoteIdentifier(titleColumn),
-                applicationColumn is null ? "NULL" : QuoteIdentifier(applicationColumn)
-            };
+            if (commandColumn is null || scriptColumn is null)
+                return string.Empty;
 
             var sql = $"""
-                SELECT {string.Join(", ", selectColumns)}
+                SELECT
+                    CAST({QuoteIdentifier(commandColumn)} AS TEXT),
+                    CAST({QuoteIdentifier(scriptColumn)} AS TEXT)
                 FROM {QuoteIdentifier(tableName)}
                 WHERE TRIM(COALESCE(CAST({QuoteIdentifier(commandColumn)} AS TEXT), '')) <> ''
+                  AND TRIM(COALESCE(CAST({QuoteIdentifier(scriptColumn)} AS TEXT), '')) <> ''
                 ORDER BY rowid
-                LIMIT @limit
                 """;
 
-            await using var command = new SqliteCommand(sql, conn);
-            command.Parameters.AddWithValue("@limit", displayLimit);
+            await using var query = new SqliteCommand(sql, conn);
+            var aliases = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var reader = await query.ExecuteReaderAsync(cancellationToken);
 
-            var rows = new List<(string label, string secondary)>();
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
                 var spokenCommand = reader.IsDBNull(0) ? string.Empty : reader.GetString(0).Trim();
-                if (string.IsNullOrWhiteSpace(spokenCommand))
+                var script = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+
+                if (string.IsNullOrWhiteSpace(spokenCommand) || string.IsNullOrWhiteSpace(script))
                     continue;
 
-                var title = reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim();
-                var application = reader.IsDBNull(2) ? string.Empty : reader.GetString(2).Trim();
-                var secondary = string.Join(" · ", new[] { title, application }
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Distinct(StringComparer.OrdinalIgnoreCase));
+                var matches = Regex.Matches(
+                    script,
+                    @"(?<![A-Za-z0-9_])/(?<name>[A-Za-z][A-Za-z0-9_]*)(?![A-Za-z0-9_])",
+                    RegexOptions.IgnoreCase);
 
-                rows.Add((spokenCommand, secondary));
+                foreach (Match match in matches)
+                {
+                    var slashCommand = "/" + match.Groups["name"].Value.ToLowerInvariant();
+                    if (!supported.Contains(slashCommand))
+                        continue;
+
+                    var line = $"{spokenCommand} → {slashCommand}";
+                    if (seen.Add(line))
+                        aliases.Add(line);
+                }
             }
 
-            if (rows.Count == 0)
-                return TelegramRichTextFormatter.Section("Talon voice commands", "No voice commands were found.");
-
-            var heading = total > displayLimit
-                ? $"Talon voice commands (first {rows.Count} of {total})"
-                : $"Talon voice commands ({rows.Count})";
-            var result = TelegramRichTextFormatter.List(
-                heading,
-                rows.Select(row => string.IsNullOrWhiteSpace(row.secondary)
-                    ? row.label
-                    : $"{row.label} — {row.secondary}"));
-
-            if (total > rows.Count)
-                result += $"\n{total - rows.Count} more command(s) are available. Ask me to search Talon voice commands by keyword.";
-
-            return result;
+            return aliases.Count == 0
+                ? string.Empty
+                : TelegramRichTextFormatter.List("Voice commands", aliases);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[telegram.help.talon.error] {ex.Message}");
-            return TelegramRichTextFormatter.Section("Talon voice commands", "Could not load commands from the Voice Admin database.");
+            Console.Error.WriteLine($"[telegram.help.voice-aliases.error] {ex.Message}");
+            return string.Empty;
         }
     }
 
