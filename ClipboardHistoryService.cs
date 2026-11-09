@@ -456,9 +456,18 @@ internal sealed class ClipboardHistoryService
                 // Ignore diagnostics failures
             }
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+            const string insertSql = """
+                INSERT INTO ClipboardHistory (content, contentHash, timestamp)
+                VALUES (@content, @hash, @timestamp)
+                """;
+
+            await using var insertCmd = new SqliteCommand(insertSql, conn, transaction);
+            insertCmd.Parameters.Add("@content", SqliteType.Text).Value = content;
+            insertCmd.Parameters.Add("@hash", SqliteType.Text).Value = contentHash;
+            insertCmd.Parameters.Add("@timestamp", SqliteType.Text).Value = timestamp;
+
+            await insertCmd.ExecuteNonQueryAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            Console.WriteLine($"[clipboard-history.add] Entry added successfully (hash={contentHash[..8]})");
             Console.WriteLine($"[clipboard-history.add] Entry added successfully (hash={contentHash[..8]})");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
