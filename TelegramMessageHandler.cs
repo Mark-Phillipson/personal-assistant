@@ -2421,8 +2421,14 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/personality ...", "adjust tone and emoji settings", EmojiPalette.Personality, profile.UseEmoji)
         };
 
-        var talonCommands = await VoiceAdminSearchService.FromEnvironment()
-            .ListTalonCommandsForHelpAsync(cancellationToken);
+        var supportedSlashCommands = commandRows
+            .Select(row => Regex.Match(row, @"/[a-z][a-z0-9_]*", RegexOptions.IgnoreCase).Value)
+            .Where(command => !string.IsNullOrWhiteSpace(command))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var voiceCommandAliases = await VoiceAdminSearchService.FromEnvironment()
+            .ListTelegramSlashCommandVoiceCommandsForHelpAsync(supportedSlashCommands, cancellationToken);
 
         var personalityStatus = GetPersonalityStatusText(profile);
         var commandHeader = EmojiPalette.Wrap("Commands:", EmojiPalette.Commands, profile.UseEmoji);
@@ -2433,8 +2439,8 @@ internal static class TelegramMessageHandler
             string.Empty,
             commandHeader,
             string.Join("\n", commandRows),
-            string.Empty,
-            talonCommands,
+            string.IsNullOrWhiteSpace(voiceCommandAliases) ? null : string.Empty,
+            string.IsNullOrWhiteSpace(voiceCommandAliases) ? null : voiceCommandAliases,
             string.Empty,
             "You can also send a Telegram photo or document directly. It will be forwarded to Copilot as an attachment.",
             string.Empty,
@@ -2442,7 +2448,7 @@ internal static class TelegramMessageHandler
             "/personality emoji on|off|subtle|moderate|expressive",
             "/personality tone friendly|professional|witty|calm|irreverent",
             "/personality reset"
-        });
+        }.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
     private static bool TryParsePronunciationPayload(string payload, out string originalWord, out string replacementWord, out string? ipa)
