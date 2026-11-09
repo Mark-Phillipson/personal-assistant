@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 
 internal sealed class VoiceAdminSearchService
@@ -59,6 +60,95 @@ internal sealed class VoiceAdminSearchService
 
     public Task<string> SearchTalonCommandsAsync(string keyword, int? maxResults = null, bool asHtmlTable = false)
         => SearchTableAsync("Talon Commands", keyword, maxResults, asHtmlTable);
+
+    /// <summary>
+    /// Returns Talon voice-command phrases that invoke slash commands supported by Telegram /help.
+    /// Unrelated Talon commands are deliberately excluded.
+    /// </summary>
+    public async Task<string> ListTelegramSlashCommandVoiceCommandsForHelpAsync(
+        IEnumerable<string> supportedSlashCommands,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured || supportedSlashCommands is null)
+            return string.Empty;
+
+        var supported = supportedSlashCommands
+            .Where(command => !string.IsNullOrWhiteSpace(command))
+            .Select(command => command.Trim().ToLowerInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (supported.Count == 0)
+            return string.Empty;
+
+        try
+        {
+            await using var conn = CreateReadOnlyConnection();
+            await conn.OpenAsync(cancellationToken);
+
+            var availableObjects = await GetUserObjectNamesAsync(conn);
+            var tableName = ResolveObjectName(availableObjects, "Talon Commands");
+            if (tableName is null)
+                return string.Empty;
+
+            var columns = await GetTableColumnsAsync(conn, tableName);
+            var commandColumn = columns.FirstOrDefault(column =>
+                string.Equals(column, "Command", StringComparison.OrdinalIgnoreCase));
+            var scriptColumn = columns.FirstOrDefault(column =>
+                string.Equals(column, "Script", StringComparison.OrdinalIgnoreCase));
+
+            if (commandColumn is null || scriptColumn is null)
+                return string.Empty;
+
+            var sql = $"""
+                SELECT
+                    CAST({QuoteIdentifier(commandColumn)} AS TEXT),
+                    CAST({QuoteIdentifier(scriptColumn)} AS TEXT)
+                FROM {QuoteIdentifier(tableName)}
+                WHERE TRIM(COALESCE(CAST({QuoteIdentifier(commandColumn)} AS TEXT), '')) <> ''
+                  AND TRIM(COALESCE(CAST({QuoteIdentifier(scriptColumn)} AS TEXT), '')) <> ''
+                ORDER BY rowid
+                """;
+
+            await using var query = new SqliteCommand(sql, conn);
+            var aliases = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var reader = await query.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var spokenCommand = reader.IsDBNull(0) ? string.Empty : reader.GetString(0).Trim();
+                var script = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+
+                if (string.IsNullOrWhiteSpace(spokenCommand) || string.IsNullOrWhiteSpace(script))
+                    continue;
+
+                var matches = Regex.Matches(
+                    script,
+                    @"(?<![A-Za-z0-9_])/(?<name>[A-Za-z][A-Za-z0-9_]*)(?![A-Za-z0-9_])",
+                    RegexOptions.IgnoreCase);
+
+                foreach (Match match in matches)
+                {
+                    var slashCommand = "/" + match.Groups["name"].Value.ToLowerInvariant();
+                    if (!supported.Contains(slashCommand))
+                        continue;
+
+                    var line = $"{spokenCommand} → {slashCommand}";
+                    if (seen.Add(line))
+                        aliases.Add(line);
+                }
+            }
+
+            return aliases.Count == 0
+                ? string.Empty
+                : TelegramRichTextFormatter.List("Voice commands", aliases);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[telegram.help.voice-aliases.error] {ex.Message}");
+            return string.Empty;
+        }
+    }
 
     public Task<string> SearchCustomInTeleSenseAsync(string keyword, int? maxResults = null, bool asHtmlTable = false)
         => SearchTableAsync("Custom in Tele Sense", keyword, maxResults, asHtmlTable);
