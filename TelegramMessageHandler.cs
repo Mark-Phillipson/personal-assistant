@@ -2475,6 +2475,38 @@ internal static class TelegramMessageHandler
         var voiceCommandAliases = await VoiceAdminSearchService.FromEnvironment()
             .ListTelegramSlashCommandVoiceCommandsForHelpAsync(supportedSlashCommands, cancellationToken);
 
+        // Put each spoken phrase directly beside the slash command it invokes.
+        var aliasesBySlashCommand = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match match in Regex.Matches(
+            voiceCommandAliases,
+            @"•\s*(?<spoken>.*?)\s+→\s*(?<slash>/[a-z][a-z0-9_]*)",
+            RegexOptions.IgnoreCase))
+        {
+            var spokenCommand = match.Groups["spoken"].Value.Trim();
+            var slashCommand = match.Groups["slash"].Value.Trim();
+            if (string.IsNullOrWhiteSpace(spokenCommand))
+                continue;
+
+            if (!aliasesBySlashCommand.TryGetValue(slashCommand, out var aliases))
+            {
+                aliases = new List<string>();
+                aliasesBySlashCommand[slashCommand] = aliases;
+            }
+
+            if (!aliases.Contains(spokenCommand, StringComparer.OrdinalIgnoreCase))
+                aliases.Add(spokenCommand);
+        }
+
+        commandRows = commandRows
+            .Select(row =>
+            {
+                var slashCommand = Regex.Match(row, @"/[a-z][a-z0-9_]*", RegexOptions.IgnoreCase).Value;
+                return aliasesBySlashCommand.TryGetValue(slashCommand, out var aliases)
+                    ? $"{row}  🎤 {string.Join(", ", aliases)}"
+                    : row;
+            })
+            .ToArray();
+
         var personalityStatus = GetPersonalityStatusText(profile);
         var commandHeader = EmojiPalette.Wrap("Commands:", EmojiPalette.Commands, profile.UseEmoji);
 
@@ -2484,8 +2516,6 @@ internal static class TelegramMessageHandler
             string.Empty,
             commandHeader,
             string.Join("\n", commandRows),
-            string.IsNullOrWhiteSpace(voiceCommandAliases) ? null : string.Empty,
-            string.IsNullOrWhiteSpace(voiceCommandAliases) ? null : voiceCommandAliases,
             string.Empty,
             "You can also send a Telegram photo or document directly. It will be forwarded to Copilot as an attachment.",
             string.Empty,
