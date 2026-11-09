@@ -385,60 +385,6 @@ internal sealed class ClipboardHistoryService
         return Convert.ToHexString(bytes);
     }
 
-    private async Task<string?> GetRecentEntryHashAsync(CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(_dbPath) || !File.Exists(_dbPath))
-            return null;
-
-        try
-        {
-            await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadOnly, cancellationToken);
-
-            const string sql = """
-                SELECT contentHash
-                FROM ClipboardHistory
-                ORDER BY id DESC
-                LIMIT 1
-                """;
-
-            await using var cmd = new SqliteCommand(sql, conn);
-            var result = await cmd.ExecuteScalarAsync(cancellationToken);
-            return result as string;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private async Task<bool> EntryExistsByHashAsync(string contentHash, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(_dbPath) || !File.Exists(_dbPath))
-            return false;
-
-        try
-        {
-            await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadOnly, cancellationToken);
-
-            const string sql = """
-                SELECT 1
-                FROM ClipboardHistory
-                WHERE contentHash = @hash
-                LIMIT 1
-                """;
-
-            await using var cmd = new SqliteCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@hash", contentHash);
-
-            var result = await cmd.ExecuteScalarAsync(cancellationToken);
-            return result != null;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private async Task ProcessWriteQueueAsync()
     {
         try
@@ -480,33 +426,22 @@ internal sealed class ClipboardHistoryService
             await InitializeDatabaseAsync(cancellationToken);
 
             var contentHash = ComputeContentHash(content);
-            var recentHash = await GetRecentEntryHashAsync(cancellationToken);
-
-            if (recentHash == contentHash)
-            {
-                Console.WriteLine("[clipboard-history.add] Skipped: duplicate of most recent entry");
-                return;
-            }
-
-            if (await EntryExistsByHashAsync(contentHash, cancellationToken))
-            {
-                Console.WriteLine("[clipboard-history.add] Skipped: duplicate already exists in history");
-                return;
-            }
-
             var timestamp = DateTime.UtcNow.ToString("O");
 
             await using var conn = await OpenConnectionAsync(SqliteOpenMode.ReadWriteCreate, cancellationToken);
+            using var transaction = conn.BeginTransaction();
 
-            const string sql = """
-                INSERT INTO ClipboardHistory (content, contentHash, timestamp)
-                VALUES (@content, @hash, @timestamp)
-                """;
-
-            await using var cmd = new SqliteCommand(sql, conn);
-            cmd.Parameters.Add("@content", SqliteType.Text).Value = content;
-            cmd.Parameters.Add("@hash", SqliteType.Text).Value = contentHash;
-            cmd.Parameters.Add("@timestamp", SqliteType.Text).Value = timestamp;
+            // Re-insert an existing item so it receives a new id as well as a new
+            // timestamp. This moves it to the top for both id- and timestamp-based
+            // history queries and removes any legacy duplicates for the same content.
+            await using (var deleteCmd = new SqliteCommand(
+                "DELETE FROM ClipboardHistory WHERE contentHash = @hash",
+                conn,
+                transaction))
+            {
+                deleteCmd.Parameters.Add("@hash", SqliteType.Text).Value = contentHash;
+                await deleteCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
 
             // Diagnostic: log the UTF-8 bytes of the content (base64, truncated) to help verify encoding
             try
@@ -521,7 +456,18 @@ internal sealed class ClipboardHistoryService
                 // Ignore diagnostics failures
             }
 
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+            const string insertSql = """
+                INSERT INTO ClipboardHistory (content, contentHash, timestamp)
+                VALUES (@content, @hash, @timestamp)
+                """;
+
+            await using var insertCmd = new SqliteCommand(insertSql, conn, transaction);
+            insertCmd.Parameters.Add("@content", SqliteType.Text).Value = content;
+            insertCmd.Parameters.Add("@hash", SqliteType.Text).Value = contentHash;
+            insertCmd.Parameters.Add("@timestamp", SqliteType.Text).Value = timestamp;
+
+            await insertCmd.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             Console.WriteLine($"[clipboard-history.add] Entry added successfully (hash={contentHash[..8]})");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
