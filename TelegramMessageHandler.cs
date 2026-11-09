@@ -400,7 +400,7 @@ internal static class TelegramMessageHandler
                 case "/help":
                     await telegram.SendMessageInChunksAsync(
                         chatId,
-                        BuildHelpText(profile),
+                        await BuildHelpTextAsync(profile, cancellationToken),
                         cancellationToken);
                     return;
 
@@ -2388,9 +2388,11 @@ internal static class TelegramMessageHandler
         return $"The user sent a Telegram {storedAttachment.Kind} attachment named '{storedAttachment.DisplayName}' with no caption. Inspect the attachment, describe the relevant contents briefly, and ask a concise follow-up if their intent is unclear.";
     }
 
-    private static string BuildHelpText(PersonalityProfile profile)
+    private static async Task<string> BuildHelpTextAsync(
+        PersonalityProfile profile,
+        CancellationToken cancellationToken)
     {
-            var commandRows = new[]
+        var commandRows = new[]
         {
             FormatCommandLine("/start", "welcome message", EmojiPalette.Wave, profile.UseEmoji),
             FormatCommandLine("/help", "show commands", EmojiPalette.Commands, profile.UseEmoji),
@@ -2419,6 +2421,9 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/personality ...", "adjust tone and emoji settings", EmojiPalette.Personality, profile.UseEmoji)
         };
 
+        var talonCommands = await VoiceAdminSearchService.FromEnvironment()
+            .ListTalonCommandsForHelpAsync(cancellationToken);
+
         var personalityStatus = GetPersonalityStatusText(profile);
         var commandHeader = EmojiPalette.Wrap("Commands:", EmojiPalette.Commands, profile.UseEmoji);
 
@@ -2428,6 +2433,8 @@ internal static class TelegramMessageHandler
             string.Empty,
             commandHeader,
             string.Join("\n", commandRows),
+            string.Empty,
+            talonCommands,
             string.Empty,
             "You can also send a Telegram photo or document directly. It will be forwarded to Copilot as an attachment.",
             string.Empty,
