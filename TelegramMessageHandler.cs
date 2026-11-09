@@ -439,7 +439,7 @@ internal static class TelegramMessageHandler
                 case "/help":
                     await telegram.SendMessageInChunksAsync(
                         chatId,
-                        BuildHelpText(profile),
+                        await BuildHelpTextAsync(profile, cancellationToken),
                         cancellationToken);
                     return;
 
@@ -2427,7 +2427,7 @@ internal static class TelegramMessageHandler
         return $"The user sent a Telegram {storedAttachment.Kind} attachment named '{storedAttachment.DisplayName}' with no caption. Inspect the attachment, describe the relevant contents briefly, and ask a concise follow-up if their intent is unclear.";
     }
 
-    private static string BuildHelpText(PersonalityProfile profile)
+    private static async Task<string> BuildHelpTextAsync(PersonalityProfile profile, CancellationToken cancellationToken)
     {
             var commandRows = new[]
         {
@@ -2466,6 +2466,47 @@ internal static class TelegramMessageHandler
             FormatCommandLine("/personality ...", "adjust tone and emoji settings", EmojiPalette.Personality, profile.UseEmoji)
         };
 
+        var supportedSlashCommands = commandRows
+            .Select(row => Regex.Match(row, @"/[a-z][a-z0-9_]*", RegexOptions.IgnoreCase).Value)
+            .Where(command => !string.IsNullOrWhiteSpace(command))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var voiceCommandAliases = await VoiceAdminSearchService.FromEnvironment()
+            .ListTelegramSlashCommandVoiceCommandsForHelpAsync(supportedSlashCommands, cancellationToken);
+
+        // Put each spoken phrase directly beside the slash command it invokes.
+        var aliasesBySlashCommand = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match match in Regex.Matches(
+            voiceCommandAliases,
+            @"•\s*(?<spoken>.*?)\s+→\s*(?<slash>/[a-z][a-z0-9_]*)",
+            RegexOptions.IgnoreCase))
+        {
+            var spokenCommand = match.Groups["spoken"].Value.Trim();
+            var slashCommand = match.Groups["slash"].Value.Trim();
+            if (string.IsNullOrWhiteSpace(spokenCommand))
+                continue;
+
+            if (!aliasesBySlashCommand.TryGetValue(slashCommand, out var aliases))
+            {
+                aliases = new List<string>();
+                aliasesBySlashCommand[slashCommand] = aliases;
+            }
+
+            if (!aliases.Contains(spokenCommand, StringComparer.OrdinalIgnoreCase))
+                aliases.Add(spokenCommand);
+        }
+
+        commandRows = commandRows
+            .Select(row =>
+            {
+                var slashCommand = Regex.Match(row, @"/[a-z][a-z0-9_]*", RegexOptions.IgnoreCase).Value;
+                return aliasesBySlashCommand.TryGetValue(slashCommand, out var aliases)
+                    ? $"{row}  🎤 {string.Join(", ", aliases)}"
+                    : row;
+            })
+            .ToArray();
+
         var personalityStatus = GetPersonalityStatusText(profile);
         var commandHeader = EmojiPalette.Wrap("Commands:", EmojiPalette.Commands, profile.UseEmoji);
 
@@ -2482,7 +2523,7 @@ internal static class TelegramMessageHandler
             "/personality emoji on|off|subtle|moderate|expressive",
             "/personality tone friendly|professional|witty|calm|irreverent",
             "/personality reset"
-        });
+        }.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
     private static bool TryParsePronunciationPayload(string payload, out string originalWord, out string replacementWord, out string? ipa)
