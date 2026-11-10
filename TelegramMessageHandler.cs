@@ -2497,6 +2497,56 @@ internal static class TelegramMessageHandler
                 aliases.Add(spokenCommand);
         }
 
+        // Keep the help output aligned with apps/telegram.talon. The Voice Admin
+        // database may not yet have imported newly added Talon commands, so merge
+        // the known Telegram mappings here with any aliases discovered in the database.
+        var talonAliasesBySlashCommand = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["/start"] = ["start session"],
+            ["/help"] = ["list commands", "would help", "word help"],
+            ["/reset"] = ["reset session"],
+            ["/sound_off"] = ["mute assistant"],
+            ["/sound_on"] = ["unmute assistant"],
+            ["/sound_status"] = ["assistant sound status"],
+            ["/dnd_on"] = ["do not disturb on"],
+            ["/dnd_off"] = ["do not disturb off"],
+            ["/dnd_status"] = ["do not disturb status"],
+            ["/do_not_disturb_on"] = ["do not disturb enable"],
+            ["/do_not_disturb_off"] = ["do not disturb disable"],
+            ["/gmail_status"] = ["check gmail status"],
+            ["/calendar_status"] = ["check calendar status"],
+            ["/clipboard_status"] = ["check clipboard status"],
+            ["/clipboard_search"] = ["search clipboard"],
+            ["/clipboard_today"] = ["view clipboard today"],
+            ["/calendar_events"] = ["list calendar events"],
+            ["/calendar_create"] = ["create calendar event"],
+            ["/authorize"] = ["authorize google"],
+            ["/create_event"] = ["create scheduled test event"],
+            ["/fable"] = ["check fable availability"],
+            ["/podcasts"] = ["list podcasts"],
+            ["/play_podcast"] = ["play podcast"],
+            ["/add_podcast"] = ["add podcast"],
+            ["/devtips"] = ["developer tips"],
+            ["/natural"] = ["natural command"],
+            ["/nc"] = ["natural commands"],
+            ["/tts_test"] = ["test text to speech"]
+        };
+
+        foreach (var (slashCommand, spokenCommands) in talonAliasesBySlashCommand)
+        {
+            if (!aliasesBySlashCommand.TryGetValue(slashCommand, out var aliases))
+            {
+                aliases = new List<string>();
+                aliasesBySlashCommand[slashCommand] = aliases;
+            }
+
+            foreach (var spokenCommand in spokenCommands)
+            {
+                if (!aliases.Contains(spokenCommand, StringComparer.OrdinalIgnoreCase))
+                    aliases.Add(spokenCommand);
+            }
+        }
+
         commandRows = commandRows
             .Select(row =>
             {
