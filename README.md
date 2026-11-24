@@ -406,3 +406,8 @@ The assistant can attach existing local files from these folders (when they exis
 - Files larger than `TELEGRAM_ATTACHMENT_MAX_BYTES` are rejected before they are sent to Copilot.
 
 For safety, it only allows files inside those folders (including subfolders when requested), blocks path traversal outside the allowed roots, and applies a local max file size cap (48 MB).
+
+
+## Voice-controlled Windows desktop use
+
+Bob can inspect visible Windows desktop windows and, when explicitly enabled, use mouse and keyboard automation through the existing Copilot custom tools. Physical desktop input is disabled by default. To opt in on the Windows host, set `DESKTOP_AUTOMATION_ENABLED=true` in the process environment and restart Bob. Enabled input actions are recorded in the application console log; typed text is not logged. Keep consequential actions behind explicit user confirmation and prefer dedicated application APIs over screen automation. See [the feasibility, safety, and end-to-end test notes](docs/voice-controlled-computer-use-feasibility.md).
