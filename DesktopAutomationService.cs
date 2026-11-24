@@ -5,6 +5,14 @@ using System.Text;
 internal sealed class DesktopAutomationService
 {
     private const int SwRestore = 9;
+    private static readonly bool AutomationEnabled =
+        bool.TryParse(Environment.GetEnvironmentVariable("DESKTOP_AUTOMATION_ENABLED"), out var enabled) && enabled;
+
+    private static string DisabledMessage =>
+        "Desktop input is disabled. Set DESKTOP_AUTOMATION_ENABLED=true on the Windows host and restart Bob to enable mouse/keyboard/window actions.";
+
+    private static void AuditAction(string action) =>
+        Console.WriteLine($"[desktop-automation] {DateTimeOffset.UtcNow:O} action={action}");
     private const uint InputMouse = 0;
     private const uint InputKeyboard = 1;
     private const uint KeyeventfKeyup = 0x0002;
@@ -20,9 +28,14 @@ internal sealed class DesktopAutomationService
 
     public string GetSetupStatusText()
     {
-        return OperatingSystem.IsWindows()
-            ? "Desktop automation is available on this Windows host."
-            : "Desktop automation is only supported on Windows hosts.";
+        if (!OperatingSystem.IsWindows())
+        {
+            return "Desktop automation is only supported on Windows hosts.";
+        }
+
+        return AutomationEnabled
+            ? "Desktop automation is enabled on this Windows host. Input actions are audited to the application log."
+            : $"Desktop observation is available; desktop input is disabled by default. {DisabledMessage}";
     }
 
     public Task<string> GetActiveWindowAsync()
@@ -68,6 +81,7 @@ internal sealed class DesktopAutomationService
 
     public Task<string> FocusWindowAsync(string windowQuery)
     {
+        if (!AutomationEnabled) return Task.FromResult(DisabledMessage);
         if (!OperatingSystem.IsWindows())
         {
             return Task.FromResult(GetSetupStatusText());
@@ -87,6 +101,7 @@ internal sealed class DesktopAutomationService
         var target = matches[0];
         try
         {
+            AuditAction("focus_window");
             ShowWindow(target.Handle, SwRestore);
             var result = SetForegroundWindow(target.Handle);
             return Task.FromResult(result
@@ -101,6 +116,7 @@ internal sealed class DesktopAutomationService
 
     public Task<string> ClickAsync(int x, int y, string button = "left", int clickCount = 1)
     {
+        if (!AutomationEnabled) return Task.FromResult(DisabledMessage);
         if (!OperatingSystem.IsWindows())
         {
             return Task.FromResult(GetSetupStatusText());
@@ -119,6 +135,7 @@ internal sealed class DesktopAutomationService
 
         try
         {
+            AuditAction("click");
             SetCursorPos(x, y);
             for (var i = 0; i < clickCount; i++)
             {
@@ -136,6 +153,7 @@ internal sealed class DesktopAutomationService
 
     public Task<string> ScrollAsync(int delta)
     {
+        if (!AutomationEnabled) return Task.FromResult(DisabledMessage);
         if (!OperatingSystem.IsWindows())
         {
             return Task.FromResult(GetSetupStatusText());
@@ -143,6 +161,7 @@ internal sealed class DesktopAutomationService
 
         try
         {
+            AuditAction("scroll");
             SendMouseWheel(delta);
             return Task.FromResult($"Scrolled the mouse wheel by {delta}.");
         }
@@ -154,6 +173,7 @@ internal sealed class DesktopAutomationService
 
     public Task<string> TypeTextAsync(string text)
     {
+        if (!AutomationEnabled) return Task.FromResult(DisabledMessage);
         if (!OperatingSystem.IsWindows())
         {
             return Task.FromResult(GetSetupStatusText());
@@ -164,8 +184,14 @@ internal sealed class DesktopAutomationService
             return Task.FromResult("No text was provided to type.");
         }
 
+        if (text.Length > 4000)
+        {
+            return Task.FromResult("Text input is limited to 4,000 characters per action.");
+        }
+
         try
         {
+            AuditAction($"type_text characters={text.Length}");
             foreach (var ch in text)
             {
                 SendUnicodeChar(ch);
@@ -181,6 +207,7 @@ internal sealed class DesktopAutomationService
 
     public Task<string> PressKeysAsync(string keySequence)
     {
+        if (!AutomationEnabled) return Task.FromResult(DisabledMessage);
         if (!OperatingSystem.IsWindows())
         {
             return Task.FromResult(GetSetupStatusText());
@@ -191,8 +218,14 @@ internal sealed class DesktopAutomationService
             return Task.FromResult("No key sequence was provided.");
         }
 
+        if (keySequence.Length > 200)
+        {
+            return Task.FromResult("Key sequences are limited to 200 characters per action.");
+        }
+
         try
         {
+            AuditAction("press_keys");
             var steps = keySequence.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             foreach (var step in steps)
             {
@@ -209,6 +242,7 @@ internal sealed class DesktopAutomationService
 
     public Task<string> MoveMouseAsync(int x, int y)
     {
+        if (!AutomationEnabled) return Task.FromResult(DisabledMessage);
         if (!OperatingSystem.IsWindows())
         {
             return Task.FromResult(GetSetupStatusText());
@@ -216,6 +250,7 @@ internal sealed class DesktopAutomationService
 
         try
         {
+            AuditAction("move_mouse");
             SetCursorPos(x, y);
             return Task.FromResult($"Moved mouse to ({x}, {y}).");
         }
