@@ -1284,7 +1284,7 @@ internal static class TelegramMessageHandler
             // Only remove the cached session when the error indicates session state is invalid.
             if (ShouldRecycleSessionAfterError(ex) && sessions.TryRemove(chatId, out var failedSession))
             {
-                await failedSession.DisposeAsync();
+                await BobConversationSession.InvalidateAsync(failedSession);
             }
 
             try
@@ -1316,25 +1316,6 @@ internal static class TelegramMessageHandler
         PersonalityProfile profile,
         ConcurrentDictionary<long, List<string>> conversationHistories)
     {
-        var currentSig = string.Join(";", assistantTools.Select(t => t.Name ?? string.Empty).OrderBy(n => n));
-
-        if (sessions.TryGetValue(chatId, out var existingSession))
-        {
-            if (SessionToolSignatures.TryGetValue(chatId, out var knownSig) && string.Equals(knownSig, currentSig, StringComparison.Ordinal))
-            {
-                Console.WriteLine($"[copilot.session.reuse] chat={chatId}");
-                return existingSession;
-            }
-
-            Console.WriteLine($"[copilot.session.tools_changed] chat={chatId} disposing stale session due to toolset change");
-            if (sessions.TryRemove(chatId, out var removed))
-            {
-                await removed.DisposeAsync();
-            }
-
-            SessionToolSignatures.TryRemove(chatId, out _);
-        }
-
         var sendFileTool = AIFunctionFactory.Create(
             async (
                 [Description("Folder alias: documents, desktop, downloads, pictures, videos, repo, repos")] string folderAlias,
@@ -1359,52 +1340,30 @@ internal static class TelegramMessageHandler
             "Send a file from a known folder to the current Telegram chat. Provide folder alias and relative file path.");
 
         var sessionTools = assistantTools.Append(sendFileTool.AsDeclarationOnly()).ToList();
-
         var systemPrompt = SystemPromptBuilder.Build(profile);
         if (conversationHistories.TryGetValue(chatId, out var previousHistory) && previousHistory.Count > 0)
         {
             var snippet = string.Join("\n", previousHistory.TakeLast(12));
-            systemPrompt += "\n\n" +
-                "[NOTE: previous conversation context preserved for this chat]\n" +
-                snippet;
+            systemPrompt += "\n\n[NOTE: previous conversation context preserved for this chat]\n" + snippet;
         }
 
         var configuredModel = SystemPromptBuilder.GetConfiguredModel();
-        var createdSession = await copilotClient.CreateSessionAsync(new SessionConfig
-        {
-            OnPermissionRequest = PermissionHandler.ApproveAll,
-            Model = configuredModel,
-            Tools = sessionTools,
-            SystemMessage = new SystemMessageConfig
+        var session = await BobConversationSession.GetOrCreateAsync(
+            copilotClient,
+            sessionTools,
+            new SessionConfig
             {
-                Content = systemPrompt
-            }
-        });
+                OnPermissionRequest = PermissionHandler.ApproveAll,
+                Model = configuredModel,
+                Tools = sessionTools,
+                Memory = new MemoryConfiguration { Enabled = true },
+                SystemMessage = new SystemMessageConfig { Content = systemPrompt }
+            },
+            context: $"telegram-chat-{chatId}");
 
-        try
-        {
-            await ModelSelectionGuard.EnsureSessionUsesConfiguredModelAsync(
-                createdSession,
-                configuredModel,
-                context: $"telegram-chat-{chatId}",
-                CancellationToken.None);
-        }
-        catch
-        {
-            await createdSession.DisposeAsync();
-            throw;
-        }
-
-        if (sessions.TryAdd(chatId, createdSession))
-        {
-            SessionToolSignatures[chatId] = currentSig;
-            Console.WriteLine($"[copilot.session.create] chat={chatId}");
-            return createdSession;
-        }
-
-        Console.WriteLine($"[copilot.session.race] chat={chatId} another session already exists; disposing newly created duplicate");
-        await createdSession.DisposeAsync();
-        return sessions[chatId];
+        sessions[chatId] = session;
+        SessionToolSignatures[chatId] = string.Join(";", sessionTools.Select(t => t.Name ?? string.Empty).OrderBy(n => n));
+        return session;
     }
 
     private static string NormalizeConfiguredModelSignoff(string content)
@@ -1437,7 +1396,7 @@ internal static class TelegramMessageHandler
 
         try
         {
-            var assistantReply = await session.SendAndWaitAsync(messageOptions, null, cancellationToken);
+            var assistantReply = await BobConversationSession.SendAndWaitAsync(session, messageOptions, cancellationToken);
             return assistantReply?.Data.Content?.Trim();
         }
         catch (Exception ex) when (IsSendTimeoutError(ex))
@@ -1451,13 +1410,13 @@ internal static class TelegramMessageHandler
 
             if (sessions.TryRemove(chatId, out var timedOutSession))
             {
-                await timedOutSession.DisposeAsync();
+                await BobConversationSession.InvalidateAsync(timedOutSession);
             }
 
             await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
 
             var recreatedSession = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile, conversationHistories);
-            var assistantReply = await recreatedSession.SendAndWaitAsync(messageOptions, null, cancellationToken);
+            var assistantReply = await BobConversationSession.SendAndWaitAsync(recreatedSession, messageOptions, cancellationToken);
             return assistantReply?.Data.Content?.Trim();
         }
         catch (Exception ex) when (IsSessionNotFoundError(ex))
@@ -1466,7 +1425,7 @@ internal static class TelegramMessageHandler
 
             if (sessions.TryRemove(chatId, out var staleSession))
             {
-                await staleSession.DisposeAsync();
+                await BobConversationSession.InvalidateAsync(staleSession);
             }
 
             var recreatedSession = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile, conversationHistories);
