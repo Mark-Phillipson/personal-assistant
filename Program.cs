@@ -951,16 +951,19 @@ static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFal
             actionsSnapshot = [.. deviceActions];
         }
 
-        if (sendToTelegram && telegram is not null && storedChatId.HasValue)
+        if (sendToTelegram)
         {
-            await telegram.SendMessageInChunksAsync(storedChatId.Value, content, cancellationToken);
-            Console.WriteLine($"[command-api] AI response sent to Telegram: {content[..Math.Min(80, content.Length)]}...");
+            if (telegram is not null && storedChatId.HasValue)
+            {
+                await telegram.SendMessageInChunksAsync(storedChatId.Value, content, cancellationToken);
+                Console.WriteLine($"[command-api] AI response sent to Telegram: {content[..Math.Min(80, content.Length)]}...");
+            }
         }
         else
         {
             try
             {
-                await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken, forceTts: true);
+                await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken, true);
             }
             catch (Exception ttsEx)
             {
