@@ -17,7 +17,7 @@ import urllib.request
 
 mod = Module()
 
-BOB_TALON_API_URL = "http://localhost:5000/api/talon/command"
+BOB_TALON_API_URL = "http://localhost:5077/api/talon/command"
 
 
 def _send_bob_command_async(prompt: str):
@@ -99,7 +99,7 @@ Example spoken command:
 ## 3) Requirements and behaviour
 
 - Start Bob normally in Telegram mode and leave it running.
-- The default local API address is `http://localhost:5000/`; change `BOB_TALON_API_URL` if you configured a different `ANDROID_COMPANION_API_PREFIX`.
+- The default local API address is `http://localhost:5077/`; change `BOB_TALON_API_URL` if you configured a different `ANDROID_COMPANION_API_PREFIX`.
 - Talon uses the dedicated `POST /api/talon/command` route. It bypasses Android phone-command heuristics and sends the dictated text directly to Copilot.
 - The Talon route accepts loopback requests only when an Android device token is configured. It does not expose that token to the Talon script.
 - Talon requests are not echoed to Telegram. Telegram messages continue to receive their normal Telegram replies.
