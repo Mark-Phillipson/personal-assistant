@@ -855,7 +855,7 @@ internal static class TelegramMessageHandler
                     var removed = sessions.TryRemove(chatId, out var removedSession);
                     if (removed)
                     {
-                        await removedSession.DisposeAsync();
+                        await BobConversationSession.InvalidateAsync(removedSession);
                     }
 
                     Console.WriteLine($"[copilot.session.reset] chat={chatId} removed={removed}");
@@ -1429,7 +1429,7 @@ internal static class TelegramMessageHandler
             }
 
             var recreatedSession = await GetOrCreateSessionAsync(chatId, telegram, knownFolderExplorerService, copilotClient, sessions, assistantTools, profile, conversationHistories);
-            var assistantReply = await recreatedSession.SendAndWaitAsync(messageOptions, null, cancellationToken);
+            var assistantReply = await BobConversationSession.SendAndWaitAsync(recreatedSession, messageOptions, cancellationToken);
             return assistantReply?.Data.Content?.Trim();
         }
     }
@@ -2791,7 +2791,7 @@ internal static class TelegramMessageHandler
 
         if (sessions.TryRemove(chatId, out var removedSession))
         {
-            await removedSession.DisposeAsync();
+            await BobConversationSession.InvalidateAsync(removedSession);
         }
 
         await telegram.SendMessageInChunksAsync(
