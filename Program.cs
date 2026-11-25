@@ -581,7 +581,7 @@ static async Task RunCliAsync(
 
     try
     {
-        var assistantReply = await session.SendAndWaitAsync(new MessageOptions { Prompt = prompt }, null, cancellationToken);
+        var assistantReply = await BobConversationSession.SendAndWaitAsync(session, new MessageOptions { Prompt = prompt }, cancellationToken);
         var content = assistantReply?.Data.Content?.Trim();
 
         if (string.IsNullOrWhiteSpace(content))
@@ -813,24 +813,22 @@ static async Task<CopilotSession> CreateConfiguredSessionAsync(
     PersonalityProfile profile)
 {
     var configuredModel = SystemPromptBuilder.GetConfiguredModel();
-    var session = await copilotClient.CreateSessionAsync(new SessionConfig
-    {
-        OnPermissionRequest = PermissionHandler.ApproveAll,
-        Model = configuredModel,
-        Tools = assistantTools,
-        SystemMessage = new SystemMessageConfig
+    return await BobConversationSession.GetOrCreateAsync(
+        copilotClient,
+        assistantTools,
+        new SessionConfig
         {
-            Content = SystemPromptBuilder.Build(profile)
-        }
-    });
-
-    await ModelSelectionGuard.EnsureSessionUsesConfiguredModelAsync(
-        session,
-        configuredModel,
-        context: "cli",
+            OnPermissionRequest = PermissionHandler.ApproveAll,
+            Model = configuredModel,
+            Tools = assistantTools,
+            Memory = new MemoryConfiguration { Enabled = true },
+            SystemMessage = new SystemMessageConfig
+            {
+                Content = SystemPromptBuilder.Build(profile)
+            }
+        },
+        context: "shared-bob",
         CancellationToken.None);
-
-    return session;
 }
 
 static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFallbackAsync(
@@ -902,7 +900,7 @@ static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFal
 
     try
     {
-        var reply = await session.SendAndWaitAsync(new MessageOptions { Prompt = command }, null, cancellationToken);
+        var reply = await BobConversationSession.SendAndWaitAsync(session, new MessageOptions { Prompt = command }, cancellationToken);
         var content = reply?.Data.Content?.Trim();
         List<CommandApiServer.CommandAction> actionsSnapshot;
 
@@ -927,7 +925,7 @@ static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFal
     }
     finally
     {
-        await session.DisposeAsync();
+        // Do not dispose the shared session: Telegram and Talon use this same conversation.
     }
 }
 
