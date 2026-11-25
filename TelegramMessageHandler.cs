@@ -853,10 +853,7 @@ internal static class TelegramMessageHandler
 
                 case "/reset":
                     var removed = sessions.TryRemove(chatId, out var removedSession);
-                    if (removed)
-                    {
-                        await BobConversationSession.InvalidateAsync(removedSession);
-                    }
+                    await BobConversationSession.ResetAsync(copilotClient, removed ? removedSession : null);
 
                     Console.WriteLine($"[copilot.session.reset] chat={chatId} removed={removed}");
 
