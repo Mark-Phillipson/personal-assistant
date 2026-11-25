@@ -54,8 +54,7 @@ internal static class BobConversationSession
                     new ResumeSessionConfig
                     {
                         OnPermissionRequest = PermissionHandler.ApproveAll
-                    },
-                    cancellationToken);
+                    });
 
                 // Tool callbacks live in the host process, so re-register them
                 // whenever the persisted conversation is resumed.
@@ -66,7 +65,7 @@ internal static class BobConversationSession
             {
                 createConfig.SessionId = SessionId;
                 createConfig.Tools = tools;
-                session = await client.CreateSessionAsync(createConfig, cancellationToken);
+                session = await client.CreateSessionAsync(createConfig);
                 Console.WriteLine($"[copilot.session.create] id={SessionId} context={context}");
             }
 
