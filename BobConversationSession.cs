@@ -121,9 +121,39 @@ internal static class BobConversationSession
             cancellationToken);
     }
 
+    public static async Task ResetAsync(CopilotClient client, CopilotSession? session = null)
+    {
+        await InitializationGate.WaitAsync();
+        await TurnGate.WaitAsync();
+        try
+        {
+            var current = _session;
+            _session = null;
+            _owner = null;
+
+            if (current is not null)
+            {
+                await current.DisposeAsync();
+            }
+            else if (session is not null)
+            {
+                await session.DisposeAsync();
+            }
+
+            await client.DeleteSessionAsync(SessionId);
+            Console.WriteLine($"[copilot.session.reset] id={SessionId}");
+        }
+        finally
+        {
+            TurnGate.Release();
+            InitializationGate.Release();
+        }
+    }
+
     public static async Task InvalidateAsync(CopilotSession session)
     {
         await InitializationGate.WaitAsync();
+        await TurnGate.WaitAsync();
         try
         {
             if (ReferenceEquals(_session, session))
@@ -136,6 +166,7 @@ internal static class BobConversationSession
         }
         finally
         {
+            TurnGate.Release();
             InitializationGate.Release();
         }
     }
