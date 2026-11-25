@@ -627,7 +627,7 @@ static async Task RunCliAsync(
     }
     finally
     {
-        await session.DisposeAsync();
+        await BobConversationSession.InvalidateAsync(session);
     }
 }
 
@@ -800,7 +800,7 @@ static async Task RunTelegramAsync(
     {
         foreach (var session in sessions.Values)
         {
-            await session.DisposeAsync();
+            await BobConversationSession.InvalidateAsync(session);
         }
     }
 }
