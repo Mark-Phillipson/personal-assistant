@@ -9,7 +9,7 @@ internal static class CommandApiServer
         CancellationToken cancellationToken,
         Func<string, bool, CancellationToken, Task<AiFallbackResponse>>? aiFallback = null)
     {
-        var prefix = EnvironmentSettings.ReadString("ANDROID_COMPANION_API_PREFIX", "http://localhost:5000/");
+        var prefix = EnvironmentSettings.ReadString("ANDROID_COMPANION_API_PREFIX", "http://localhost:5077/");
         var expectedDeviceToken = EnvironmentSettings.ReadOptionalString("ANDROID_DEVICE_TOKEN");
 
         if (!prefix.EndsWith("/"))
