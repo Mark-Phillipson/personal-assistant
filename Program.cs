@@ -263,6 +263,38 @@ var computerToolsService = new ComputerToolsService();
 var desktopAutomationService = new DesktopAutomationService();
 var assistantTools = AssistantToolsFactory.Build(gmailService, calendarService, naturalCommandsService, clipboardService, tickerNotificationService, dadJokeService, webBrowserService, voiceAdminService, voiceAdminSearchService, windowsFocusAssistService, genericDatabaseService, talonUserDirectoryService, knownFolderExplorerService, podcastSubscriptionsService, clipboardHistoryService, gitHubTodosService, computerToolsService, desktopAutomationService);
 
+// This tool is part of the shared toolset so it remains available regardless of
+// whether Telegram, Talon/CLI or Android was the first transport to open Bob's session.
+assistantTools.Add(AIFunctionFactory.Create(
+    async (string folderAlias, string relativeFilePath) =>
+    {
+        var token = EnvironmentSettings.ReadOptionalString("TELEGRAM_BOT_TOKEN");
+        var chatId = await telegramChatIdStore.LoadAsync();
+        if (string.IsNullOrWhiteSpace(token) || !chatId.HasValue)
+        {
+            return "Telegram is not configured or no destination chat has been saved yet.";
+        }
+
+        if (!knownFolderExplorerService.TryResolveFilePath(folderAlias, relativeFilePath, out var resolvedPath))
+        {
+            return $"File not found or path not allowed: {relativeFilePath} (alias {folderAlias}).";
+        }
+
+        try
+        {
+            using var telegramClient = new TelegramApiClient(token);
+            await telegramClient.SendDocumentAsync(chatId.Value, resolvedPath, CancellationToken.None);
+            return $"Sent file '{relativeFilePath}' from '{folderAlias}' to Telegram.";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to send file to Telegram: {ex.Message}";
+        }
+    },
+    "send_file_to_telegram",
+    "Send a file from a known folder to the saved Telegram chat. Provide folder alias and relative file path.")
+    .AsDeclarationOnly());
+
 if (args.Any(arg => string.Equals(arg, "--desktop-tools-smoke", StringComparison.OrdinalIgnoreCase)))
 {
     await RunDesktopAutomationSmokeTestAsync();
