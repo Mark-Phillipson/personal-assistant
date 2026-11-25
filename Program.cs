@@ -347,13 +347,15 @@ if (fableRequestMonitorService.IsConfigured && FableRequestMonitorService.Should
 using var apiServerCancellation = new CancellationTokenSource();
 var apiServerTask = CommandApiServer.StartAsync(
     apiServerCancellation.Token,
-    aiFallback: (command, ct) => HandleAndroidCompanionFallbackAsync(
+    aiFallback: (command, sendToTelegram, ct) => HandleAndroidCompanionFallbackAsync(
         command,
+        sendToTelegram,
         ct,
         copilotClient,
         assistantTools,
         defaultPersonality,
-        telegramChatIdStore));
+        telegramChatIdStore,
+        textToSpeechService));
 
 try
 {
@@ -865,11 +867,13 @@ static async Task<CopilotSession> CreateConfiguredSessionAsync(
 
 static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFallbackAsync(
     string command,
+    bool sendToTelegram,
     CancellationToken cancellationToken,
     CopilotClient copilotClient,
     ICollection<AIFunctionDeclaration> assistantTools,
     PersonalityProfile defaultPersonality,
-    TelegramChatIdStore telegramChatIdStore)
+    TelegramChatIdStore telegramChatIdStore,
+    TextToSpeechService textToSpeechService)
 {
     var telegramToken = EnvironmentSettings.ReadOptionalString("TELEGRAM_BOT_TOKEN");
     var storedChatId = telegramToken is not null ? await telegramChatIdStore.LoadAsync() : null;
@@ -877,7 +881,7 @@ static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFal
         ? new TelegramApiClient(telegramToken)
         : null;
 
-    if (telegram is not null && storedChatId.HasValue)
+    if (sendToTelegram && telegram is not null && storedChatId.HasValue)
     {
         await telegram.SendMessageInChunksAsync(
             storedChatId.Value,
@@ -947,12 +951,26 @@ static async Task<CommandApiServer.AiFallbackResponse> HandleAndroidCompanionFal
             actionsSnapshot = [.. deviceActions];
         }
 
-        if (telegram is not null && storedChatId.HasValue)
+        if (sendToTelegram && telegram is not null && storedChatId.HasValue)
         {
             await telegram.SendMessageInChunksAsync(storedChatId.Value, content, cancellationToken);
+            Console.WriteLine($"[command-api] AI response sent to Telegram: {content[..Math.Min(80, content.Length)]}...");
+        }
+        else
+        {
+            try
+            {
+                await textToSpeechService.TrySpeakPreviewAsync(content, cancellationToken, forceTts: true);
+            }
+            catch (Exception ttsEx)
+            {
+                Console.Error.WriteLine($"[command-api] Talon TTS failed: {ttsEx.Message}");
+            }
+
+            Console.WriteLine($"[command-api] AI response returned to Talon: {content[..Math.Min(80, content.Length)]}...");
         }
 
-        Console.WriteLine($"[command-api] AI response sent to Telegram: {content[..Math.Min(80, content.Length)]}... | Copilot actions: {actionsSnapshot.Count}");
+        Console.WriteLine($"[command-api] Copilot actions: {actionsSnapshot.Count}");
         return new CommandApiServer.AiFallbackResponse(content, actionsSnapshot, true);
     }
     finally
