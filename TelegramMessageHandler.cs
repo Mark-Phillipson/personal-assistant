@@ -1313,30 +1313,8 @@ internal static class TelegramMessageHandler
         PersonalityProfile profile,
         ConcurrentDictionary<long, List<string>> conversationHistories)
     {
-        var sendFileTool = AIFunctionFactory.Create(
-            async (
-                [Description("Folder alias: documents, desktop, downloads, pictures, videos, repo, repos")] string folderAlias,
-                [Description("Relative file path inside the selected folder root")] string relativeFilePath) =>
-            {
-                try
-                {
-                    if (!folderService.TryResolveFilePath(folderAlias, relativeFilePath, out var resolvedPath))
-                    {
-                        return $"File not found or path not allowed: {relativeFilePath} (alias {folderAlias}).";
-                    }
-
-                    await telegramClient.SendDocumentAsync(chatId, resolvedPath, CancellationToken.None);
-                    return $"Sent file '{relativeFilePath}' from '{folderAlias}' to Telegram chat.";
-                }
-                catch (Exception ex)
-                {
-                    return $"Failed to send file: {ex.Message}";
-                }
-            },
-            "send_file_to_telegram",
-            "Send a file from a known folder to the current Telegram chat. Provide folder alias and relative file path.");
-
-        var sessionTools = assistantTools.Append(sendFileTool.AsDeclarationOnly()).ToList();
+        // All transports register the same tool set. Telegram-specific actions
+        // resolve the saved Telegram destination at invocation time.
         var systemPrompt = SystemPromptBuilder.Build(profile);
         if (conversationHistories.TryGetValue(chatId, out var previousHistory) && previousHistory.Count > 0)
         {
@@ -1347,19 +1325,19 @@ internal static class TelegramMessageHandler
         var configuredModel = SystemPromptBuilder.GetConfiguredModel();
         var session = await BobConversationSession.GetOrCreateAsync(
             copilotClient,
-            sessionTools,
+            assistantTools,
             new SessionConfig
             {
                 OnPermissionRequest = PermissionHandler.ApproveAll,
                 Model = configuredModel,
-                Tools = sessionTools,
+                Tools = assistantTools,
                 Memory = new MemoryConfiguration { Enabled = true },
                 SystemMessage = new SystemMessageConfig { Content = systemPrompt }
             },
             context: $"telegram-chat-{chatId}");
 
         sessions[chatId] = session;
-        SessionToolSignatures[chatId] = string.Join(";", sessionTools.Select(t => t.Name ?? string.Empty).OrderBy(n => n));
+        SessionToolSignatures[chatId] = string.Join(";", assistantTools.Select(t => t.Name ?? string.Empty).OrderBy(n => n));
         return session;
     }
 
