@@ -7,7 +7,7 @@ This project is a personal assistant built on the GitHub Copilot SDK with two ru
 
 ## What it does
 
-- In Telegram mode: receives Telegram messages via long polling, maintains one Copilot session per Telegram chat, forwards Telegram photos/documents to Copilot as attachments, and sends responses back to Telegram.
+- In Telegram mode: receives Telegram messages via long polling, shares Bob's persistent primary Copilot conversation with Talon/CLI and Android AI commands, forwards Telegram photos/documents to Copilot as attachments, and sends responses back to Telegram.
 - In CLI mode: runs a single local request (use `--cli "<prompt>"` or `ASSISTANT_TRANSPORT=cli`).
 - Supports `/start`, `/help`, `/reset`, and `/gmail_status`.
 - Supports `/personality` to tune tone and emoji behavior per Telegram chat.
@@ -274,11 +274,11 @@ dotnet build
 dotnet run
 ```
 
-On startup, the app begins polling Telegram updates and routes each chat to its own Copilot session. Telegram text, captions, photos, and documents are accepted. Photos and documents are downloaded to a local temp/cache folder and sent to Copilot as message attachments.
+On startup, the app begins polling Telegram updates. Conversational Telegram messages use Bob's shared primary Copilot session, which is also used by Talon/CLI and Android companion AI commands. Telegram text, captions, photos, and documents are accepted. Photos and documents are downloaded to a local temp/cache folder and sent to Copilot as message attachments.
 
 ### CLI mode (single-prompt)
 
-Run a single prompt and exit. Use the `--cli` flag or set `ASSISTANT_TRANSPORT=cli`.
+Run a single prompt and exit. The prompt is sent to the same persistent Bob conversation used by Telegram and Android AI commands, so context is carried between transports and across Bob restarts. Use the `--cli` flag or set `ASSISTANT_TRANSPORT=cli`.
 
 Startup flag example:
 
@@ -292,6 +292,15 @@ Environment variable example:
 ASSISTANT_TRANSPORT=cli
 dotnet run -- --cli "bob please play Ukraine the latest podcast"
 ```
+
+
+### Shared Bob conversation and memory
+
+- Conversational messages from Telegram, Talon/CLI, and Android companion AI fallback use the same Copilot session ID: `bob-primary-conversation`.
+- The Copilot SDK persists the transcript and resumes it after Bob restarts. New sessions enable Copilot's persistent memory feature; the SDK's infinite-session support manages long conversations and context compaction.
+- Turns are serialized inside the Bob process so messages from different transports do not run against the same conversation simultaneously.
+- Telegram commands handled entirely by local fast paths (for example, direct settings commands or simple calendar shortcuts) may not be added to the Copilot transcript.
+- Use `/reset` in Telegram only when you deliberately want to delete Bob's shared conversation and start again. This affects all transports, not just Telegram.
 
 ## NaturalCommands setup
 
