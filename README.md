@@ -298,6 +298,7 @@ dotnet run -- --cli "bob please play Ukraine the latest podcast"
 
 - Conversational messages from Telegram, Talon/CLI, and Android companion AI fallback use the same Copilot session ID: `bob-primary-conversation`.
 - The Copilot SDK persists the transcript and resumes it after Bob restarts. New sessions enable Copilot's persistent memory feature; the SDK's infinite-session support manages long conversations and context compaction.
+- Existing Telegram and one-shot Talon sessions used different generated IDs, so they cannot be reliably merged automatically. The shared conversation starts when this version first creates or resumes `bob-primary-conversation`.
 - Turns are serialized inside the Bob process so messages from different transports do not run against the same conversation simultaneously.
 - Telegram commands handled entirely by local fast paths (for example, direct settings commands or simple calendar shortcuts) may not be added to the Copilot transcript.
 - Use `/reset` in Telegram only when you deliberately want to delete Bob's shared conversation and start again. This affects all transports, not just Telegram.
