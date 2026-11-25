@@ -12,7 +12,6 @@ using Microsoft.Extensions.AI;
 
 internal static class TelegramMessageHandler
 {
-    private static readonly ConcurrentDictionary<long, string> SessionToolSignatures = new();
     private record ProposedTodo(string Title, string? Body, string? Label);
     private static readonly ConcurrentDictionary<long, ProposedTodo> PendingTodoProposals = new();
     private static readonly object FableServiceLock = new();
@@ -1337,7 +1336,6 @@ internal static class TelegramMessageHandler
             context: $"telegram-chat-{chatId}");
 
         sessions[chatId] = session;
-        SessionToolSignatures[chatId] = string.Join(";", assistantTools.Select(t => t.Name ?? string.Empty).OrderBy(n => n));
         return session;
     }
 
