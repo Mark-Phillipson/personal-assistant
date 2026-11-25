@@ -30,7 +30,9 @@ internal static class BobConversationSession
                 await TurnGate.WaitAsync(cancellationToken);
                 try
                 {
+#pragma warning disable GHCP001 // Required to re-register host-process tool callbacks on a resumed session.
                     await _session.SetToolsAsync(tools, cancellationToken);
+#pragma warning restore GHCP001
                     return _session;
                 }
                 finally
@@ -58,7 +60,9 @@ internal static class BobConversationSession
 
                 // Tool callbacks live in the host process, so re-register them
                 // whenever the persisted conversation is resumed.
+#pragma warning disable GHCP001 // Required to re-register host-process tool callbacks on a resumed session.
                 await session.SetToolsAsync(tools, cancellationToken);
+#pragma warning restore GHCP001
                 Console.WriteLine($"[copilot.session.resume] id={SessionId} context={context}");
             }
             catch (Exception ex) when (IsMissingSession(ex))
