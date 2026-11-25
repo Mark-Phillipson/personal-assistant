@@ -27,8 +27,16 @@ internal static class BobConversationSession
         {
             if (_session is not null && ReferenceEquals(_owner, client))
             {
-                await _session.SetToolsAsync(tools, cancellationToken);
-                return _session;
+                await TurnGate.WaitAsync(cancellationToken);
+                try
+                {
+                    await _session.SetToolsAsync(tools, cancellationToken);
+                    return _session;
+                }
+                finally
+                {
+                    TurnGate.Release();
+                }
             }
 
             if (_session is not null)
