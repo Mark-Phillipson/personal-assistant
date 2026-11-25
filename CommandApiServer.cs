@@ -82,15 +82,20 @@ internal static class CommandApiServer
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(expectedDeviceToken) && commandRequest.DeviceToken != expectedDeviceToken)
+            var commandText = commandRequest.Command.Trim();
+            var isTalonRequest = string.Equals(request.Url?.AbsolutePath, "/api/talon/command", StringComparison.OrdinalIgnoreCase);
+            var isLoopbackRequest = request.RemoteEndPoint is not null && IPAddress.IsLoopback(request.RemoteEndPoint.Address);
+
+            // Talon is a local desktop client. Its dedicated endpoint is restricted
+            // to loopback so it does not need to expose the Android device token.
+            if (!string.IsNullOrWhiteSpace(expectedDeviceToken)
+                && commandRequest.DeviceToken != expectedDeviceToken
+                && !(isTalonRequest && isLoopbackRequest))
             {
                 response.StatusCode = (int)HttpStatusCode.Unauthorized;
                 await WriteJsonResponseAsync(response, new CommandApiResponse("Invalid device token.", null, false));
                 return;
             }
-
-            var commandText = commandRequest.Command.Trim();
-            var isTalonRequest = string.Equals(request.Url?.AbsolutePath, "/api/talon/command", StringComparison.OrdinalIgnoreCase);
             var lower = commandText.ToLowerInvariant();
             var actions = new List<CommandAction>();
             var textResponse = $"Received command: {commandText}";
