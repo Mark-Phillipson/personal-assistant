@@ -7,7 +7,7 @@ internal static class CommandApiServer
 {
     public static async Task StartAsync(
         CancellationToken cancellationToken,
-        Func<string, CancellationToken, Task<AiFallbackResponse>>? aiFallback = null)
+        Func<string, bool, CancellationToken, Task<AiFallbackResponse>>? aiFallback = null)
     {
         var prefix = EnvironmentSettings.ReadString("ANDROID_COMPANION_API_PREFIX", "http://localhost:5000/");
         var expectedDeviceToken = EnvironmentSettings.ReadOptionalString("ANDROID_DEVICE_TOKEN");
@@ -55,13 +55,14 @@ internal static class CommandApiServer
         listener.Stop();
     }
 
-    private static async Task HandleRequestAsync(HttpListenerContext context, string? expectedDeviceToken, Func<string, CancellationToken, Task<AiFallbackResponse>>? aiFallback)
+    private static async Task HandleRequestAsync(HttpListenerContext context, string? expectedDeviceToken, Func<string, bool, CancellationToken, Task<AiFallbackResponse>>? aiFallback)
     {
         var request = context.Request;
         var response = context.Response;
 
         if (!string.Equals(request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(request.Url?.AbsolutePath, "/api/command", StringComparison.OrdinalIgnoreCase))
+            !(string.Equals(request.Url?.AbsolutePath, "/api/command", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(request.Url?.AbsolutePath, "/api/talon/command", StringComparison.OrdinalIgnoreCase)))
         {
             response.StatusCode = (int)HttpStatusCode.NotFound;
             response.Close();
@@ -89,6 +90,7 @@ internal static class CommandApiServer
             }
 
             var commandText = commandRequest.Command.Trim();
+            var isTalonRequest = string.Equals(request.Url?.AbsolutePath, "/api/talon/command", StringComparison.OrdinalIgnoreCase);
             var lower = commandText.ToLowerInvariant();
             var actions = new List<CommandAction>();
             var textResponse = $"Received command: {commandText}";
@@ -96,7 +98,7 @@ internal static class CommandApiServer
 
             Console.WriteLine($"[command-api] Command from '{commandRequest.DeviceName ?? "unknown"}': {commandText}");
 
-            if (TryBuildRecognizedResponse(commandText, lower, actions, out var recognizedResponse))
+            if (!isTalonRequest && TryBuildRecognizedResponse(commandText, lower, actions, out var recognizedResponse))
             {
                 textResponse = recognizedResponse;
             }
@@ -107,7 +109,7 @@ internal static class CommandApiServer
                     Console.WriteLine($"[command-api] No heuristic match - forwarding to Copilot AI: {commandText}");
                     try
                     {
-                        var fallbackResponse = await aiFallback(commandText, CancellationToken.None);
+                        var fallbackResponse = await aiFallback(commandText, !isTalonRequest, CancellationToken.None);
                         textResponse = fallbackResponse.TextResponse;
                         success = fallbackResponse.Success;
 
