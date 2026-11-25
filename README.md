@@ -57,8 +57,9 @@ Note: Voice Admin *write* operations (adding/completing/assigning todos) are dep
 - Exposes allowlisted known-folder Explorer tools to Copilot:
    - `known_folder_explorer_status` — show configured folder roots for explorer actions
    - `open_known_folder_in_explorer` — open File Explorer at documents, desktop, downloads, pictures, videos, or repo (plus optional relative subfolder)
-- Exposes an Android companion command API:
-   - `POST /api/command` accepts a spoken or typed phone command
+- Exposes local command APIs:
+   - `POST /api/command` accepts a spoken or typed Android phone command
+   - `POST /api/talon/command` accepts Talon dictation directly into Bob's shared Copilot conversation; it bypasses Android phone-command heuristics, returns the reply to Talon, and speaks it once on the Bob host
    - Simple phone intents like open app, open URL, back/home/recents/notifications, scroll, and basic media controls are returned as structured device actions for the companion app
    - Anything not recognized as a simple device action is forwarded to the Copilot assistant; if Copilot calls `execute_device_action`, those structured actions are returned to the companion app and the reply is also sent back to the saved Telegram chat
 
@@ -296,7 +297,9 @@ dotnet run -- --cli "bob please play Ukraine the latest podcast"
 
 ### Shared Bob conversation and memory
 
-- Conversational messages from Telegram, Talon/CLI, and Android companion AI fallback use the same Copilot session ID: `bob-primary-conversation`.
+- Conversational messages from Telegram, Talon (through `POST /api/talon/command`), and Android companion AI fallback use the same Copilot session ID: `bob-primary-conversation`.
+- Talon should call the local HTTP API hosted by the already-running Telegram process. Do not launch a new `--cli` process for every Talon utterance: the in-memory session belongs to the Telegram-hosted process, and its turn gate serializes requests from both channels.
+- Talon requests are not echoed to Telegram. Bob returns the response to the Talon caller and speaks it once on the host; Talon should only show its notification and must not launch a second TTS response.
 - The Copilot SDK persists the transcript and resumes it after Bob restarts. New sessions enable Copilot's persistent memory feature; the SDK's infinite-session support manages long conversations and context compaction.
 - Existing Telegram and one-shot Talon sessions used different generated IDs, so they cannot be reliably merged automatically. The shared conversation starts when this version first creates or resumes `bob-primary-conversation`.
 - Turns are serialized inside the Bob process so messages from different transports do not run against the same conversation simultaneously.
